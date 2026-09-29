@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -28,7 +26,6 @@ from heimdall.schemas import (
 )
 
 WEB_DIST = config.ROOT / "web" / "dist"
-log = logging.getLogger(__name__)
 LOCAL_HOSTS = ["127.0.0.1", "localhost"]
 
 
@@ -45,28 +42,8 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _default_store() -> Store:
-    """Read-only DuckDB for observations/evidence/alerts + a separate read-write analyst store.
-
-    DuckDB is single-writer (heimdall.run owns the main file), so analyst writes never touch it.
-    """
-    from heimdall.adapters.memory_store import MemoryStore
-
-    try:
-        from heimdall.adapters.duckdb_store import DuckDBStore
-    except ImportError:
-        log.warning("DuckDB adapter unavailable; API is serving an empty in-memory store")
-        return MemoryStore()
-
-    from heimdall.adapters.composite_store import CompositeStore
-
-    main = Path(config.settings().storage.duckdb_path)
-    analyst_path = main.with_name("analyst.duckdb")
-    return CompositeStore(DuckDBStore(str(main), read_only=True), DuckDBStore(str(analyst_path)))
-
-
 def _action_json(a: ActionRequest) -> dict[str, Any]:
-    return {**a.model_dump(mode="json"), "id": a.params.get("id")}
+    return a.model_dump(mode="json")
 
 
 def _since(value: str | None, default_hours: float | None = None) -> datetime | None:
@@ -82,14 +59,14 @@ def _since(value: str | None, default_hours: float | None = None) -> datetime | 
 
 
 def create_app(
-    store: Store | None = None,
+    store: Store,
     playbook: dict[str, Any] | None = None,
     auth_check: Callable[[Request], Awaitable[bool]] | None = None,
     stream_interval_s: float = 2.0,
     allowed_hosts: list[str] | None = None,
     basemap: str | None = None,
 ) -> FastAPI:
-    st: Store = store if store is not None else _default_store()
+    st: Store = store
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
         "actions", {}
     )
@@ -185,18 +162,17 @@ def create_app(
         req = ActionRequest(
             alert_id=alert_id,
             action_id=body.action_id,
-            params={"id": uuid.uuid4().hex},
+            id=uuid.uuid4().hex,
             ts=_now(),
         )
         st.upsert_action(req)
         return _action_json(req)
 
     def find_action(action_id: str) -> ActionRequest:
-        for al in st.list_alerts(limit=1000):
-            for x in st.actions_for(al.id):
-                if x.params.get("id") == action_id and x.status == "proposed":
-                    return x
-        raise HTTPException(404, "proposed action not found")
+        x = st.get_action(action_id)
+        if x is None or x.status != "proposed":
+            raise HTTPException(404, "proposed action not found")
+        return x
 
     @app.post("/api/actions/{action_id}/approve")
     def approve_action(action_id: str) -> dict[str, Any]:
@@ -312,16 +288,3 @@ def create_app(
     if WEB_DIST.is_dir():
         app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")
     return app
-
-
-def _module_app() -> FastAPI:
-    return create_app(None)
-
-
-app = _module_app()
-
-
-def main(path: Path | None = None) -> None:  # pragma: no cover
-    import uvicorn
-
-    uvicorn.run(app, host=config.settings().api.host, port=config.settings().api.port)

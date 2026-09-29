@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 import h3
 
 from heimdall.adapters.memory_store import MemoryStore
+from heimdall.ports import Store
 from heimdall.schemas import (
     Admiralty,
     AircraftObs,
@@ -46,7 +47,7 @@ def _ellipse(lat: float, lon: float) -> dict[str, object]:
     return {"type": "Polygon", "coordinates": [pts]}
 
 
-def seed(store: MemoryStore, seed_value: int = 7) -> MemoryStore:
+def seed(store: Store, seed_value: int = 7) -> Store:
     rnd = random.Random(seed_value)
     now = datetime.now(UTC)
     for i, (aoi, lat, lon, kind, sev, ratio, base, conf) in enumerate(SEEDS):

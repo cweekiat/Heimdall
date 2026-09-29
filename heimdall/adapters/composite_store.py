@@ -1,8 +1,10 @@
 """Store that reads from a (read-only) main store and keeps analyst writes in a separate store.
 
 DuckDB is single-writer and the ingest process owns the main file, so the API must never write
-there. Analyst state (feedback, actions, alert status changes) lives in `analyst`; alerts read
-back through this class are overlaid with any analyst-modified copy.
+there. Analyst state (feedback, actions) lives in `analyst`. Alerts are never copied: only a
+status override (alert_id -> status) is kept and applied over the pipeline's current Alert, so
+pipeline updates (last_seen, confidence, evidence) always show through. Overrides survive restarts
+because they are re-derived from the latest analyst feedback verdict.
 """
 
 from __future__ import annotations
@@ -23,11 +25,14 @@ from heimdall.schemas import (
     VesselObs,
 )
 
+_VERDICT_STATUS = {"confirm": AlertStatus.CONFIRMED, "dismiss": AlertStatus.DISMISSED}
+
 
 class CompositeStore:
     def __init__(self, read: Store, analyst: Store) -> None:
         self.read = read
         self.analyst = analyst
+        self._overrides: dict[str, AlertStatus] = {}
 
     # ---- pure reads / pipeline-owned data: main store
     def insert_aircraft(self, rows: Sequence[AircraftObs]) -> int:
@@ -77,12 +82,26 @@ class CompositeStore:
     def list_health(self) -> list[SourceHealth]:
         return self.read.list_health()
 
-    # ---- alerts: main store overlaid with analyst-modified copies
+    # ---- alerts: pipeline alert + analyst status override
+    def _override(self, alert_id: str) -> AlertStatus | None:
+        if alert_id not in self._overrides:
+            fbs = self.analyst.feedback_for(alert_id)
+            if not fbs:
+                return None
+            self._overrides[alert_id] = _VERDICT_STATUS[max(fbs, key=lambda f: f.ts).verdict]
+        return self._overrides[alert_id]
+
+    def _apply(self, a: Alert) -> Alert:
+        st = self._override(a.id)
+        return a if st is None or st == a.status else a.model_copy(update={"status": st})
+
     def upsert_alert(self, alert: Alert) -> None:
-        self.analyst.upsert_alert(alert)
+        """Only the status is retained (as an override); the pipeline owns the alert itself."""
+        self._overrides[alert.id] = alert.status
 
     def get_alert(self, alert_id: str) -> Alert | None:
-        return self.analyst.get_alert(alert_id) or self.read.get_alert(alert_id)
+        a = self.read.get_alert(alert_id)
+        return self._apply(a) if a else None
 
     def list_alerts(
         self,
@@ -91,16 +110,14 @@ class CompositeStore:
         aoi: str | None = None,
         limit: int = 200,
     ) -> list[Alert]:
-        merged = {a.id: a for a in self.read.list_alerts(since, None, aoi, limit)}
-        for a in self.analyst.list_alerts(since, None, aoi, limit):
-            merged[a.id] = a
-        out = [a for a in merged.values() if status is None or a.status in status]
-        out.sort(key=lambda a: a.last_seen, reverse=True)
-        return out[:limit]
+        # status filtering must happen after the override is applied
+        alerts = [self._apply(a) for a in self.read.list_alerts(since, None, aoi, limit)]
+        return [a for a in alerts if status is None or a.status in status]
 
     # ---- analyst loop: analyst store
     def add_feedback(self, fb: Feedback) -> None:
         self.analyst.add_feedback(fb)
+        self._overrides[fb.alert_id] = _VERDICT_STATUS[fb.verdict]
 
     def feedback_for(self, alert_id: str) -> list[Feedback]:
         return self.analyst.feedback_for(alert_id)
@@ -110,6 +127,9 @@ class CompositeStore:
 
     def actions_for(self, alert_id: str) -> list[ActionRequest]:
         return self.analyst.actions_for(alert_id)
+
+    def get_action(self, action_id: str) -> ActionRequest | None:
+        return self.analyst.get_action(action_id)
 
     def close(self) -> None:
         self.read.close()

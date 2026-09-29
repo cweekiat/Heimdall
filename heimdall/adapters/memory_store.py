@@ -112,21 +112,14 @@ class MemoryStore:
         return [f for f in self.feedback if f.alert_id == alert_id]
 
     def upsert_action(self, action: ActionRequest) -> None:
-        key = action.params.get("id")
-        for i, a in enumerate(self.actions):
-            same = (
-                a.params.get("id") == key
-                if key is not None
-                else (a.alert_id, a.action_id, a.ts)
-                == (action.alert_id, action.action_id, action.ts)
-            )
-            if same:
-                self.actions[i] = action
-                return
+        self.actions = [a for a in self.actions if a.id != action.id]
         self.actions.append(action)
 
     def actions_for(self, alert_id: str) -> list[ActionRequest]:
         return [a for a in self.actions if a.alert_id == alert_id]
+
+    def get_action(self, action_id: str) -> ActionRequest | None:
+        return next((a for a in self.actions if a.id == action_id), None)
 
     # baselines
     def record_metric(self, key: str, metric: str, ts: datetime, value: float) -> None:

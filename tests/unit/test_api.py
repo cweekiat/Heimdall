@@ -1,11 +1,13 @@
 import asyncio
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from heimdall.adapters.composite_store import CompositeStore
+from heimdall.adapters.duckdb_store import DuckDBStore
 from heimdall.adapters.memory_store import MemoryStore
 from heimdall.api.app import create_app
 from heimdall.api.demo import seed
@@ -136,20 +138,29 @@ def test_ui_config_default_is_no_third_party(client: TestClient) -> None:
     assert c.get("/api/ui-config").json() == {"basemap": "carto"}
 
 
-def test_composite_store_routes_writes_to_analyst() -> None:
-    main = seed(MemoryStore())
-    analyst = MemoryStore()
-    c = TestClient(create_app(CompositeStore(main, analyst), playbook=PB, allowed_hosts=HOSTS))
+def test_composite_store_duckdb_status_overrides_only(tmp_path: Path) -> None:
+    main_path = tmp_path / "main.duckdb"
+    seeded = DuckDBStore(main_path)
+    seed(seeded)
+    seeded.close()
+    main = DuckDBStore(main_path, read_only=True)  # pipeline-owned, never written by the API
+    analyst = DuckDBStore(tmp_path / "analyst.duckdb")
+    comp = CompositeStore(main, analyst)
+    c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS))
     assert len(c.get("/api/alerts").json()) == 8
     assert c.post("/api/alerts/alert-0/feedback", json={"verdict": "dismiss"}).status_code == 200
     r = c.post("/api/alerts/alert-0/actions", json={"action_id": "watch_cell"}).json()
     assert len(r["id"]) == 32
     assert c.post(f"/api/actions/{r['id']}/approve").json()["status"] == "approved"
-    # main store untouched; analyst store holds the writes
-    assert main.alerts["alert-0"].status.value == "new"
-    assert not main.feedback and not main.actions
-    assert analyst.feedback and analyst.actions
-    assert analyst.alerts["alert-0"].status.value == "dismissed"
-    # overlay visible through the API, status filter works on merged view
+    assert main.get_alert("alert-0").status.value == "new"  # type: ignore[union-attr]
+    assert analyst.get_alert("alert-0") is None  # alerts are never copied
+    assert analyst.feedback_for("alert-0") and analyst.get_action(r["id"])
     assert [a["id"] for a in c.get("/api/alerts?status=dismissed").json()] == ["alert-0"]
     assert len(c.get("/api/alerts").json()) == 8
+    # pipeline update shows through the override
+    upd = comp.read.get_alert("alert-0")
+    assert upd is not None
+    assert comp.get_alert("alert-0").status.value == "dismissed"  # type: ignore[union-attr]
+    # override survives a restart (derived from analyst feedback)
+    fresh = CompositeStore(main, analyst)
+    assert fresh.get_alert("alert-0").status.value == "dismissed"  # type: ignore[union-attr]
