@@ -1,0 +1,16 @@
+services:
+  worker:
+    build: {context: .., dockerfile: deploy/Dockerfile.worker}
+    volumes: ["../data:/app/data"]
+    ports: ["127.0.0.1:9108:9108"]
+    restart: unless-stopped
+  api:
+    build: {context: .., dockerfile: deploy/Dockerfile.api}
+    volumes: ["../data:/app/data"]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on: [worker]
+    restart: unless-stopped
+  web:
+    # placeholder until the frontend task lands
+    image: busybox:stable
+    command: ["sh", "-c", "echo web placeholder; sleep infinity"]

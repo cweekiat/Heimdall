@@ -27,6 +27,8 @@ from heimdall.schemas import (
     VesselObs,
 )
 
+T_MIN = datetime(1970, 1, 1, tzinfo=UTC)
+
 
 def _to_db(dt: datetime | None) -> datetime | None:
     if dt is None:
@@ -178,8 +180,8 @@ class DuckDBStore:
             if not h3_r4:
                 return []
             sql, p = self._in("h3_r4", h3_r4)
-            return self._window(_AIR, start, end, sql, p)  # type: ignore[no-any-return]
-        return self._window(_AIR, start, end)  # type: ignore[no-any-return]
+            return self._window(_AIR, start, end, sql, p)
+        return self._window(_AIR, start, end)
 
     def vessels_window(
         self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
@@ -188,8 +190,8 @@ class DuckDBStore:
             if not h3_r4:
                 return []
             sql, p = self._in("h3_r4", h3_r4)
-            return self._window(_SEA, start, end, sql, p)  # type: ignore[no-any-return]
-        return self._window(_SEA, start, end)  # type: ignore[no-any-return]
+            return self._window(_SEA, start, end, sql, p)
+        return self._window(_SEA, start, end)
 
     def events_window(
         self, start: datetime, end: datetime, kinds: Sequence[str] | None = None
@@ -198,8 +200,8 @@ class DuckDBStore:
             if not kinds:
                 return []
             sql, p = self._in("kind", kinds)
-            return self._window(_EVT, start, end, sql, p)  # type: ignore[no-any-return]
-        return self._window(_EVT, start, end)  # type: ignore[no-any-return]
+            return self._window(_EVT, start, end, sql, p)
+        return self._window(_EVT, start, end)
 
     # ------------------------------------------------------------------ evidence & alerts
     def upsert_evidence(self, ev: Evidence) -> None:
@@ -290,7 +292,9 @@ class DuckDBStore:
             [alert_id],
         )
         return [
-            Feedback(alert_id=r[0], verdict=r[1], reason=r[2], user=r[3], ts=_from_db(r[4]))
+            Feedback(
+                alert_id=r[0], verdict=r[1], reason=r[2], user=r[3], ts=_from_db(r[4]) or T_MIN
+            )
             for r in rows
         ]
 
@@ -320,7 +324,7 @@ class DuckDBStore:
                 params=json.loads(r[2]),
                 status=r[3],
                 result=json.loads(r[4]) if r[4] is not None else None,
-                ts=_from_db(r[5]),
+                ts=_from_db(r[5]) or T_MIN,
             )
             for r in rows
         ]
