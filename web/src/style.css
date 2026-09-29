@@ -912,3 +912,29 @@ svg.chart {
     transition: none !important;
   }
 }
+
+.tl-ax {
+  fill: var(--muted);
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+}
+.tl-key {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.tl-bg {
+  cursor: crosshair;
+}
+#legend {
+  bottom: 44px;
+}
+#mapctl .tools {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}

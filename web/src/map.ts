@@ -1,4 +1,4 @@
-import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { GeoJsonLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import * as maplibregl from "maplibre-gl";
@@ -8,6 +8,7 @@ import type { Provider } from "./basemap";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
 import { h } from "./dom";
+import { haversineNm } from "./geoutil";
 
 type RGBA = [number, number, number, number];
 
@@ -52,6 +53,29 @@ export interface MapState {
   selected: string | null;
   showCoverage: boolean;
   hoursAgo: number; // time slider: 0 = now, 24 = 24 h ago
+  asOf: number | null; // global time window end (ms); overrides the slider when set
+  tool: "none" | "measure" | "ring";
+  points: [number, number][]; // measure polyline / ring centre (+ radius point)
+}
+
+export interface Cluster {
+  lon: number;
+  lat: number;
+  alerts: Alert[];
+}
+
+/** Grid clustering used below zoom 5 so dense areas stay readable (declutter). */
+export function cluster(alerts: Alert[], zoom: number): Cluster[] {
+  if (zoom >= 5) return alerts.map((a) => ({ lon: a.lon as number, lat: a.lat as number, alerts: [a] }));
+  const cell = zoom < 3.5 ? 4 : 2;
+  const m = new Map<string, Cluster>();
+  for (const a of alerts) {
+    const k = `${Math.floor((a.lon as number) / cell)}:${Math.floor((a.lat as number) / cell)}`;
+    const c = m.get(k);
+    if (c) c.alerts.push(a);
+    else m.set(k, { lon: a.lon as number, lat: a.lat as number, alerts: [a] });
+  }
+  return [...m.values()];
 }
 
 // maplibre-gl v6 ships its worker as separate ES modules that Vite does not emit by itself;
@@ -71,7 +95,13 @@ export class OpsMap {
     selected: null,
     showCoverage: false,
     hoursAgo: 0,
+    asOf: null,
+    tool: "none",
+    points: [],
   };
+  onCursor: (lon: number, lat: number, zoom: number) => void = () => undefined;
+  onHover: (a: Alert[] | null, x: number, y: number) => void = () => undefined;
+  onTool: () => void = () => undefined;
 
   constructor(
     container: HTMLElement,
@@ -88,10 +118,50 @@ export class OpsMap {
       attributionControl: { compact: true },
     });
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    this.map.addControl(new maplibregl.ScaleControl({ unit: "nautical", maxWidth: 120 }), "bottom-left");
+    this.map.on("mousemove", (e) => this.onCursor(e.lngLat.lng, e.lngLat.lat, this.map.getZoom()));
+    this.map.on("zoomend", () => this.render());
+    this.map.on("click", (e) => {
+      if (this.state.tool === "none") return;
+      const p: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      this.state.points = this.state.tool === "ring" ? [...this.state.points.slice(0, 1), p].slice(-2) : [...this.state.points, p];
+      if (this.state.tool === "ring" && this.state.points.length === 1) this.state.points = [p];
+      this.onTool();
+      this.render();
+    });
     this.map.addControl(this.overlay as unknown as maplibregl.IControl);
     this.layers = new BaseLayers(this.map, provider, overlays, theme);
     this.map.setStyle(this.layers.initialStyle(), { diff: false });
     new ResizeObserver(() => this.map.resize()).observe(container);
+  }
+
+  setTool(t: MapState["tool"]): void {
+    this.state.tool = t;
+    this.state.points = [];
+    this.map.getCanvas().style.cursor = t === "none" ? "" : "crosshair";
+    this.onTool();
+    this.render();
+  }
+
+  /** Distance text for the active tool, in nautical miles. */
+  toolReadout(): string {
+    const p = this.state.points;
+    if (this.state.tool === "measure" && p.length > 1) {
+      let d = 0;
+      for (let i = 1; i < p.length; i++) d += haversineNm(p[i - 1]!, p[i]!);
+      return `Measure: ${d.toFixed(1)} nm (${(d * 1.852).toFixed(1)} km), ${p.length - 1} leg(s)`;
+    }
+    if (this.state.tool === "ring" && p.length > 1) return `Range ring: radius ${haversineNm(p[0]!, p[1]!).toFixed(1)} nm`;
+    if (this.state.tool !== "none") return this.state.tool === "ring" ? "Range ring: click centre, then radius point" : "Measure: click points";
+    return "";
+  }
+
+  zoom(): number {
+    return this.map.getZoom();
+  }
+
+  zoomTo(lon: number, lat: number): void {
+    this.map.flyTo({ center: [lon, lat], zoom: this.map.getZoom() + 2 });
   }
 
   setTheme(theme: "dark" | "light"): void {
@@ -103,13 +173,15 @@ export class OpsMap {
   }
 
   private asOf(): number {
-    return Date.now() - this.state.hoursAgo * 3600_000;
+    return this.state.asOf ?? Date.now() - this.state.hoursAgo * 3600_000;
   }
 
   render(): void {
     const s = this.state;
     const t = this.asOf();
     const alerts = s.alerts.filter((a) => new Date(a.first_seen).getTime() <= t && a.lat !== null);
+    const zoomKey = this.map.getZoom() < 5 ? 1 : 0;
+    const clusters = cluster(alerts, this.map.getZoom());
     const cells = s.cells.filter((c) => new Date(c.ts).getTime() <= t);
     const ratioCells = cells.filter((c) => c.ratio !== null);
     const layers = [
@@ -142,6 +214,18 @@ export class OpsMap {
           extruded: false,
           pickable: false,
         }),
+      s.showCoverage &&
+        new H3HexagonLayer<Cell>({
+          id: "nodata",
+          data: cells.filter((c) => c.n_quality < 3),
+          getHexagon: (d) => d.h3,
+          getFillColor: [150, 150, 150, 90],
+          getLineColor: [200, 200, 200, 200],
+          lineWidthMinPixels: 1,
+          stroked: true,
+          extruded: false,
+          pickable: false,
+        }),
       new H3HexagonLayer<Cell>({
         id: "cells",
         data: ratioCells,
@@ -169,21 +253,78 @@ export class OpsMap {
         getColor: [88, 166, 255, 255],
         widthMinPixels: 3,
       }),
-      new ScatterplotLayer<Alert>({
+      new ScatterplotLayer<Cluster>({
+        id: "halo",
+        data: clusters.filter((c) => c.alerts.some((x) => x.id === s.selected)),
+        getPosition: (c) => [c.lon, c.lat],
+        getRadius: 22,
+        radiusUnits: "pixels",
+        stroked: true,
+        filled: false,
+        getLineColor: [255, 211, 61, 220],
+        getLineWidth: 3,
+        lineWidthUnits: "pixels",
+      }),
+      new ScatterplotLayer<Cluster>({
         id: "alerts",
-        data: alerts,
-        getPosition: (a) => [a.lon as number, a.lat as number],
-        getFillColor: (a) => KIND_COLOR[a.kind] ?? [255, 255, 255, 255],
-        getLineColor: (a) => (a.id === s.selected ? [255, 211, 61, 255] : [0, 0, 0, 255]),
-        getLineWidth: (a) => (a.id === s.selected ? 4 : 1.5),
-        getRadius: (a) => (a.id === s.selected ? 13 : 9),
+        data: clusters,
+        getPosition: (c) => [c.lon, c.lat],
+        getFillColor: (c) => (c.alerts.length > 1 ? [110, 118, 129, 235] : (KIND_COLOR[c.alerts[0]!.kind] ?? [255, 255, 255, 255])),
+        getLineColor: (c) => (c.alerts.some((a) => a.id === s.selected) ? [255, 211, 61, 255] : [0, 0, 0, 255]),
+        getLineWidth: (c) => (c.alerts.some((a) => a.id === s.selected) ? 4 : 1.5),
+        getRadius: (c) => (c.alerts.length > 1 ? 14 : c.alerts[0]!.id === s.selected ? 13 : 9),
         radiusUnits: "pixels",
         lineWidthUnits: "pixels",
         stroked: true,
-        pickable: true,
-        updateTriggers: { getLineColor: s.selected, getLineWidth: s.selected, getRadius: s.selected },
-        onClick: (info) => info.object && this.onPick((info.object as Alert).id),
+        pickable: s.tool === "none",
+        updateTriggers: { getLineColor: s.selected, getLineWidth: s.selected, getRadius: s.selected, getFillColor: zoomKey },
+        onHover: (info) => {
+          const c = info.object as Cluster | undefined;
+          this.onHover(c ? c.alerts : null, info.x, info.y);
+        },
+        onClick: (info) => {
+          const c = info.object as Cluster | undefined;
+          if (!c) return;
+          if (c.alerts.length > 1) this.zoomTo(c.lon, c.lat);
+          else this.onPick(c.alerts[0]!.id);
+        },
       }),
+      new TextLayer<Cluster>({
+        id: "cluster-n",
+        data: clusters.filter((c) => c.alerts.length > 1),
+        getPosition: (c) => [c.lon, c.lat],
+        getText: (c) => String(c.alerts.length),
+        getSize: 13,
+        getColor: [255, 255, 255, 255],
+        fontWeight: 700,
+      }),
+      s.points.length > 0 &&
+        new ScatterplotLayer<[number, number]>({
+          id: "tool-pts",
+          data: s.points,
+          getPosition: (d) => d,
+          getRadius: 5,
+          radiusUnits: "pixels",
+          getFillColor: [255, 211, 61, 255],
+        }),
+      s.tool === "measure" &&
+        s.points.length > 1 &&
+        new PathLayer<{ p: [number, number][] }>({
+          id: "measure",
+          data: [{ p: s.points }],
+          getPath: (d) => d.p,
+          getColor: [255, 211, 61, 255],
+          widthMinPixels: 2,
+        }),
+      s.tool === "ring" &&
+        s.points.length > 1 &&
+        new PathLayer<{ p: number[][] }>({
+          id: "ring",
+          data: [{ p: circle(s.points[0]![1], s.points[0]![0], haversineNm(s.points[0]!, s.points[1]!)) }],
+          getPath: (d) => d.p as [number, number][],
+          getColor: [255, 211, 61, 255],
+          widthMinPixels: 2,
+        }),
     ];
     this.overlay.setProps({ layers: layers.filter(Boolean) as never[] });
   }
@@ -202,5 +343,6 @@ export function legend(): HTMLElement {
       "Alerts",
       ...["gnss_jamming", "gnss_spoofing", "mil_orbit", "composite"].map((k) => sw(KIND_COLOR[k]!, k.replace("_", " "))),
     ),
+    h("div", {}, "Coverage", h("i", { class: "sw", style: "background:rgba(150,150,150,.5);outline:1px solid #ccc" }), "grey outline = <3 quality aircraft (no data is not no activity)"),
   );
 }

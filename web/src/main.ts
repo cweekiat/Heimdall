@@ -4,6 +4,8 @@ import type { Alert } from "./api";
 import { renderBoard } from "./board";
 import { ago, h } from "./dom";
 import { renderEntity, renderInspector } from "./inspector";
+import { fmtLatLon, toMgrs } from "./geoutil";
+import { renderTimeline } from "./timeline";
 import { alertTitle, aoiName, setAois } from "./labels";
 import type { OpsMap } from "./map";
 import { PRIORITY, renderHealth, renderQueue, visibleAlerts } from "./panels";
@@ -80,7 +82,48 @@ cov.addEventListener("change", () => {
   if (ops) ops.state.showCoverage = cov.checked;
   ops?.render();
 });
-$("mapctl").replaceChildren(h("label", { for: "cov" }, cov, "Coverage (quality aircraft)"), h("label", {}, "Time ", slider, sliderLbl));
+const toolBtn = (label: string, t: "measure" | "ring"): HTMLButtonElement => {
+  const b = h("button", { "aria-pressed": "false", onclick: () => setTool(ops?.state.tool === t ? "none" : t) }, label);
+  b.dataset.tool = t;
+  return b;
+};
+function setTool(t: "none" | "measure" | "ring"): void {
+  ops?.setTool(t);
+  document.querySelectorAll<HTMLButtonElement>("#mapctl [data-tool]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tool === t)));
+}
+$("mapctl").replaceChildren(
+  h("label", { for: "cov" }, cov, "Coverage (quality aircraft)"),
+  h("label", {}, "Time ", slider, sliderLbl),
+  h("div", { class: "tools" }, toolBtn("Measure", "measure"), toolBtn("Range ring", "ring")),
+);
+const hover = h("div", { class: "hovercard", hidden: true });
+$("mapwrap").append(hover);
+function wireMapExtras(m: OpsMap): void {
+  const ro = $("readout");
+  const update = (lon?: number, lat?: number): void => {
+    const tool = m.toolReadout();
+    const pos = lon === undefined || lat === undefined ? "" : `${fmtLatLon(lat, lon)} · MGRS ${toMgrs(lat, lon)}`;
+    ro.replaceChildren(h("div", {}, pos || "Move cursor over the map"), ...(tool ? [h("div", {}, tool)] : []));
+  };
+  m.onCursor = (lon, lat) => update(lon, lat);
+  m.onTool = () => update();
+  m.onHover = (as, x, y) => {
+    if (!as) {
+      hover.hidden = true;
+      return;
+    }
+    hover.hidden = false;
+    hover.style.left = `${x + 12}px`;
+    hover.style.top = `${y + 12}px`;
+    hover.replaceChildren(
+      ...as.slice(0, 4).map((a) =>
+        h("div", {}, h("strong", {}, `${PRIORITY[a.severity]!.icon} ${alertTitle(a)}`), h("div", {}, `${a.admiralty.reliability}${a.admiralty.credibility} · ${a.corroboration_status} · ${ago(a.last_seen)}`)),
+      ),
+      ...(as.length > 4 ? [h("div", { class: "note" }, `+${as.length - 4} more (click to zoom)`)] : []),
+    );
+  };
+  update();
+}
 
 // ---- status bar
 function renderStatus(): void {
@@ -166,6 +209,7 @@ function draw(changed: Set<string>): void {
     else renderInspector($("inspector"));
     document.body.classList.toggle("has-selection", state.selected !== null);
   }
+  if (has("alerts", "window", "playing", "filters")) renderTimeline($("timeline"));
   if (has("health") && document.body.dataset.panel === "health") renderHealth($("health"), state.health);
   if (ops && has("alerts", "cells", "aois", "selected", "detail", "tracks", "filters", "window")) {
     Object.assign(ops.state, {
@@ -175,6 +219,7 @@ function draw(changed: Set<string>): void {
       selected: state.selected,
       evidence: state.detail?.evidence ?? [],
       tracks: state.tracks,
+      asOf: state.window?.to ?? null,
     });
     ops.render();
   }
@@ -207,6 +252,7 @@ async function boot(): Promise<void> {
     const [{ OpsMap: OpsMapCls, legend }, ui] = await Promise.all([import("./map"), api.uiConfig()]);
     ops = new OpsMapCls($("map"), theme === "light" ? "light" : "dark", ui.basemap, ui.overlays, (id) => void selectAlert(id, false));
     $("legend").replaceChildren(legend());
+    wireMapExtras(ops);
     mountLayersDrawer($("layers"), ops.layers.panel());
     await Promise.all([refreshAll(), refreshHealth().catch(() => undefined)]);
     patch({ aois });
