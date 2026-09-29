@@ -79,6 +79,7 @@ class AircraftSignals:
     displaced: AircraftObs | None = None  # first anomalous fix
     records: list[AircraftObs] = field(default_factory=list)
     anomalous: list[AircraftObs] = field(default_factory=list)  # fixes of fired signals
+    raw: list[AircraftObs] = field(default_factory=list)  # all providers' fixes of this hex
     n_fixes: int = 0
     providers: set[str] = field(default_factory=set)
 
@@ -229,6 +230,23 @@ def _s4_bins(
     return counts
 
 
+def showing_records(
+    sig: AircraftSignals, tol_s: float = 2.0, tol_km: float = 1.0
+) -> list[AircraftObs]:
+    """First fix per provider whose *own* report reproduces an anomalous fix (same hex,
+    |dt| <= tol_s, <= tol_km). Only these providers count toward Admiralty reliability."""
+    out: dict[str, AircraftObs] = {}
+    for a in sorted(sig.anomalous, key=lambda o: o.ts):
+        for o in sig.raw:
+            if o.provider in out or o.src_type != a.src_type:
+                continue
+            if abs((o.ts - a.ts).total_seconds()) <= tol_s and (
+                haversine_km(o.lat, o.lon, a.lat, a.lon) <= tol_km
+            ):
+                out[o.provider] = o
+    return sorted(out.values(), key=lambda o: o.provider)
+
+
 def aircraft_signals(
     obs: Sequence[AircraftObs], cfg: dict[str, Any], now: datetime
 ) -> dict[str, AircraftSignals]:
@@ -264,6 +282,7 @@ def aircraft_signals(
     out: dict[str, AircraftSignals] = {}
     for h, fs in adsb_d.items():
         sig = AircraftSignals(h, n_fixes=len(fs), providers={o.provider for o in adsb[h]})
+        sig.raw = [*adsb[h], *mlat.get(h, [])]
         _s1(fs, c, sig)
         if h in per_ac_div:
             norms = cell_divs[cell_of(fs[0], c["h3_res"])]
@@ -419,7 +438,7 @@ def detect(
             if "jump_km" in f and s.fired["S1"]
             else "."
         )
-        recs = list({record_id(o): o for o in s.records}.values())[:20]
+        recs = showing_records(s)
         evs.append(
             Evidence(
                 id=evidence_id(AlertKind.GNSS_SPOOFING.value, cell, h, start, aoi),

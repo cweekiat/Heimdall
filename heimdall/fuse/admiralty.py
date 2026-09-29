@@ -2,7 +2,9 @@
 
 Pure functions. Choices (documented in docs/detectors.md):
 
-* **Reliability = best grade among the sources that contributed observations to the Evidence.**
+* **Reliability = best grade among the sources whose own reports show the anomaly**, i.e. the
+  `source` of the Evidence's `records` (detectors emit one RecordRef per anomaly-showing
+  provider). Providers that merely covered the area (`coverage.providers`) do not count.
   The aggregators (adsb.lol, adsb.fi, airplanes.live, OpenSky) re-publish the *same* broadcast,
   so a finding is as reliable as the most reliable source that independently shows it; adding a
   weaker mirror must not downgrade it (worst-case would punish extra coverage). Unknown sources
@@ -103,7 +105,9 @@ def grade(
     analyst_confirmed: bool = False,
 ) -> Admiralty:
     """Admiralty grade for an alert built from `evidence` (+ cross-domain corroborations)."""
-    providers = {p for e in evidence for p in e.coverage.providers}
+    # only providers whose own reports show the anomaly: detectors emit one RecordRef per such
+    # provider; coverage.providers (everyone who saw the area) is NOT used for reliability
+    providers = {r.source for e in evidence for r in e.records}
     domains = {KIND_DOMAIN.get(e.kind, Domain.AIR) for e in evidence}
     domains |= {c.domain for c in corroborations if c.relation == "supports"}
     contradicted = any(c.relation == "contradicts" for c in corroborations)

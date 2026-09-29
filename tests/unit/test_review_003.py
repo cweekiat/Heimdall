@@ -186,3 +186,51 @@ def test_orbit_persistence_follows_aircraft_across_cells() -> None:
     r3 = tick(store, cfg, T0 + timedelta(minutes=85), playbook=PB, source_grades=GRADES)
     (o3,) = [e for e in r3.evidence if e.kind == AlertKind.MIL_ORBIT]
     assert o3.persistence == 1
+
+
+# --------------------------------------------------------------------------- 3. Admiralty
+
+
+def test_reliability_ignores_covering_but_not_showing_providers() -> None:
+    (a,) = fuse(
+        [ev(showing=("adsb.lol",), covering=("adsb.lol", "faa-nms-notam"))],
+        [],
+        NOW,
+        None,
+        PB,
+        GRADES,
+    )
+    assert a.admiralty.reliability == "B"  # the A-graded source only covered the area
+    (b,) = fuse([ev(showing=("adsb.lol", "faa-nms-notam"))], [], NOW, None, PB, GRADES)
+    assert b.admiralty.reliability == "A"
+
+
+def test_jamming_records_only_providers_showing_degradation() -> None:
+    from heimdall.detect import jamming
+    from heimdall.fuse import admiralty
+
+    shown = jammed_cell(n_aircraft=12, n_jammed=4, providers=("adsb.lol",))
+    jammed_hex = {o.hex for o in shown if o.nic == 0}
+    healthy_mirror = [
+        o.model_copy(update={"provider": "adsb.fi", "nic": 8, "nac_p": 9})
+        for o in shown
+        if o.hex in jammed_hex
+    ]
+    now = T0 + timedelta(minutes=30)
+    (e,) = [x for x in jamming.detect(shown + healthy_mirror, {}, now, None) if x.entities]
+    assert {r.source for r in e.records} == {"adsb.lol"}
+    assert set(e.coverage.providers) == {"adsb.lol", "adsb.fi"}
+    grades = {"adsb_lol": "C", "adsb_fi": "A"}
+    adm = admiralty.grade([e], [], grades, required_persistence=2, strong_score=0.6)
+    assert adm.reliability == "C"
+
+
+def test_spoofing_records_only_providers_reporting_the_jump() -> None:
+    from heimdall.detect import spoofing
+    from tests.synthetic.generators import teleport_spoof
+
+    spoofed = teleport_spoof()
+    # second aggregator only saw the aircraft before the jump
+    pre = [o.model_copy(update={"provider": "adsb.fi"}) for o in spoofed[:30]]
+    (e,) = spoofing.detect(spoofed + pre, {}, T0 + timedelta(minutes=30))
+    assert {r.source for r in e.records} == {"adsb.lol"}

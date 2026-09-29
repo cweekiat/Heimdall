@@ -65,6 +65,11 @@ class AircraftQuality:
     first_bad: AircraftObs | None = None
     last_bad: AircraftObs | None = None
     by_provider: dict[str, list[int]] = field(default_factory=dict)  # provider -> [known, bad]
+    first_bad_by_provider: dict[str, AircraftObs] = field(default_factory=dict)
+
+    def showing_providers(self, frac: float) -> list[str]:
+        """Providers whose *own* reports make this aircraft bad (used for Admiralty)."""
+        return sorted(p for p, (k, b) in self.by_provider.items() if k and b / k >= frac)
 
     def is_bad(self, frac: float) -> bool:
         return self.n_known > 0 and self.n_bad / self.n_known >= frac
@@ -121,6 +126,7 @@ def cell_stats(
         if d:
             aq.n_bad += 1
             pv[1] += 1
+            aq.first_bad_by_provider.setdefault(o.provider, o)
             if aq.first_bad is None:
                 aq.first_bad = o
             aq.last_bad = o
@@ -297,11 +303,12 @@ def detect(
                 score=round(min(1.0, st.ratio / (3 * c["ratio_alert"])), 4),
                 rules=rules,
                 features=features,
+                # one record per (bad aircraft, provider whose own reports show it degraded)
                 records=[
-                    RecordRef(source=a.first_bad.provider, id=record_id(a.first_bad))
-                    for a in st.bad_aircraft[:50]
-                    if a.first_bad
-                ],
+                    RecordRef(source=p, id=record_id(a.first_bad_by_provider[p]))
+                    for a in st.bad_aircraft
+                    for p in a.showing_providers(c["bad_dwell_frac"])
+                ][:150],
                 entities=[a.hex for a in st.bad_aircraft],
                 counterfactual=cf,
                 coverage=Coverage(

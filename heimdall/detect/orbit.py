@@ -131,10 +131,12 @@ def detect(
     tankers = {t.upper() for t in c["tanker_types"]}
     start, end = align_window(now, c["window_min"], c["step_min"])
     by_hex: dict[str, dict[datetime, AircraftObs]] = defaultdict(dict)
+    raw_by_hex: dict[str, list[AircraftObs]] = defaultdict(list)
     for o in sorted(in_window(obs, start, end), key=lambda o: (o.ts, o.provider)):
         if o.on_ground or not is_military(o, mil_types):
             continue
         by_hex[o.hex].setdefault(o.ts, o)
+        raw_by_hex[o.hex].append(o)
     jams = [j for j in jam_evidence if j.lat is not None and j.lon is not None]
     out: list[Evidence] = []
     for h, fixes_by_ts in sorted(by_hex.items()):
@@ -207,7 +209,12 @@ def detect(
         if f["mlat_frac"] > 0.5:
             conf *= c["mlat_factor"]
             gaps.append("MLAT-majority track (noisier positions)")
-        providers = sorted({o.provider for o in fixes})
+        providers = sorted({o.provider for o in raw_by_hex[h]})
+        # providers whose own reports trace the orbit (>= min_points/2 fixes); else all
+        by_prov: dict[str, list[AircraftObs]] = defaultdict(list)
+        for o in sorted(raw_by_hex[h], key=lambda o: o.ts):
+            by_prov[o.provider].append(o)
+        showing = [p for p in providers if len(by_prov[p]) >= c["min_points"] / 2] or providers
         feats = {k: v for k, v in f.items() if k not in ("centroid_lat", "centroid_lon")}
         feats.update(
             {
@@ -250,7 +257,9 @@ def detect(
                 rules=rules,
                 features=feats,
                 records=[
-                    RecordRef(source=o.provider, id=record_id(o)) for o in (fixes[0], fixes[-1])
+                    RecordRef(source=o.provider, id=record_id(o))
+                    for p in showing
+                    for o in (by_prov[p][0], by_prov[p][-1])
                 ],
                 entities=[h],
                 counterfactual=cf,

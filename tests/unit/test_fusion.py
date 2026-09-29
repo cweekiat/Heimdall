@@ -13,6 +13,7 @@ from heimdall.schemas import (
     Coverage,
     Domain,
     Evidence,
+    RecordRef,
     Severity,
 )
 from tests.synthetic.generators import (
@@ -41,6 +42,8 @@ def ev(
     entities: list[str] | None = None,
     features: dict[str, float] | None = None,
     end_offset_min: int = 0,
+    showing: tuple[str, ...] = ("adsb.lol",),
+    covering: tuple[str, ...] = ("adsb.lol",),
 ) -> Evidence:
     end = NOW + timedelta(minutes=end_offset_min)
     return Evidence(
@@ -57,7 +60,8 @@ def ev(
         persistence=persistence,
         entities=entities or [],
         features=features or {"bad": 4, "total": 12, "ratio": 0.25},
-        coverage=Coverage(n_observed=12, n_quality=12, providers=["adsb.lol"], confidence=conf),
+        records=[RecordRef(source=p, id=f"{ident}-{p}") for p in showing],
+        coverage=Coverage(n_observed=12, n_quality=12, providers=list(covering), confidence=conf),
         created_at=end,
     )
 
