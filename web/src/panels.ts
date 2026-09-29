@@ -40,33 +40,60 @@ export function table(headers: string[], rows: (Node | string)[][]): HTMLElement
   );
 }
 
-export function chart(points: { ts: string; value: number }[], baseline: number | null, threshold: number | null): SVGElement {
+export function chart(points: { ts: string; value: number }[], baseline: number | null, threshold: number | null): HTMLElement {
   const ns = "http://www.w3.org/2000/svg";
+  const W = 360;
+  const H = 190;
+  const L = 40;
+  const R = 8;
+  const T = 8;
+  const B = 26;
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("class", "chart");
-  svg.setAttribute("viewBox", "0 0 300 90");
-  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "Metric versus baseline and threshold");
-  if (!points.length) return svg;
+  svg.setAttribute("aria-label", "Degraded ratio over time versus baseline and threshold");
+  const wrap = h("div", { class: "chartwrap" }, svg);
+  if (!points.length) return wrap;
+  const mk = (tag: string, attrs: Record<string, string>, text?: string): SVGElement => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (text !== undefined) e.textContent = text;
+    svg.append(e);
+    return e as SVGElement;
+  };
   const vals = points.map((p) => p.value);
   const max = Math.max(...vals, threshold ?? 0, baseline ?? 0, 0.01) * 1.1;
-  const y = (v: number) => 85 - (v / max) * 78;
-  const x = (i: number) => 4 + (i / Math.max(1, points.length - 1)) * 292;
-  const line = (d: string, color: string, dash = "") => {
-    const p = document.createElementNS(ns, "path");
-    p.setAttribute("d", d);
-    p.setAttribute("fill", "none");
-    p.setAttribute("stroke", color);
-    p.setAttribute("stroke-width", "2");
-    p.setAttribute("vector-effect", "non-scaling-stroke");
-    if (dash) p.setAttribute("stroke-dasharray", dash);
-    svg.append(p);
-  };
-  if (baseline !== null) line(`M4 ${y(baseline)} H296`, "#9fb0c0", "4 3");
-  if (threshold !== null) line(`M4 ${y(threshold)} H296`, "#d29922", "2 3");
-  line(points.map((p, i) => `${i ? "L" : "M"}${x(i)} ${y(p.value)}`).join(" "), "#58a6ff");
-  return svg;
+  const y = (v: number) => H - B - (v / max) * (H - B - T);
+  const t0 = new Date(points[0]!.ts).getTime();
+  const t1 = new Date(points[points.length - 1]!.ts).getTime();
+  const x = (t: number) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+  for (let i = 0; i <= 4; i++) {
+    const v = (max / 4) * i;
+    mk("line", { x1: String(L), x2: String(W - R), y1: String(y(v)), y2: String(y(v)), class: "grid" });
+    mk("text", { x: String(L - 4), y: String(y(v) + 4), "text-anchor": "end", class: "ax" }, `${(v * 100).toFixed(v * 100 < 10 ? 1 : 0)}%`);
+  }
+  for (let i = 0; i <= 3; i++) {
+    const t = t0 + ((t1 - t0) / 3) * i;
+    const d = new Date(t);
+    const span = t1 - t0 > 36 * 3600_000;
+    const lbl = span ? `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}` : `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
+    mk("text", { x: String(x(t)), y: String(H - 8), "text-anchor": i === 0 ? "start" : i === 3 ? "end" : "middle", class: "ax" }, lbl);
+  }
+  if (baseline !== null) mk("path", { d: `M${L} ${y(baseline)} H${W - R}`, class: "ln base" });
+  if (threshold !== null) mk("path", { d: `M${L} ${y(threshold)} H${W - R}`, class: "ln thr" });
+  mk("path", { d: points.map((p, i) => `${i ? "L" : "M"}${x(new Date(p.ts).getTime())} ${y(p.value)}`).join(" "), class: "ln val" });
+  wrap.append(
+    h(
+      "div",
+      { class: "legend" },
+      h("span", {}, h("i", { class: "k val" }), "degraded ratio"),
+      baseline !== null && h("span", {}, h("i", { class: "k base" }), `baseline ${(baseline * 100).toFixed(1)}%`),
+      threshold !== null && h("span", {}, h("i", { class: "k thr" }), `threshold ${(threshold * 100).toFixed(1)}%`),
+      h("span", { class: "note" }, "x: UTC time, y: ratio %"),
+    ),
+  );
+  return wrap;
 }
 
 export function sparkline(values: (number | null)[], baseline: number | null): SVGElement {

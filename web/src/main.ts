@@ -27,6 +27,37 @@ $("theme").addEventListener("click", () => {
 });
 $("rail-toggle").addEventListener("click", () => document.body.classList.toggle("rail-collapsed"));
 
+// ---- draggable divider between AOI board and queue (queue keeps >= 55% by default)
+{
+  const rail = $("rail");
+  const setH = (pct: number): void => {
+    const v = Math.min(60, Math.max(8, pct));
+    rail.style.setProperty("--board-h", `${v}%`);
+    localStorage.setItem("board-h", String(v));
+  };
+  const saved = Number(localStorage.getItem("board-h"));
+  if (saved) setH(saved);
+  const div = $("divider");
+  div.addEventListener("pointerdown", (e) => {
+    div.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent): void => {
+      const r = rail.getBoundingClientRect();
+      setH(((ev.clientY - r.top) / r.height) * 100);
+    };
+    const up = (): void => {
+      div.removeEventListener("pointermove", move);
+      div.removeEventListener("pointerup", up);
+    };
+    div.addEventListener("pointermove", move);
+    div.addEventListener("pointerup", up);
+  });
+  div.addEventListener("keydown", (e) => {
+    const cur = parseFloat(rail.style.getPropertyValue("--board-h")) || 34;
+    if (e.key === "ArrowUp") setH(cur - 4);
+    if (e.key === "ArrowDown") setH(cur + 4);
+  });
+}
+
 // ---- panels / tabs (mobile shows one at a time; desktop is 3-pane)
 function showPanel(p: string): void {
   document.body.dataset.panel = p;
