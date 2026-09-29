@@ -147,7 +147,7 @@ function mountLayersDrawer(root: HTMLElement, body: HTMLElement): void {
     document.body.classList.toggle("layers-open", open);
     btn.setAttribute("aria-expanded", String(open));
   };
-  btn.addEventListener("click", () => set(drawer.hidden));
+  btn.addEventListener("click", () => set(Boolean(drawer.hidden)));
   close.addEventListener("click", () => set(false));
   document.addEventListener("pointerdown", (e) => {
     if (!drawer.hidden && !root.contains(e.target as Node)) set(false);
