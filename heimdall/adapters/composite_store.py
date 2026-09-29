@@ -10,7 +10,7 @@ because they are re-derived from the latest analyst feedback verdict.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 
 from heimdall.ports import Store
 from heimdall.schemas import (
@@ -18,6 +18,7 @@ from heimdall.schemas import (
     AircraftObs,
     Alert,
     AlertStatus,
+    AnalystNote,
     Evidence,
     Feedback,
     GeoEvent,
@@ -25,14 +26,13 @@ from heimdall.schemas import (
     VesselObs,
 )
 
-_VERDICT_STATUS = {"confirm": AlertStatus.CONFIRMED, "dismiss": AlertStatus.DISMISSED}
-
 
 class CompositeStore:
     def __init__(self, read: Store, analyst: Store) -> None:
         self.read = read
         self.analyst = analyst
         self._overrides: dict[str, AlertStatus] = {}
+        self._shelved_until: dict[str, datetime] = {}
 
     # ---- pure reads / pipeline-owned data: main store
     def insert_aircraft(self, rows: Sequence[AircraftObs]) -> int:
@@ -84,12 +84,20 @@ class CompositeStore:
 
     # ---- alerts: pipeline alert + analyst status override
     def _override(self, alert_id: str) -> AlertStatus | None:
+        """Latest analyst status for the alert (from the journal); shelving expires."""
         if alert_id not in self._overrides:
-            fbs = self.analyst.feedback_for(alert_id)
-            if not fbs:
+            latest = [n for n in self.analyst.notes_for(alert_id) if n.status_to is not None]
+            if not latest:
                 return None
-            self._overrides[alert_id] = _VERDICT_STATUS[max(fbs, key=lambda f: f.ts).verdict]
-        return self._overrides[alert_id]
+            last = max(latest, key=lambda n: n.ts)
+            self._overrides[alert_id] = last.status_to  # type: ignore[assignment]
+            if last.status_to == AlertStatus.SHELVED and last.shelve_until:
+                self._shelved_until[alert_id] = last.shelve_until
+        st = self._overrides[alert_id]
+        until = self._shelved_until.get(alert_id)
+        if st == AlertStatus.SHELVED and until is not None and until <= datetime.now(UTC):
+            return AlertStatus.ACKNOWLEDGED  # ADR-003: shelved returns to acknowledged on expiry
+        return st
 
     def _apply(self, a: Alert) -> Alert:
         st = self._override(a.id)
@@ -98,6 +106,7 @@ class CompositeStore:
     def upsert_alert(self, alert: Alert) -> None:
         """Only the status is retained (as an override); the pipeline owns the alert itself."""
         self._overrides[alert.id] = alert.status
+        self._shelved_until.pop(alert.id, None)
 
     def get_alert(self, alert_id: str) -> Alert | None:
         a = self.read.get_alert(alert_id)
@@ -117,7 +126,18 @@ class CompositeStore:
     # ---- analyst loop: analyst store
     def add_feedback(self, fb: Feedback) -> None:
         self.analyst.add_feedback(fb)
-        self._overrides[fb.alert_id] = _VERDICT_STATUS[fb.verdict]
+
+    def add_note(self, note: AnalystNote) -> None:
+        self.analyst.add_note(note)
+        if note.status_to is not None:
+            self._overrides[note.alert_id] = note.status_to
+            if note.shelve_until:
+                self._shelved_until[note.alert_id] = note.shelve_until
+            else:
+                self._shelved_until.pop(note.alert_id, None)
+
+    def notes_for(self, alert_id: str) -> list[AnalystNote]:
+        return self.analyst.notes_for(alert_id)
 
     def feedback_for(self, alert_id: str) -> list[Feedback]:
         return self.analyst.feedback_for(alert_id)

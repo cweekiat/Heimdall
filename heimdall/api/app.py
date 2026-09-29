@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import statistics
 import uuid
+from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -13,15 +15,17 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from heimdall import config
+from heimdall.api import triage
 from heimdall.ports import Store
 from heimdall.schemas import (
     ActionRequest,
     Alert,
     AlertStatus,
+    AnalystNote,
     Feedback,
 )
 
@@ -32,6 +36,16 @@ LOCAL_HOSTS = ["127.0.0.1", "localhost"]
 class FeedbackIn(BaseModel):
     verdict: Literal["confirm", "dismiss"]
     reason: str | None = None
+
+
+class StatusIn(BaseModel):
+    status: AlertStatus
+    reason: str | None = Field(default=None, max_length=1000)
+    shelve_until: datetime | None = None
+
+
+class NoteIn(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
 
 
 class ActionIn(BaseModel):
@@ -130,6 +144,7 @@ def create_app(
             "alert": a.model_dump(mode="json"),
             "evidence": [e.model_dump(mode="json") for e in st.get_evidence(a.evidence_ids)],
             "feedback": [f.model_dump(mode="json") for f in st.feedback_for(alert_id)],
+            "notes": [n.model_dump(mode="json") for n in st.notes_for(alert_id)],
             "actions": [_action_json(x) for x in st.actions_for(alert_id)],
             "playbook": playbook_for(a.kind.value),
         }
@@ -141,13 +156,59 @@ def create_app(
             raise HTTPException(404, "evidence not found")
         return ev[0]
 
+    def set_status(
+        a: Alert, to: AlertStatus, reason: str | None, until: datetime | None
+    ) -> AnalystNote:
+        now = _now()
+        if until is not None and until.tzinfo is None:
+            until = until.replace(tzinfo=UTC)
+        err = triage.validate(a.status, to, reason, until, now)
+        if err:
+            raise HTTPException(422, err)
+        note = AnalystNote(
+            id=uuid.uuid4().hex,
+            alert_id=a.id,
+            ts=now,
+            kind="shelve" if to == AlertStatus.SHELVED else "status",
+            text=(reason or "").strip(),
+            status_to=to,
+            shelve_until=until,
+        )
+        st.add_note(note)  # journal first: it is the audit trail and source of the override
+        st.upsert_alert(a.model_copy(update={"status": to}))
+        return note
+
+    @app.post("/api/alerts/{alert_id}/status")
+    def post_status(alert_id: str, body: StatusIn) -> dict[str, Any]:
+        note = set_status(need_alert(alert_id), body.status, body.reason, body.shelve_until)
+        return {
+            "alert": need_alert(alert_id).model_dump(mode="json"),
+            "note": note.model_dump(mode="json"),
+        }
+
+    @app.get("/api/alerts/{alert_id}/notes")
+    def get_notes(alert_id: str) -> list[AnalystNote]:
+        need_alert(alert_id)
+        return st.notes_for(alert_id)
+
+    @app.post("/api/alerts/{alert_id}/notes")
+    def post_note(alert_id: str, body: NoteIn) -> AnalystNote:
+        need_alert(alert_id)
+        note = AnalystNote(
+            id=uuid.uuid4().hex, alert_id=alert_id, ts=_now(), text=body.text.strip()
+        )
+        if not note.text:
+            raise HTTPException(422, "note text is empty")
+        st.add_note(note)
+        return note
+
     @app.post("/api/alerts/{alert_id}/feedback")
     def post_feedback(alert_id: str, body: FeedbackIn) -> Feedback:
         a = need_alert(alert_id)
+        to = AlertStatus.CONFIRMED if body.verdict == "confirm" else AlertStatus.DISMISSED
+        set_status(a, to, body.reason, None)
         fb = Feedback(alert_id=alert_id, verdict=body.verdict, reason=body.reason, ts=_now())
         st.add_feedback(fb)
-        status = AlertStatus.CONFIRMED if body.verdict == "confirm" else AlertStatus.DISMISSED
-        st.upsert_alert(a.model_copy(update={"status": status}))
         return fb
 
     @app.post("/api/alerts/{alert_id}/actions")
@@ -237,6 +298,64 @@ def create_app(
     @app.get("/api/aois")
     def aois() -> list[config.AOI]:
         return config.settings().aois
+
+    sev_rank = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+    open_states = {AlertStatus.NEW, AlertStatus.ACKNOWLEDGED, AlertStatus.UNDER_REVIEW}
+
+    @app.get("/api/aois/summary")
+    def aois_summary() -> list[dict[str, Any]]:
+        now = _now()
+        alerts = st.list_alerts(limit=1000)
+        out: list[dict[str, Any]] = []
+        for aoi in config.settings().aois:
+            al = [a for a in alerts if a.aoi == aoi.name]
+            open_al = [a for a in al if a.status in open_states]
+            evs = [e for a in al for e in st.get_evidence(a.evidence_ids)]
+            latest: dict[str, Any] = {}
+            for e in evs:
+                if e.h3_cell and (
+                    e.h3_cell not in latest or e.window_end > latest[e.h3_cell].window_end
+                ):
+                    latest[e.h3_cell] = e
+            ratios = [
+                e.features["degraded_ratio"]
+                for e in latest.values()
+                if "degraded_ratio" in e.features
+            ]
+            hist = [
+                (t, v)
+                for c in latest
+                for t, v in st.metric_history(c, "degraded_ratio", now - timedelta(days=14))
+            ]
+            spark: list[float | None] = []
+            for h in range(24):
+                lo, hi = now - timedelta(hours=24 - h), now - timedelta(hours=23 - h)
+                vals = [v for t, v in hist if lo <= t < hi]
+                spark.append(round(sum(vals) / len(vals), 4) if vals else None)
+            if ratios and spark[-1] is None:
+                spark[-1] = round(max(ratios), 4)
+            out.append(
+                {
+                    "name": aoi.name,
+                    "label": aoi.label,
+                    "role": aoi.role,
+                    "lat": aoi.lat,
+                    "lon": aoi.lon,
+                    "open_total": len(open_al),
+                    "open_by_kind": dict(Counter(a.kind.value for a in open_al)),
+                    "max_severity": max(
+                        (a.severity.value for a in open_al), key=lambda s: sev_rank[s], default=None
+                    ),
+                    "ratio_now": max(ratios) if ratios else None,
+                    "ratio_median": round(statistics.median([v for _, v in hist]), 4)
+                    if hist
+                    else None,
+                    "coverage": sum(e.coverage.n_observed for e in latest.values()),
+                    "last_change": max((a.last_seen for a in al), default=None),
+                    "spark": spark,
+                }
+            )
+        return out
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:

@@ -10,6 +10,7 @@ from heimdall.schemas import (
     AircraftObs,
     Alert,
     AlertStatus,
+    AnalystNote,
     Evidence,
     Feedback,
     GeoEvent,
@@ -27,6 +28,7 @@ class MemoryStore:
         self.alerts: dict[str, Alert] = {}
         self.feedback: list[Feedback] = []
         self.actions: list[ActionRequest] = []
+        self.notes: list[AnalystNote] = []
         self.metrics: dict[tuple[str, str], list[tuple[datetime, float]]] = {}
         self.health: dict[str, SourceHealth] = {}
 
@@ -82,6 +84,14 @@ class MemoryStore:
         )
 
     def upsert_alert(self, alert: Alert) -> None:
+        """Pipeline upserts (status NEW) never overwrite an analyst-set status (ADR-003)."""
+        cur = self.alerts.get(alert.id)
+        if (
+            cur is not None
+            and alert.status == AlertStatus.NEW
+            and cur.status not in (AlertStatus.NEW, AlertStatus.EXPIRED)
+        ):
+            alert = alert.model_copy(update={"status": cur.status})
         self.alerts[alert.id] = alert
 
     def get_alert(self, alert_id: str) -> Alert | None:
@@ -117,6 +127,12 @@ class MemoryStore:
 
     def actions_for(self, alert_id: str) -> list[ActionRequest]:
         return [a for a in self.actions if a.alert_id == alert_id]
+
+    def add_note(self, note: AnalystNote) -> None:
+        self.notes = [n for n in self.notes if n.id != note.id] + [note]
+
+    def notes_for(self, alert_id: str) -> list[AnalystNote]:
+        return sorted((n for n in self.notes if n.alert_id == alert_id), key=lambda n: n.ts)
 
     def get_action(self, action_id: str) -> ActionRequest | None:
         return next((a for a in self.actions if a.id == action_id), None)

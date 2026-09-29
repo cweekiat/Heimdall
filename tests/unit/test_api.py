@@ -148,7 +148,12 @@ def test_composite_store_duckdb_status_overrides_only(tmp_path: Path) -> None:
     comp = CompositeStore(main, analyst)
     c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS))
     assert len(c.get("/api/alerts").json()) == 8
-    assert c.post("/api/alerts/alert-0/feedback", json={"verdict": "dismiss"}).status_code == 200
+    assert (
+        c.post(
+            "/api/alerts/alert-0/feedback", json={"verdict": "dismiss", "reason": "dup"}
+        ).status_code
+        == 200
+    )
     r = c.post("/api/alerts/alert-0/actions", json={"action_id": "watch_cell"}).json()
     assert len(r["id"]) == 32
     assert c.post(f"/api/actions/{r['id']}/approve").json()["status"] == "approved"
