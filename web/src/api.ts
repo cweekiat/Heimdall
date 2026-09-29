@@ -1,5 +1,31 @@
 // Typed client for the Heimdall API. Mirrors heimdall/schemas.py.
 
+export type AlertStatus = "new" | "acknowledged" | "under_review" | "shelved" | "confirmed" | "dismissed" | "expired";
+export interface Note {
+  id: string;
+  alert_id: string;
+  ts: string;
+  user: string;
+  kind: "note" | "status" | "shelve" | "assign";
+  text: string;
+  status_to: AlertStatus | null;
+  shelve_until: string | null;
+}
+export interface AoiSummary {
+  name: string;
+  label: string | null;
+  role: string;
+  lat: number;
+  lon: number;
+  open_total: number;
+  open_by_kind: Record<string, number>;
+  max_severity: string | null;
+  ratio_now: number | null;
+  ratio_median: number | null;
+  coverage: number;
+  last_change: string | null;
+  spark: (number | null)[];
+}
 export interface Admiralty {
   reliability: string;
   credibility: number;
@@ -26,7 +52,7 @@ export interface Alert {
   corroborations: Corroboration[];
   corroboration_status: "corroborated" | "uncorroborated" | "contradicted";
   recommended_actions: string[];
-  status: "new" | "confirmed" | "dismissed" | "expired";
+  status: AlertStatus;
   first_seen: string;
   last_seen: string;
 }
@@ -79,6 +105,7 @@ export interface AlertDetail {
   alert: Alert;
   evidence: Evidence[];
   feedback: { verdict: string; reason: string | null; ts: string; user: string }[];
+  notes: Note[];
   actions: ActionRec[];
   playbook: PlaybookAction[];
 }
@@ -136,6 +163,10 @@ export const api = {
   alert: (id: string) => req<AlertDetail>(`/api/alerts/${encodeURIComponent(id)}`),
   cells: () => req<Cell[]>("/api/cells?res=4"),
   aois: () => req<Aoi[]>("/api/aois"),
+  aoiSummary: () => req<AoiSummary[]>("/api/aois/summary"),
+  setStatus: (id: string, status: AlertStatus, reason?: string, shelve_until?: string) =>
+    post<{ alert: Alert; note: Note }>(`/api/alerts/${encodeURIComponent(id)}/status`, { status, reason, shelve_until }),
+  addNote: (id: string, text: string) => post<Note>(`/api/alerts/${encodeURIComponent(id)}/notes`, { text }),
   uiConfig: () => req<{ basemap: "openfreemap" | "carto" | "none"; overlays: string[] }>("/api/ui-config"),
   health: () => req<{ sources: SourceHealth[]; time: string }>("/api/health"),
   playbook: () => req<PlaybookAction[]>("/api/playbook"),

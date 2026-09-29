@@ -6,28 +6,44 @@
     <title>Heimdall</title>
   </head>
   <body data-panel="map">
-    <header id="top">
+    <header id="statusbar" aria-label="Status bar">
       <strong class="brand">HEIMDALL</strong>
+      <span id="osint" title="Public sources only; alerts are unverified until corroborated">PUBLIC-SOURCE OSINT</span>
+      <span id="clock" aria-label="UTC time"></span>
+      <span id="sb-chips" aria-label="Areas of interest"></span>
+      <span id="sb-counts" aria-label="Open alerts by priority"></span>
+      <span id="sb-fresh" aria-label="Data freshness"></span>
+      <span class="sb-spacer"></span>
+      <button id="rail-toggle" aria-label="Toggle left rail" title="Toggle left rail">Rail</button>
+      <button id="summary-btn" title="Shift summary">Shift</button>
+      <button id="help-btn" title="Help (?)">?</button>
+      <span id="live" class="pill" title="SSE stream">offline</span>
+      <button id="theme" aria-label="Cycle theme (dark / light / high contrast)">Theme</button>
       <nav id="tabs" aria-label="Views">
         <button data-panel="queue">Queue</button>
         <button data-panel="map">Map</button>
         <button data-panel="detail">Alert</button>
         <button data-panel="health">Data health</button>
       </nav>
-      <span id="live" class="pill" title="SSE stream">offline</span>
-      <button id="theme" aria-label="Toggle light/dark theme">Theme</button>
     </header>
+    <div id="banner" hidden role="alert"></div>
     <main id="app">
-      <aside id="queue" aria-label="Alert queue"></aside>
+      <aside id="rail" aria-label="AOI board and alert queue">
+        <div id="board"></div>
+        <div id="queue"></div>
+      </aside>
       <section id="mapwrap" aria-label="Operational map">
         <div id="map"></div>
         <div id="mapctl"></div>
         <div id="legend"></div>
         <div id="layers"></div>
+        <div id="readout" aria-live="off"></div>
       </section>
-      <aside id="detail" aria-label="Alert detail"></aside>
+      <aside id="inspector" aria-label="Inspector"></aside>
       <section id="health" aria-label="Data health"></section>
     </main>
+    <section id="timeline" aria-label="Timeline"></section>
+    <div id="modal" class="modal" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
