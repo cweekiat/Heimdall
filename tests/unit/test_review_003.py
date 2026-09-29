@@ -95,3 +95,33 @@ def test_aoi_in_evidence_and_alert_ids() -> None:
     assert alert_id("k", "c", now, "x") != alert_id("k", "c", now, "y")
     (al,) = fuse([ev()], [], NOW, None, PB, GRADES, aoi="myanmar")
     assert al.id == alert_id("gnss_jamming", ev().h3_cell, ev().window_start, "myanmar")
+
+
+# --------------------------------------------------------------------------- 4. metric idempotency
+
+
+def test_rerun_tick_does_not_duplicate_metrics() -> None:
+    from tests.unit.test_fusion import CELL
+
+    store = _store(jammed_cell(n_aircraft=30, n_jammed=10, minutes=40))
+    cfg = _settings()
+    now = T0 + timedelta(minutes=35)
+    tick(store, cfg, now, playbook=PB, source_grades=GRADES)
+    before = {k: dict(v) for k, v in store.metrics.items()}
+    tick(store, cfg, now, playbook=PB, source_grades=GRADES)
+    assert {k: dict(v) for k, v in store.metrics.items()} == before
+    assert len(store.metric_history(CELL, "jam_ratio", T0)) == 1
+
+
+def test_rerun_tick_idempotent_on_duckdb_store() -> None:
+    from heimdall.adapters.duckdb_store import DuckDBStore
+    from tests.unit.test_fusion import CELL
+
+    store = DuckDBStore(":memory:")
+    store.insert_aircraft(jammed_cell(n_aircraft=30, n_jammed=10, minutes=45))
+    cfg = _settings()
+    for m in (35, 40, 40):
+        tick(store, cfg, T0 + timedelta(minutes=m), playbook=PB, source_grades=GRADES)
+    assert len(store.metric_history(CELL, "jam_ratio", T0)) == 2
+    jams = [a for a in store.list_alerts() if a.kind == AlertKind.GNSS_JAMMING]
+    assert len(jams) == 1

@@ -30,7 +30,8 @@ class FakeStore:
         self.feedback: list[Feedback] = []
         self.actions: dict[str, ActionRequest] = {}
         self.notes: list[AnalystNote] = []
-        self.metrics: dict[tuple[str, str], list[tuple[datetime, float]]] = defaultdict(list)
+        # PK (key, metric, ts) like DuckDBStore: record_metric is an upsert
+        self.metrics: dict[tuple[str, str], dict[datetime, float]] = defaultdict(dict)
         self.health: dict[str, SourceHealth] = {}
 
     def insert_aircraft(self, rows: Sequence[AircraftObs]) -> int:
@@ -122,12 +123,13 @@ class FakeStore:
         return self.actions.get(action_id)
 
     def record_metric(self, key: str, metric: str, ts: datetime, value: float) -> None:
-        self.metrics[(key, metric)].append((ts, value))
+        self.metrics[(key, metric)][ts] = value
 
     def metric_history(
         self, key: str, metric: str, since: datetime
     ) -> list[tuple[datetime, float]]:
-        return [(t, v) for t, v in self.metrics.get((key, metric), []) if t >= since]
+        series = self.metrics.get((key, metric), {})
+        return sorted((t, v) for t, v in series.items() if t >= since)
 
     def upsert_health(self, h: SourceHealth) -> None:
         self.health[h.source] = h
