@@ -5,9 +5,9 @@ Run: `uv run python -m heimdall.api.demo` (synthetic data, port 8000) and `cd we
 The API binds 127.0.0.1 by default (`api.host`).
 
 ## Views
-1. **Map** - MapLibre + deck.gl on a blank local style (background + graticule): no third-party
-   requests by default. CARTO tiles are opt-in via `ui.basemap: carto` in config/config.yaml
-   (exposed at `GET /api/ui-config`); no coastline file is bundled yet. H3 r4 hexes coloured by degraded ratio
+1. **Map** - MapLibre + deck.gl with a layer switcher (top-right "Layers"). Heimdall layers are a
+   separate deck.gl overlay canvas (`interleaved: false`) so they stay on top of every base and
+   overlay. Choices persist in localStorage (`hm.base`, `hm.overlays`). See "Map layers" below. H3 r4 hexes coloured by degraded ratio
    (green <2%, amber 2-10%, red >10%), alert markers coloured by kind, orbit tracks and emitter
    ellipses for the selected alert, AOI outlines (control AOIs grey), coverage toggle (quality
    aircraft per cell), time slider (as-of now .. 24 h ago).
@@ -36,22 +36,41 @@ inserted with `textContent` (untrusted-text rule).
 | GET | `/api/aois`, `/api/health`, `/api/playbook` | config / source health / allow-list |
 | POST | `/api/alerts/{id}/feedback` | `{verdict: confirm|dismiss, reason}`; sets alert status |
 | POST | `/api/alerts/{id}/actions` | `{action_id}`; 422 unless in playbook and `applies_to` matches; status `proposed`; returns `id` |
-| POST | `/api/actions/{id}/approve` , `/reject` | only for `proposed`; approve is a recording stub |
-| GET | `/api/stream` | SSE, event `alert` with the updated Alert JSON |
+| POST | `/api/actions/{id}/approve`, `/reject` | id = `ActionRequest.id` (uuid4 hex, ADR-002); only for `proposed`; approve sets `approved` (recording stub, runs nothing) |
+| GET | `/api/stream` | SSE: `snapshot` (all alerts) on connect, then `alert` per change |
+| GET | `/api/ui-config` | `{basemap: openfreemap|carto|none, overlays: [...]}` |
 
-Also `GET /api/ui-config` -> `{basemap: none|carto}`. Action ids are uuid4 hex (stored in
-`params.id`, no schema change); approve sets status `approved` (recording stub, runs nothing).
+`GET /api/aois` includes a display `label` per AOI.
 
 ## Security and storage
 - `TrustedHostMiddleware` allows only `127.0.0.1` / `localhost`; POSTs whose `Origin` does not
   match `Host` get 403.
-- DuckDB is single-writer: observations/evidence/alerts are read from a read-only store; analyst
-  writes (feedback, actions, alert status) go to `data/analyst.duckdb` via `CompositeStore`
-  (`heimdall/adapters/composite_store.py`). Only an ImportError of the DuckDB adapter falls back
-  to an empty MemoryStore, with a logged warning.
-- SSE sends a `snapshot` event with all alerts on connect, then `alert` events per change; store
-  calls run in `asyncio.to_thread`.
+- DuckDB is single-writer: observations/evidence/alerts come from a read-only store; analyst
+  feedback and actions go to a separate analyst store via `CompositeStore`
+  (`heimdall/adapters/composite_store.py`). Alerts are never copied: only a status override
+  (alert_id -> status, re-derived from the latest feedback) is applied over the pipeline alert.
+- SSE store calls run in `asyncio.to_thread`.
+- `create_app(store)` requires a store (the in-process API in `heimdall.run` passes its own);
+  the standalone entry is `python -m heimdall.api.demo` only. `auth_check` middleware is a no-op
+  while `api.auth == none`.
 
-Auth: `create_app(auth_check=...)` middleware is a no-op while `api.auth == none`.
-Store: `create_app(store)`; default tries `heimdall.adapters.duckdb_store.DuckDBStore` read-only,
-falling back to `MemoryStore`.
+## Map layers
+Config: `ui.basemap: openfreemap|carto|none` (default `openfreemap`) and `ui.overlays`
+(default-on). `none` is the fully private option: blank local style, only the local graticule
+overlay, zero third-party requests. Otherwise the layer panel shows "Map tiles from third parties
+see viewed areas".
+
+| Layer | Source | License / attribution |
+|---|---|---|
+| Dark, Light, Detailed (liberty), Bright | OpenFreeMap vector styles (`tiles.openfreemap.org/styles/...`), no key | OpenFreeMap, OpenMapTiles schema, data (c) OpenStreetMap contributors (ODbL) |
+| CARTO dark/light (if `carto`) | basemaps.cartocdn.com | CARTO, OSM contributors |
+| Satellite | EOX Sentinel-2 cloudless 2024 WMTS | Sentinel-2 cloudless by EOX, CC BY-NC-SA 4.0 (non-commercial) |
+| Country borders + labels | OpenFreeMap `boundary` (admin_level 2 bright, disputed dashed) and `place` country labels | OSM (ODbL) |
+| Military areas + airports | OpenFreeMap `landuse` class=military (red hatch), `aeroway` runways, `aerodrome_label` (military red) | OSM (ODbL) |
+| EEZ boundaries | Marine Regions WMS `MarineRegions:eez_boundaries` | Marine Regions (VLIZ), CC-BY |
+| Seamarks | OpenSeaMap `tiles.openseamap.org/seamark` | OpenSeaMap contributors, ODbL |
+| Graticule | local | - |
+
+Every source sets its `attribution` so MapLibre's attribution control lists all active sources.
+Overlay text layers are skipped on CARTO bases (different glyph fonts). Overlays draw their own
+boundary layers from an OpenFreeMap vector source, so they also work over the satellite base.

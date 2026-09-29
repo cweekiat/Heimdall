@@ -20,6 +20,7 @@ class AOI(BaseModel):
     lat: float
     lon: float
     radius_nm: float
+    label: str | None = None  # display name for the UI
 
 
 class StorageCfg(BaseModel):
@@ -36,8 +37,9 @@ class ApiCfg(BaseModel):
 
 
 class UiCfg(BaseModel):
-    # none = no third-party requests (blank local style). carto = opt-in CARTO basemap tiles.
-    basemap: Literal["none", "carto"] = "none"
+    # none = fully private (no third-party requests); openfreemap|carto = third-party vector tiles.
+    basemap: Literal["openfreemap", "carto", "none"] = "openfreemap"
+    overlays: list[str] = Field(default_factory=lambda: ["borders"])
 
 
 class Settings(BaseModel):

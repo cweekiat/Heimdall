@@ -123,8 +123,11 @@ async function boot(): Promise<void> {
   try {
     aois = await api.aois();
     const [{ OpsMap: OpsMapCls, legend }, ui] = await Promise.all([import("./map"), api.uiConfig()]);
-    ops = new OpsMapCls($("map"), theme0, ui.basemap, (id) => void select(id, true));
+    ops = new OpsMapCls($("map"), theme0, ui.basemap, ui.overlays, (id) => void select(id, true));
     $("legend").replaceChildren(legend());
+    const body = ops.layers.panel();
+    body.hidden = matchMedia("(max-width: 720px)").matches;
+    $("layers").replaceChildren(h("button", { "aria-expanded": String(!body.hidden), onclick: (e) => { body.hidden = !body.hidden; (e.target as HTMLElement).setAttribute("aria-expanded", String(!body.hidden)); } }, "Layers"), body);
     await refresh();
   } catch (e) {
     $("queue").replaceChildren(h("div", { class: "empty" }, `API unavailable: ${String(e)}`));

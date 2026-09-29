@@ -2,40 +2,13 @@ import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import * as maplibregl from "maplibre-gl";
+import { BaseLayers } from "./basemap";
+import type { Provider } from "./basemap";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
 import { h } from "./dom";
 
 type RGBA = [number, number, number, number];
-
-export type Basemap = "none" | "carto";
-
-// Default: blank local style (background + 5-degree graticule) so the browser makes NO third-party
-// requests. CARTO vector tiles are an explicit opt-in (config ui.basemap: carto).
-function graticule(): unknown {
-  const features: unknown[] = [];
-  for (let lon = -180; lon <= 180; lon += 5)
-    features.push({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[lon, -85], [lon, 85]] } });
-  for (let lat = -80; lat <= 80; lat += 5)
-    features.push({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[-180, lat], [180, lat]] } });
-  return { type: "FeatureCollection", features };
-}
-
-function styleFor(basemap: Basemap, theme: "dark" | "light"): maplibregl.StyleSpecification | string {
-  if (basemap === "carto")
-    return theme === "dark"
-      ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-      : "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
-  const dark = theme === "dark";
-  return {
-    version: 8,
-    sources: { grid: { type: "geojson", data: graticule() as never } },
-    layers: [
-      { id: "bg", type: "background", paint: { "background-color": dark ? "#0b1016" : "#e9eef3" } },
-      { id: "grid", type: "line", source: "grid", paint: { "line-color": dark ? "#1f2b38" : "#c5ced8", "line-width": 1 } },
-    ],
-  };
-}
 
 export const KIND_COLOR: Record<string, RGBA> = {
   gnss_jamming: [248, 81, 73, 255],
@@ -82,6 +55,7 @@ export interface MapState {
 
 export class OpsMap {
   private map: maplibregl.Map;
+  readonly layers: BaseLayers;
   private overlay = new MapboxOverlay({ interleaved: false, layers: [] });
   state: MapState = {
     alerts: [],
@@ -97,23 +71,26 @@ export class OpsMap {
   constructor(
     container: HTMLElement,
     theme: "dark" | "light",
-    private basemap: Basemap,
+    provider: Provider,
+    overlays: string[],
     private onPick: (id: string) => void,
   ) {
     this.map = new maplibregl.Map({
       container,
-      style: styleFor(basemap, theme),
+      style: { version: 8, sources: {}, layers: [] },
       center: [108, 14],
       zoom: 3.2,
       attributionControl: { compact: true },
     });
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     this.map.addControl(this.overlay as unknown as maplibregl.IControl);
+    this.layers = new BaseLayers(this.map, provider, overlays, theme);
+    this.map.setStyle(this.layers.initialStyle(), { diff: false });
     new ResizeObserver(() => this.map.resize()).observe(container);
   }
 
   setTheme(theme: "dark" | "light"): void {
-    this.map.setStyle(styleFor(this.basemap, theme));
+    this.layers.setTheme(theme);
   }
 
   flyTo(lon: number, lat: number): void {

@@ -247,8 +247,9 @@ def create_app(
         }
 
     @app.get("/api/ui-config")
-    def ui_config() -> dict[str, str]:
-        return {"basemap": basemap or config.settings().ui.basemap}
+    def ui_config() -> dict[str, Any]:
+        ui = config.settings().ui
+        return {"basemap": basemap or ui.basemap, "overlays": ui.overlays}
 
     @app.get("/api/playbook")
     def get_playbook() -> list[dict[str, Any]]:

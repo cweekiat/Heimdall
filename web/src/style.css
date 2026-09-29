@@ -359,6 +359,35 @@ svg.chart {
 .maplibregl-ctrl-attrib {
   font-size: 10px;
 }
+#layers {
+  position: absolute;
+  top: 8px;
+  right: 50px;
+  z-index: 3;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  max-width: 260px;
+  max-height: calc(100% - 40px);
+  overflow: auto;
+}
+#layers fieldset {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 6px 0;
+  padding: 4px 8px;
+}
+#layers legend {
+  color: var(--muted);
+  font-size: 12px;
+}
+#layers label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 24px;
+}
 @media (max-width: 1100px) {
   #app {
     grid-template-columns: 300px 1fr;

@@ -132,10 +132,10 @@ def test_host_and_origin_guards(client: TestClient) -> None:
     assert ok.status_code == 200
 
 
-def test_ui_config_default_is_no_third_party(client: TestClient) -> None:
-    assert client.get("/api/ui-config").json() == {"basemap": "none"}
+def test_ui_config_default_and_override(client: TestClient) -> None:
+    assert client.get("/api/ui-config").json()["basemap"] == "openfreemap"
     c = TestClient(create_app(MemoryStore(), playbook=PB, allowed_hosts=HOSTS, basemap="carto"))
-    assert c.get("/api/ui-config").json() == {"basemap": "carto"}
+    assert c.get("/api/ui-config").json()["basemap"] == "carto"
 
 
 def test_composite_store_duckdb_status_overrides_only(tmp_path: Path) -> None:
