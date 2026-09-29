@@ -11,6 +11,7 @@ from heimdall.schemas import (
     AircraftObs,
     Alert,
     AlertStatus,
+    AnalystNote,
     Evidence,
     Feedback,
     GeoEvent,
@@ -27,7 +28,8 @@ class FakeStore:
         self.evidence: dict[str, Evidence] = {}
         self.alerts: dict[str, Alert] = {}
         self.feedback: list[Feedback] = []
-        self.actions: dict[tuple[str, str], ActionRequest] = {}
+        self.actions: dict[str, ActionRequest] = {}
+        self.notes: list[AnalystNote] = []
         self.metrics: dict[tuple[str, str], list[tuple[datetime, float]]] = defaultdict(list)
         self.health: dict[str, SourceHealth] = {}
 
@@ -104,11 +106,20 @@ class FakeStore:
     def feedback_for(self, alert_id: str) -> list[Feedback]:
         return [f for f in self.feedback if f.alert_id == alert_id]
 
+    def add_note(self, note: AnalystNote) -> None:
+        self.notes.append(note)
+
+    def notes_for(self, alert_id: str) -> list[AnalystNote]:
+        return [n for n in self.notes if n.alert_id == alert_id]
+
     def upsert_action(self, action: ActionRequest) -> None:
-        self.actions[(action.alert_id, action.action_id)] = action
+        self.actions[action.id] = action
 
     def actions_for(self, alert_id: str) -> list[ActionRequest]:
-        return [a for (aid, _), a in self.actions.items() if aid == alert_id]
+        return [a for a in self.actions.values() if a.alert_id == alert_id]
+
+    def get_action(self, action_id: str) -> ActionRequest | None:
+        return self.actions.get(action_id)
 
     def record_metric(self, key: str, metric: str, ts: datetime, value: float) -> None:
         self.metrics[(key, metric)].append((ts, value))

@@ -45,7 +45,25 @@ DEFAULTS: dict[str, Any] = {
 }
 
 _SEV_ORDER = [Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
-OPEN = (AlertStatus.NEW, AlertStatus.CONFIRMED)
+CLOSED = (AlertStatus.DISMISSED, AlertStatus.EXPIRED)
+#: ADR-003: an alert in any analyst status (new, acknowledged, under_review, shelved, confirmed)
+#: is still the live alert for its kind+cell; only dismissed/expired alerts are closed.
+ACTIVE = tuple(s for s in AlertStatus if s not in CLOSED)
+OPEN = ACTIVE  # backwards-compatible alias
+#: Fields the pipeline may refresh from Evidence. `status` is analyst-owned (ADR-003) and is only
+#: ever written by the pipeline for NEW -> EXPIRED on staleness.
+EVIDENCE_FIELDS = (
+    "severity",
+    "confidence",
+    "admiralty",
+    "summary",
+    "evidence_ids",
+    "corroborations",
+    "corroboration_status",
+    "last_seen",
+    "lat",
+    "lon",
+)
 CorrStatus = Literal["corroborated", "uncorroborated", "contradicted"]
 
 
@@ -183,7 +201,7 @@ def fuse(
     for j, orbits in _composites(gated, c):
         groups[(AlertKind.COMPOSITE, j.h3_cell)] = [j, *orbits]
 
-    by_key = {(a.kind, a.h3_cell): a for a in open_alerts if a.status in OPEN}
+    by_key = {(a.kind, a.h3_cell): a for a in open_alerts if a.status in ACTIVE}
     by_cell: dict[str | None, list[Evidence]] = defaultdict(list)
     for e in gated:
         by_cell[e.h3_cell].append(e)
@@ -276,6 +294,29 @@ def fuse(
 
     horizon = now - timedelta(minutes=c["expire_after_min"])
     for a in open_alerts:
-        if a.status in OPEN and a.id not in touched and a.last_seen < horizon:
+        if a.status == AlertStatus.NEW and a.id not in touched and a.last_seen < horizon:
             out.append(a.model_copy(update={"status": AlertStatus.EXPIRED}))
     return out
+
+
+def apply_evidence_update(
+    current: Alert | None, update: Alert, max_evidence_ids: int = DEFAULTS["max_evidence_ids"]
+) -> Alert:
+    """Merge a fusion result into the alert as currently stored (re-read just before upsert).
+
+    Only EVIDENCE_FIELDS are taken from `update`; analyst-owned fields (status, title, actions,
+    first_seen) keep the stored value. The one status transition the pipeline may make is
+    NEW -> EXPIRED, and only if the stored alert is still NEW.
+    """
+    if current is None:
+        return update
+    fields: dict[str, Any] = {f: getattr(update, f) for f in EVIDENCE_FIELDS}
+    fields["evidence_ids"] = list(dict.fromkeys([*current.evidence_ids, *update.evidence_ids]))[
+        -max_evidence_ids:
+    ]
+    fields["last_seen"] = max(current.last_seen, update.last_seen)
+    if update.status == AlertStatus.EXPIRED and current.status == AlertStatus.NEW:
+        fields["status"] = AlertStatus.EXPIRED
+    if update.status == AlertStatus.EXPIRED and current.status != AlertStatus.NEW:
+        return current  # stale-expiry only applies to untouched NEW alerts
+    return current.model_copy(update=fields)

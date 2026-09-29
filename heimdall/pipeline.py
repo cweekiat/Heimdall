@@ -15,10 +15,10 @@ from heimdall.config import AOI, Settings
 from heimdall.detect import jamming, orbit, spoofing
 from heimdall.detect.common import Baseline, align_window
 from heimdall.fuse.admiralty import grades_from_sources
-from heimdall.fuse.fusion import fuse
+from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
 from heimdall.geo import within_radius_nm
 from heimdall.ports import Store
-from heimdall.schemas import AircraftObs, Alert, AlertKind, AlertStatus, Evidence
+from heimdall.schemas import AircraftObs, Alert, AlertKind, Evidence
 
 ENTITY_PERSISTENCE = {AlertKind.MIL_ORBIT}  # persistence tracked per aircraft, else per cell
 
@@ -111,9 +111,7 @@ def run_aoi(
         store.record_metric(cell, orbit.METRIC, o_end, 1.0)
         res.metrics += 1
 
-    open_alerts = store.list_alerts(
-        status=[AlertStatus.NEW, AlertStatus.CONFIRMED], aoi=aoi.name, limit=10_000
-    )
+    open_alerts = store.list_alerts(status=list(ACTIVE), aoi=aoi.name, limit=10_000)
     alerts = fuse(
         evs,
         open_alerts,
@@ -126,8 +124,13 @@ def run_aoi(
     )
     for e in evs:
         store.upsert_evidence(e)
+    written: list[Alert] = []
     for a in alerts:
-        store.upsert_alert(a)
+        # ADR-003: re-read immediately before upsert; never overwrite analyst-owned fields
+        merged = apply_evidence_update(store.get_alert(a.id), a)
+        store.upsert_alert(merged)
+        written.append(merged)
+    alerts = written
     res.evidence, res.alerts = evs, alerts
     return res
 
