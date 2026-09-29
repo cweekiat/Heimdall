@@ -33,6 +33,7 @@ packages = ["heimdall"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = [".claude", "web"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
