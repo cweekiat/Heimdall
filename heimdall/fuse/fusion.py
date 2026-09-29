@@ -94,8 +94,10 @@ def _max_sev(a: Severity, b: Severity) -> Severity:
     return a if _SEV_ORDER.index(a) >= _SEV_ORDER.index(b) else b
 
 
-def alert_id(kind: str, cell: str | None, first_seen: datetime) -> str:
-    return hashlib.sha1(f"alert|{kind}|{cell}|{first_seen.isoformat()}".encode()).hexdigest()
+def alert_id(kind: str, cell: str | None, first_seen: datetime, aoi: str | None = None) -> str:
+    """sha1(alert|aoi|kind|cell|first_seen ISO)."""
+    raw = f"alert|{aoi or ''}|{kind}|{cell}|{first_seen.isoformat()}"
+    return hashlib.sha1(raw.encode()).hexdigest()
 
 
 def actions_for(kind: AlertKind | str, playbook: Mapping[str, Any] | None) -> list[str]:
@@ -270,7 +272,7 @@ def fuse(
             )
         else:
             alert = Alert(
-                id=alert_id(str(kind), cell, first),
+                id=alert_id(str(kind), cell, first, aoi),
                 kind=kind,
                 severity=sev,
                 confidence=round(min(1.0, max(0.0, conf)), 4),

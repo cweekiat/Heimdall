@@ -21,9 +21,11 @@ Baseline = Callable[[str, str], list[float]]
 MAD_SCALE = 1.4826  # MAD -> sigma for a normal distribution
 
 
-def evidence_id(kind: str, cell: str, entity: str, window_start: datetime) -> str:
-    """Deterministic id: sha1(kind|cell|entity|window_start ISO)."""
-    raw = f"{kind}|{cell}|{entity}|{window_start.isoformat()}"
+def evidence_id(
+    kind: str, cell: str, entity: str, window_start: datetime, aoi: str | None = None
+) -> str:
+    """Deterministic id: sha1(kind|aoi|cell|entity|window_start ISO)."""
+    raw = f"{kind}|{aoi or ''}|{cell}|{entity}|{window_start.isoformat()}"
     return hashlib.sha1(raw.encode()).hexdigest()
 
 

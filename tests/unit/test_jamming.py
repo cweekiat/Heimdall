@@ -37,7 +37,7 @@ def test_jammed_cell_fires_with_explainable_evidence() -> None:
     assert ev.geometry and ev.geometry["type"] == "Polygon"
     assert "no baseline" in " ".join(ev.gaps)
     assert 0 < ev.coverage.confidence <= 1
-    raw = f"gnss_jamming|{CELL}||{ev.window_start.isoformat()}"
+    raw = f"gnss_jamming||{CELL}||{ev.window_start.isoformat()}"
     assert ev.id == hashlib.sha1(raw.encode()).hexdigest()
 
 

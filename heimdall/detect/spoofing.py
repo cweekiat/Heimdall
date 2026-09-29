@@ -300,6 +300,8 @@ def detect(
     cfg: dict[str, Any],
     now: datetime,
     baseline: Baseline | None = None,
+    *,
+    aoi: str | None = None,
 ) -> list[Evidence]:
     """One Evidence per aircraft with >= min_signals signals, or with S3 (MLAT gap) alone."""
     c = _cfg(cfg)
@@ -404,10 +406,11 @@ def detect(
         recs = list({record_id(o): o for o in s.records}.values())[:20]
         evs.append(
             Evidence(
-                id=evidence_id(AlertKind.GNSS_SPOOFING.value, cell, h, start),
+                id=evidence_id(AlertKind.GNSS_SPOOFING.value, cell, h, start, aoi),
                 kind=AlertKind.GNSS_SPOOFING,
                 detector=NAME,
                 detector_version=VERSION,
+                aoi=aoi,
                 window_start=start,
                 window_end=end,
                 h3_cell=cell,

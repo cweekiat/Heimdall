@@ -155,6 +155,7 @@ def detect(
     baseline: Baseline | None = None,
     *,
     active: Collection[str] | None = None,
+    aoi: str | None = None,
 ) -> list[Evidence]:
     """Return one Evidence per H3 cell whose degraded ratio triggers (or is held by hysteresis).
 
@@ -272,10 +273,11 @@ def detect(
             features["robust_z"] = round(z, 3)
         res.append(
             Evidence(
-                id=evidence_id(AlertKind.GNSS_JAMMING.value, cell, "", start),
+                id=evidence_id(AlertKind.GNSS_JAMMING.value, cell, "", start, aoi),
                 kind=AlertKind.GNSS_JAMMING,
                 detector=NAME,
                 detector_version=VERSION,
+                aoi=aoi,
                 window_start=start,
                 window_end=end,
                 h3_cell=cell,

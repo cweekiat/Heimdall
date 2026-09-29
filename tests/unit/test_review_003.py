@@ -71,3 +71,27 @@ def test_pipeline_never_overwrites_analyst_status(status: AlertStatus) -> None:
     jams = [x for x in store.alerts.values() if x.kind == AlertKind.GNSS_JAMMING]
     assert len(jams) == 1 and jams[0].status == status
     assert jams[0].last_seen > a.last_seen
+
+
+# --------------------------------------------------------------------------- 5. AOI in ids
+
+
+def test_aoi_in_evidence_and_alert_ids() -> None:
+    from heimdall.detect import jamming, orbit, spoofing
+    from heimdall.fuse.fusion import alert_id
+    from tests.synthetic.generators import circle_orbit, teleport_spoof
+
+    obs, now = jammed_cell(), T0 + timedelta(minutes=30)
+    a = jamming.detect(obs, {}, now, None, aoi="myanmar")[0]
+    b = jamming.detect(obs, {}, now, None, aoi="south_china_sea")[0]
+    assert a.id != b.id and a.aoi == "myanmar"
+    s1 = spoofing.detect(teleport_spoof(), {}, now, aoi="x")[0]
+    s2 = spoofing.detect(teleport_spoof(), {}, now, aoi="y")[0]
+    assert s1.id != s2.id
+    cfg, t75 = {"mil_types": ["E3TF"]}, T0 + timedelta(minutes=75)
+    o1 = orbit.detect(circle_orbit(), cfg, t75, None, aoi="x")[0]
+    o2 = orbit.detect(circle_orbit(), cfg, t75, None, aoi="y")[0]
+    assert o1.id != o2.id and o1.aoi == "x"
+    assert alert_id("k", "c", now, "x") != alert_id("k", "c", now, "y")
+    (al,) = fuse([ev()], [], NOW, None, PB, GRADES, aoi="myanmar")
+    assert al.id == alert_id("gnss_jamming", ev().h3_cell, ev().window_start, "myanmar")

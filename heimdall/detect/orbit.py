@@ -118,6 +118,8 @@ def detect(
     now: datetime,
     baseline: Baseline | None = None,
     jam_evidence: Sequence[Evidence] = (),
+    *,
+    aoi: str | None = None,
 ) -> list[Evidence]:
     """One Evidence per military aircraft whose track in the window is a closed orbit:
     n_points >= min_points AND circ_var >= circ_var_min AND cum_turn >= cum_turn_min_deg AND
@@ -230,10 +232,11 @@ def detect(
         }
         out.append(
             Evidence(
-                id=evidence_id(AlertKind.MIL_ORBIT.value, cell, h, start),
+                id=evidence_id(AlertKind.MIL_ORBIT.value, cell, h, start, aoi),
                 kind=AlertKind.MIL_ORBIT,
                 detector=NAME,
                 detector_version=VERSION,
+                aoi=aoi,
                 window_start=start,
                 window_end=end,
                 h3_cell=cell,

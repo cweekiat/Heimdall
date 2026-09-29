@@ -92,9 +92,13 @@ def run_aoi(
 
     stats = jamming.cell_stats(obs, jcfg, now)
     active = _active_jam_cells(store, sorted(stats), j_end, step)
-    jam = jamming.detect(obs, jcfg, now, _baseline(store, now, days, j_start), active=active)
-    spoof = spoofing.detect(obs, scfg, now, None)
-    orb = orbit.detect(obs, ocfg, now, _baseline(store, now, days, o_start), jam_evidence=jam)
+    jam = jamming.detect(
+        obs, jcfg, now, _baseline(store, now, days, j_start), active=active, aoi=aoi.name
+    )
+    spoof = spoofing.detect(obs, scfg, now, None, aoi=aoi.name)
+    orb = orbit.detect(
+        obs, ocfg, now, _baseline(store, now, days, o_start), jam_evidence=jam, aoi=aoi.name
+    )
 
     evs: list[Evidence] = []
     for e in [*jam, *spoof, *orb]:
