@@ -24,6 +24,37 @@ Layout: 3 columns at 1280 px, detail overlay below 1100 px, single panel with ta
 Dark theme default, light via toggle (persisted) or `prefers-color-scheme`. All text from the API is
 inserted with `textContent` (untrusted-text rule).
 
+## Keyboard shortcuts
+Press `?` in the app for this table plus the legend, Admiralty meanings and detector explainers.
+Shortcuts are ignored while typing in a field; `Esc` always closes the topmost thing.
+
+| Key | Action |
+|---|---|
+| `/` | Search alerts |
+| `j` / `k` | Next / previous alert |
+| `Enter` | Open highlighted alert |
+| `a` / `r` / `c` | Acknowledge / Under review / Confirm |
+| `d` / `s` | Dismiss / Shelve (both ask for a reason; shelve also asks until when) |
+| `n` | Add analyst note |
+| `f` | Fly to selection |
+| `1`-`5` | Jump to AOI 1-5 |
+| `l` | Layers drawer |
+| `t` | Show / hide timeline |
+| `Space` | Play / pause timeline playback |
+| `Esc` | Close dialog, form or inspector |
+| `?` | Help |
+
+## Timeline, map tools and handover
+- Timeline: alerts opened per 30 min over 24 h, stacked by kind. Drag to set the global time window
+  (queue and map follow), click to clear. Playback advances 1 min of data per second at 1x (10x, 60x);
+  "Now" returns to the live view.
+- Map: cursor lat/lon and MGRS, nautical-mile scale bar, Measure (click points) and Range ring (click
+  centre, then radius), grey outline where fewer than 3 quality aircraft were seen, selection halo,
+  clustering below zoom 5, hover mini-cards.
+- Shift summary (status bar "Shift"): opened / closed / shelved / still open by AOI for the last 4-24 h,
+  downloadable as a local Markdown file (nothing is uploaded). "Closed" uses last-seen time.
+- Status bar alert rate compares the last hour with the 24 h hourly average (flood indicator).
+
 ## API contract
 | Method | Path | Notes |
 |---|---|---|

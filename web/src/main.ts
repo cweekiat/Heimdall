@@ -5,6 +5,8 @@ import { renderBoard } from "./board";
 import { ago, h } from "./dom";
 import { renderEntity, renderInspector } from "./inspector";
 import { fmtLatLon, toMgrs } from "./geoutil";
+import { installKeys } from "./keys";
+import { showHelp, showShift } from "./overlays";
 import { renderTimeline } from "./timeline";
 import { alertTitle, aoiName, setAois } from "./labels";
 import type { OpsMap } from "./map";
@@ -125,6 +127,13 @@ function wireMapExtras(m: OpsMap): void {
   update();
 }
 
+$("help-btn").addEventListener("click", showHelp);
+$("summary-btn").addEventListener("click", () => showShift());
+installKeys(showPanel);
+$("modal").addEventListener("pointerdown", (e) => {
+  if (e.target === $("modal")) $("modal").hidden = true;
+});
+
 // ---- status bar
 function renderStatus(): void {
   $("clock").textContent = new Date().toISOString().slice(0, 19).replace("T", " ") + "Z";
@@ -160,6 +169,13 @@ function renderChips(): void {
         `${p} ${n}`,
       ),
     ),
+  );
+  const now = Date.now();
+  const lastH = state.alerts.filter((a) => now - new Date(a.first_seen).getTime() < 3600_000).length;
+  const avg = state.alerts.filter((a) => now - new Date(a.first_seen).getTime() < 24 * 3600_000).length / 24;
+  const flood = lastH > Math.max(3, avg * 2);
+  $("sb-counts").append(
+    h("span", { class: flood ? "fail" : "note", title: "Alerts opened in the last hour vs the 24 h hourly average (flood indicator)" }, `${flood ? "▲ " : ""}rate ${lastH}/h (avg ${avg.toFixed(1)})`),
   );
   const dom: Record<string, "ok" | "warn" | "bad"> = {};
   const rank = { ok: 0, warn: 1, bad: 2 } as const;
