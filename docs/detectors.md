@@ -3,8 +3,10 @@
 All detectors are pure: `detect(obs, cfg, now, baseline) -> list[Evidence]`, where
 `baseline(key, metric) -> list[float]` is supplied by the pipeline. Windows are aligned: the window
 end is `now` floored to the `step_min` grid (from UTC midnight), start = end − `window_min`,
-interval `[start, end)`. Evidence ids are `sha1(kind|cell|entity|window_start ISO)` (entity = ""
-for cell-level jamming). Every threshold below is a key in `config/config.yaml`; defaults are in
+interval `[start, end)`. Evidence ids are `sha1(kind|aoi|cell|entity|window_start ISO)` (entity = ""
+for cell-level jamming); detectors take a keyword `aoi`. Every Evidence also carries
+`anomaly_first_ts`/`anomaly_last_ts` (epoch s) = time span of the observations that constitute the
+anomaly, used for persistence. Every threshold below is a key in `config/config.yaml`; defaults are in
 each module's `DEFAULTS`. Shared helpers: `heimdall/detect/common.py`, `heimdall/geo.py`.
 
 ## GNSS jamming (detect/jamming.py, `jamming-1.0.0`)
@@ -29,6 +31,8 @@ Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `cove
 * Provider agreement = mean over bad aircraft of (#providers whose own reports make it bad /
   #providers that saw it).
 * Coverage confidence = min(1, total / 15) × agreement × (0.8 if only one provider).
+* Records: one RecordRef per (bad aircraft, provider whose *own* reports make it bad), i.e. only
+  anomaly-showing providers. Anomaly span = first..last degraded report of the bad aircraft.
 * Score = min(1, R' / (3 × ratio_alert)).
 * Counterfactual: "would not fire if ≤ ⌊thr·total + 1⌋ of total were degraded", plus the
   baseline median that would have silenced the z-test.
@@ -56,6 +60,9 @@ then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
 * **Alert** if #signals ≥ `min_signals` (2) or S3 fired. Location = last good fix before the jump
   (S1), else the MLAT position (S3), else the first divergent / clustered fix.
 * Score = max(0.5 if S3, min(1, #signals / 4)). Confidence = min(1, n_fixes / 20) × (0.8 if single provider).
+* Anomalous fixes = S1 fixes after the first jump, S2 divergent fixes, S3 ADS-B+MLAT pair fixes,
+  S4 first fix of each hit bin (fired signals only). Records: first fix per provider whose own
+  report reproduces an anomalous fix (same src type, |Δt| ≤ 2 s, ≤ 1 km).
 
 ## Military orbit (detect/orbit.py, `orbit-1.0.0`)
 Military = `mil` flag or type in `mil_types`. All source types (MLAT allowed). Window 75 min.
@@ -72,38 +79,54 @@ else bearing from previous fix.
   No baseline callable → novelty 0.5 + gap.
 * Score = 0.4 + 0.3·novelty + 0.3·clip((laps − 1)/2, 0, 1), laps = cum_turn/360.
 * Confidence = min(1, n_points / 40) × (0.8 if > 50 % MLAT fixes).
+* Records: first and last fix of each provider with ≥ min_points/2 raw fixes of the track (else
+  all contributing providers). Anomaly span = first..last resampled fix.
 * `jam_evidence`: distance from centroid to nearest jamming Evidence → features `jam_distance_km`,
   `near_jamming` (≤ `jam_proximity_km` 100) and informational rule `near_jamming`.
 
 ## Fusion v0 (fuse/fusion.py) and Admiralty (fuse/admiralty.py)
-1. **Persistence gate**: pipeline sets `persistence` = 1 + persistence of the same kind in the same
-   cell whose window_end ∈ [end − 1.5·step, end − 0.5·step] (orbits: same aircraft too). Alert only
-   if persistence ≥ `fusion.persistence_windows[kind]` (2).
-2. Group gated Evidence by (kind, cell). Merge into the open (NEW/CONFIRMED) alert for that
-   kind+cell (evidence ids appended, last_seen = max, severity never downgrades while open), else
-   new alert id = sha1(alert|kind|cell|first_seen).
+1. **Persistence gate** (set by the pipeline). Windows are 30 min at a 5-min step, so counting
+   triggered windows would make one short burst "persist" for 6 windows. Per subject
+   (key `aoi|kind|cell:<h3>`, or `aoi|mil_orbit|hex:<icao>` so orbits follow the aircraft):
+   ticks = 1 + ticks of the previous step (if the subject triggered at end − step ± step/2, else 0);
+   run_start = min(anomaly_first_ts, previous run_start);
+   persistence = min(ticks, 1 + ⌊(anomaly_last_ts − run_start) / step⌋).
+   Both are stored as metrics (`persistence_ticks`, `persistence_run_start`) keyed by the subject.
+   A single event shorter than one step can never reach 2; a sustained one reaches 2 on its
+   second tick. Alert only if persistence ≥ `fusion.persistence_windows[kind]` (2).
+2. Group gated Evidence by (kind, cell). Merge into the live alert for that kind+cell — **any
+   status except dismissed/expired** (new, acknowledged, under_review, shelved, confirmed; ADR-003)
+   — updating only evidence-derived fields (severity [never downgraded], confidence, admiralty,
+   summary, evidence_ids, corroborations, corroboration_status, last_seen, lat/lon). Otherwise a
+   new alert, id = sha1(alert|aoi|kind|cell|first_seen). The pipeline re-reads the stored alert
+   immediately before upsert (`apply_evidence_update`) and never writes `status`, except
+   NEW → EXPIRED on staleness.
 3. Severity from s = lead.score × lead.coverage.confidence: ≥ 0.6 high, ≥ 0.35 medium,
    ≥ 0.15 low, else info. **CRITICAL composite**: ≥ 2 distinct tanker (`tanker_types`) orbit
    Evidence (gated) within 100 km of a gated jamming Evidence → `composite` alert in the jam cell.
 4. **Control AOIs** (role=control, e.g. Baltic) produce Evidence and alerts, severity capped at info.
 5. Corroborations: other-kind gated Evidence in the same cell = `context`. Status "corroborated"
    only when a *different domain* supports; otherwise "uncorroborated" (never "false").
-6. **Admiralty reliability = best grade among contributing providers** (sources.yaml; provider
-   'adsb.lol' → key 'adsb_lol'; unknown → F). Rationale: aggregators mirror the same broadcast, so
-   the finding is as reliable as the best source showing it; a weaker extra mirror must not
-   downgrade it. **Credibility**: 1 analyst-confirmed or ≥ 3 domains; 2 two domains; 3 single
+6. **Admiralty reliability = best grade among providers whose own reports show the anomaly** —
+   the `source` of the Evidence `records` (detectors emit records only for anomaly-showing
+   providers; `coverage.providers`, who merely covered the area, are ignored). Grades from
+   sources.yaml (provider 'adsb.lol' → key 'adsb_lol'; unknown or none → F). Rationale:
+   aggregators mirror the same broadcast, so the finding is as reliable as the best source that
+   independently shows it; a weaker extra mirror must not downgrade it. **Credibility**: 1 analyst-confirmed or ≥ 3 domains; 2 two domains; 3 single
    domain with lead score ≥ `strong_score` (0.6) and persistent; 4 single domain otherwise;
    5 contradicted; 6 no evidence.
 7. Summary is a template over Evidence features (no LLM). `recommended_actions` = playbook ids
    whose `applies_to` contains the kind or "*".
-8. Open alerts without fresh Evidence for `expire_after_min` (60) → EXPIRED.
+8. NEW alerts without fresh Evidence for `expire_after_min` (60) → EXPIRED. Alerts in an analyst
+   status never expire automatically.
 
 ## Pipeline (pipeline.py)
 `tick(store, settings, now)`: one `aircraft_window` pull covering the longest window; per AOI
 (radius filter) run jamming (with `active` cells from `evidence_history`), spoofing, orbit (with
 the jamming Evidence); set `aoi` + persistence; record `jam_ratio` per cell with total ≥
-`min_aircraft` and `orbit_active` per orbit cell; fuse against open alerts; upsert Evidence and
-alerts. Re-running the same tick is idempotent (same ids, persistence not inflated).
+`min_aircraft` and `orbit_active` per orbit cell; fuse against live alerts; upsert Evidence and
+alerts. `record_metric` is an upsert on (key, metric, ts), so re-running the same tick is
+idempotent (same ids, metrics not duplicated, persistence not inflated).
 
 ## Calibration status
 All thresholds are literature/GPSJam priors, **not yet backtested** (Baltic control run pending
