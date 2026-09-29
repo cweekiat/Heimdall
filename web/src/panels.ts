@@ -1,6 +1,7 @@
 import { api } from "./api";
 import type { ActionRec, Alert, AlertDetail, Evidence, SourceHealth } from "./api";
 import { ago, fmtNum, fmtTime, h } from "./dom";
+import { alertTitle, aoiName, kindLabel } from "./labels";
 
 const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 export const priority = (a: Alert): number => SEV_RANK[a.severity]! * a.confidence;
@@ -23,7 +24,7 @@ export function renderQueue(
   onSelect: (id: string) => void,
   onFilter: () => void,
 ): void {
-  const sel = (label: string, key: keyof QueueFilters, opts: string[]) =>
+  const sel = (label: string, key: keyof QueueFilters, opts: string[], name: (v: string) => string = (v) => v) =>
     h(
       "select",
       {
@@ -34,7 +35,7 @@ export function renderQueue(
         },
       },
       h("option", { value: "" }, `${label}: all`),
-      ...opts.map((o) => h("option", { value: o, selected: f[key] === o }, o)),
+      ...opts.map((o) => h("option", { value: o, selected: f[key] === o }, name(o))),
     );
   const shown = alerts
     .filter(
@@ -50,8 +51,8 @@ export function renderQueue(
     h(
       "div",
       { class: "filters" },
-      sel("AOI", "aoi", uniq(alerts.map((a) => a.aoi))),
-      sel("Kind", "kind", uniq(alerts.map((a) => a.kind))),
+      sel("AOI", "aoi", uniq(alerts.map((a) => a.aoi)), aoiName),
+      sel("Kind", "kind", uniq(alerts.map((a) => a.kind)), kindLabel),
       sel("Status", "status", ["new", "confirmed", "dismissed", "expired"]),
       sel("Grade", "grade", ["A", "B", "C", "D", "E", "F"]),
     ),
@@ -64,7 +65,7 @@ export function renderQueue(
           "aria-pressed": String(a.id === selected),
           onclick: () => onSelect(a.id),
         },
-        h("div", { class: "t" }, a.title),
+        h("div", { class: "t" }, alertTitle(a)),
         h(
           "div",
           { class: "m" },
@@ -73,7 +74,7 @@ export function renderQueue(
           h("span", { class: "badge grade", title: "Admiralty grade (source reliability x credibility)" }, `${a.admiralty.reliability}${a.admiralty.credibility}`),
           h("span", { class: `badge ${a.corroboration_status}` }, a.corroboration_status),
           h("span", {}, a.status),
-          h("span", {}, `${a.aoi ?? "-"} - ${fmtTime(a.last_seen)}`),
+          h("span", {}, fmtTime(a.last_seen)),
         ),
       ),
     ),
@@ -111,31 +112,42 @@ function chart(points: { ts: string; value: number }[], baseline: number | null,
   return svg;
 }
 
-function rulesTable(ev: Evidence): HTMLElement {
+/** Responsive table: horizontal scroll inside its own wrapper; stacked label/value rows at <=720px. */
+function table(headers: string[], rows: (Node | string)[][], cls = ""): HTMLElement {
   return h(
-    "table",
-    {},
-    h("thead", {}, h("tr", {}, ...["Rule", "Value", "Op", "Threshold", "Baseline", "Pass"].map((t) => h("th", { scope: "col" }, t)))),
+    "div",
+    { class: "tw" },
     h(
-      "tbody",
-      {},
-      ...ev.rules.map((r) =>
-        h(
-          "tr",
-          {},
-          h("td", {}, h("div", {}, r.rule), h("div", { class: "note" }, r.description)),
-          h("td", { class: "num" }, fmtNum(r.value)),
-          h("td", { class: "num" }, r.op),
-          h("td", { class: "num" }, fmtNum(r.threshold)),
-          h("td", { class: "num" }, fmtNum(r.baseline)),
-          h("td", { class: r.passed ? "pass" : "fail" }, r.passed ? "PASS" : "FAIL"),
+      "table",
+      { class: `stack ${cls}` },
+      h("thead", {}, h("tr", {}, ...headers.map((t) => h("th", { scope: "col" }, t)))),
+      h(
+        "tbody",
+        {},
+        ...rows.map((r) =>
+          h("tr", {}, ...r.map((c, i) => h("td", { "data-label": headers[i] ?? "" }, c))),
         ),
       ),
     ),
   );
 }
 
+function rulesTable(ev: Evidence): HTMLElement {
+  return table(
+    ["Rule", "Value", "Threshold", "Baseline", "Result"],
+    ev.rules.map((r) => [
+      h("div", {}, h("div", {}, r.rule), h("div", { class: "note" }, r.description)),
+      h("span", { class: "num" }, fmtNum(r.value)),
+      // Every rule shows its threshold with the operator (value op threshold), "n/a" if none defined.
+      h("span", { class: "num" }, r.threshold === null ? "n/a" : `${r.op} ${fmtNum(r.threshold)}`),
+      h("span", { class: "num" }, fmtNum(r.baseline)),
+      h("span", { class: r.passed ? "pass" : "fail" }, r.passed ? "PASS" : "FAIL"),
+    ]),
+  );
+}
+
 export function renderDetail(root: HTMLElement, d: AlertDetail, onChange: () => void): void {
+  const scroll = root.scrollTop;
   const a = d.alert;
   const chartHost = h("div", {}, h("div", { class: "note" }, "Loading metric history..."));
   const primary = d.evidence[0];
@@ -163,7 +175,7 @@ export function renderDetail(root: HTMLElement, d: AlertDetail, onChange: () => 
   const proposable = d.playbook;
 
   root.replaceChildren(
-    h("h2", {}, a.title),
+    h("h2", {}, alertTitle(a)),
     h(
       "div",
       { class: "row" },
@@ -196,11 +208,9 @@ export function renderDetail(root: HTMLElement, d: AlertDetail, onChange: () => 
 
     h("h3", {}, "Corroboration matrix"),
     a.corroborations.length
-      ? h(
-          "table",
-          {},
-          h("thead", {}, h("tr", {}, ...["Domain", "Relation", "Note"].map((t) => h("th", { scope: "col" }, t)))),
-          h("tbody", {}, ...a.corroborations.map((c) => h("tr", {}, h("td", {}, c.domain), h("td", {}, c.relation), h("td", {}, c.note)))),
+      ? table(
+          ["Domain", "Relation", "Note"],
+          a.corroborations.map((c) => [c.domain, c.relation, c.note]),
         )
       : h("div", { class: "note" }, "Uncorroborated: no other domain has reported on this yet. That is not evidence it is false."),
 
@@ -237,6 +247,7 @@ export function renderDetail(root: HTMLElement, d: AlertDetail, onChange: () => 
     ),
     ...d.feedback.map((f) => h("div", { class: "note" }, `${f.verdict} by ${f.user} ${fmtTime(f.ts)}${f.reason ? ` - ${f.reason}` : ""}`)),
   );
+  root.scrollTop = scroll; // re-render (SSE / actions) must not jump or blank the view
 }
 
 function actionRow(x: ActionRec, onChange: () => void): HTMLElement {
@@ -261,29 +272,22 @@ export function renderHealth(root: HTMLElement, sources: SourceHealth[]): void {
   root.replaceChildren(
     h("h2", {}, "Data health"),
     h("p", { class: "note" }, "Low freshness lowers alert confidence; a quiet source is a coverage gap, not a quiet region."),
-    h(
-      "table",
-      {},
-      h("thead", {}, h("tr", {}, ...["Source", "Domain", "Reliability", "Last OK", "Records/h", "Error rate", "Last error", "Status"].map((t) => h("th", { scope: "col" }, t)))),
-      h(
-        "tbody",
-        {},
-        ...sources.map((s) => {
-          const g = grade(s);
-          return h(
-            "tr",
-            {},
-            h("td", {}, s.source),
-            h("td", {}, s.domain),
-            h("td", {}, h("span", { class: "badge grade" }, s.reliability)),
-            h("td", {}, ago(s.last_ok)),
-            h("td", { class: "num" }, String(s.records_last_hour)),
-            h("td", { class: "num" }, `${(s.error_rate * 100).toFixed(1)}%`),
-            h("td", {}, s.last_error ? `${s.last_error} (${ago(s.last_error_at)})` : "-"),
-            h("td", { class: g === "warn" ? "" : g, style: g === "warn" ? "color:var(--warn);font-weight:700" : "" }, label[g]),
-          );
-        }),
-      ),
+    table(
+      ["Source", "Domain", "Reliability", "Last OK", "Records/h", "Error rate", "Last error", "Status"],
+      sources.map((s) => {
+        const g = grade(s);
+        return [
+          s.source,
+          s.domain,
+          h("span", { class: "badge grade" }, s.reliability),
+          ago(s.last_ok),
+          h("span", { class: "num" }, String(s.records_last_hour)),
+          h("span", { class: "num" }, `${(s.error_rate * 100).toFixed(1)}%`),
+          s.last_error ? `${s.last_error} (${ago(s.last_error_at)})` : "-",
+          h("span", { class: g === "warn" ? "" : g, style: g === "warn" ? "color:var(--warn);font-weight:700" : "" }, label[g] ?? g),
+        ];
+      }),
     ),
   );
 }
+

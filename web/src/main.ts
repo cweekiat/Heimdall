@@ -2,6 +2,7 @@ import "./style.css";
 import { api } from "./api";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
 import { h } from "./dom";
+import { setAois } from "./labels";
 import type { OpsMap } from "./map";
 import { emptyFilters, renderDetail, renderHealth, renderQueue } from "./panels";
 
@@ -122,6 +123,7 @@ function live(): void {
 async function boot(): Promise<void> {
   try {
     aois = await api.aois();
+    setAois(aois);
     const [{ OpsMap: OpsMapCls, legend }, ui] = await Promise.all([import("./map"), api.uiConfig()]);
     ops = new OpsMapCls($("map"), theme0, ui.basemap, ui.overlays, (id) => void select(id, true));
     $("legend").replaceChildren(legend());

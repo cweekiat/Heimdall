@@ -98,6 +98,7 @@ export interface Aoi {
   lat: number;
   lon: number;
   radius_nm: number;
+  label?: string | null;
 }
 export interface SourceHealth {
   source: string;

@@ -123,10 +123,56 @@ button:disabled {
   min-height: 0;
   display: grid;
   grid-template-columns: 340px 1fr 420px;
+  grid-template-rows: minmax(0, 1fr); /* rows must not grow with content, or panels never scroll */
+  overflow: hidden;
   position: relative;
+}
+.tw {
+  overflow-x: auto;
+  max-width: 100%;
+}
+td .num,
+td.num {
+  font-family: ui-monospace, monospace;
+}
+@media (max-width: 720px) {
+  table.stack thead {
+    position: absolute;
+    left: -9999px;
+  }
+  table.stack,
+  table.stack tbody,
+  table.stack tr,
+  table.stack td {
+    display: block;
+    width: 100%;
+  }
+  table.stack tr {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    padding: 4px 6px;
+    background: var(--panel2);
+  }
+  table.stack td {
+    border: 0;
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 6px;
+    padding: 2px 0;
+    overflow-wrap: anywhere;
+  }
+  table.stack td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 600;
+  }
 }
 #queue,
 #detail {
+  min-height: 0;
+  height: 100%;
+  overscroll-behavior: contain;
   overflow: auto;
   background: var(--panel);
   padding: 10px;

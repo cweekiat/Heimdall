@@ -58,7 +58,7 @@ def seed(store: Store, seed_value: int = 7) -> Store:
             [
                 RuleResult(
                     rule="degraded_ratio",
-                    description="Share of true-ADS-B aircraft with NIC<=4 or NACp<=5",
+                    description="Share of true-ADS-B aircraft with NIC<7 or NACp<8 (degraded)",
                     value=ratio,
                     threshold=0.10,
                     op=">=",
