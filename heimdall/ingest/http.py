@@ -29,6 +29,8 @@ class TokenBucket:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
+        if rps <= 0:
+            raise ValueError(f"rps must be > 0, got {rps}")
         self.rate = rps
         self.capacity = max(burst, 1.0)
         self.tokens = self.capacity
@@ -38,8 +40,6 @@ class TokenBucket:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
-        if self.rate <= 0:
-            return
         async with self._lock:
             while True:
                 now = self._clock()
@@ -78,6 +78,10 @@ class CircuitBreaker:
     def success(self) -> None:
         self.failures = 0
         self.opened_at = None
+
+    def open_for(self, seconds: float) -> None:
+        """Force the circuit open until `seconds` from now (e.g. a long Retry-After)."""
+        self.opened_at = self._clock() + seconds - self.reset_s
 
     def failure(self) -> bool:
         """Record a failure; returns True if this call (re)opened the circuit."""
@@ -131,7 +135,7 @@ class RateLimitedClient:
     def _delay(self, attempt: int, resp: httpx.Response | None) -> float:
         ra = _retry_after(resp) if resp is not None else None
         if ra is not None:
-            return min(ra, self.backoff_cap)
+            return ra
         exp = min(self.backoff_cap, self.backoff_base * 2**attempt)
         return random.uniform(0, exp)  # full jitter
 
@@ -162,6 +166,12 @@ class RateLimitedClient:
                     resp.raise_for_status()  # other 4xx: not retryable
                     return resp
             self._fail()
+            ra = _retry_after(resp) if resp is not None else None
+            if ra is not None and ra > self.backoff_cap:
+                # Server asked for a long pause: stop retrying, keep the circuit open that long.
+                self.breaker.open_for(ra)
+                log.warning("retry_after_exceeds_cap", source=self.source, retry_after=ra)
+                break
             if attempt == self.max_retries or not self.breaker.allow():
                 break
             await self._sleep(self._delay(attempt, resp))

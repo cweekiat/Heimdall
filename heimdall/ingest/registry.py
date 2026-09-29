@@ -27,6 +27,8 @@ def build_connectors(
             continue
         c = cfg[key]
         rps = float(c.get("rps", 1))
+        if rps <= 0:
+            raise ValueError(f"sources.{key}.rps must be > 0, got {rps}")
         out.append(
             AdsbAggregatorConnector(
                 key,

@@ -8,7 +8,7 @@ import importlib
 import signal
 import sys
 from collections.abc import Iterator, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import duckdb
@@ -18,6 +18,7 @@ from heimdall.adapters.memory_bus import MemoryBus
 from heimdall.adapters.parquet_lake import ParquetLake
 from heimdall.config import Settings
 from heimdall.config import settings as load_settings
+from heimdall.geo import haversine_km
 from heimdall.ingest.adsb import AdsbAggregatorConnector, merge_providers
 from heimdall.ingest.registry import build_connectors
 from heimdall.logging import configure_logging, get_logger, start_metrics_server
@@ -36,28 +37,70 @@ async def pump(conn: AdsbAggregatorConnector, bus: Bus) -> None:
         await bus.publish(TOPIC_AIR, batch)
 
 
-class Writer:
-    """Buffers bus batches, de-duplicates across providers, writes Lake then Store."""
+DEDUPE_TTL_S = 30.0
+DEDUPE_DT_S = 2.0
+DEDUPE_KM = 0.5
 
-    def __init__(self, bus: Bus, lake: Lake, store: Store) -> None:
+
+class _Recent:
+    __slots__ = ("kept", "last_seen", "providers")
+
+    def __init__(self) -> None:
+        self.kept: list[tuple[datetime, float, float]] = []
+        self.providers: set[str] = set()
+        self.last_seen: datetime = datetime.min.replace(tzinfo=UTC)
+
+
+class Writer:
+    """Buffers bus batches, de-duplicates across providers and flushes, writes Lake then Store.
+
+    A rolling per-hex record of recently kept fixes (TTL `ttl_s`) catches duplicates that
+    arrive in different flushes; the same TTL bounds the providers-seen side table.
+    """
+
+    def __init__(self, bus: Bus, lake: Lake, store: Store, ttl_s: float = DEDUPE_TTL_S) -> None:
         self.bus, self.lake, self.store = bus, lake, store
+        self.ttl = timedelta(seconds=ttl_s)
         self.buf: list[AircraftObs] = []
-        self.providers: dict[str, set[str]] = {}
+        self._recent: dict[str, _Recent] = {}
         self.n_written = 0
+
+    @property
+    def providers(self) -> dict[str, set[str]]:
+        return {h: set(r.providers) for h, r in self._recent.items()}
 
     async def consume(self) -> None:
         async for batch in self.bus.subscribe(TOPIC_AIR):
             self.buf.extend(b for b in batch if isinstance(b, AircraftObs))
 
-    def flush(self) -> int:
-        if not self.buf:
-            return 0
+    def _is_dup(self, o: AircraftObs) -> bool:
+        r = self._recent.get(o.hex)
+        return r is not None and any(
+            abs((o.ts - ts).total_seconds()) < DEDUPE_DT_S
+            and haversine_km(o.lat, o.lon, lat, lon) < DEDUPE_KM
+            for ts, lat, lon in r.kept
+        )
+
+    def flush(self, now: datetime | None = None) -> int:
+        now = now or datetime.now(UTC)
         rows, self.buf = self.buf, []
         kept, prov = merge_providers(rows)
         for hex_, p in prov.items():
-            self.providers.setdefault(hex_, set()).update(p)
-        self.lake.append("aircraft", kept)
-        n = self.store.insert_aircraft(kept)
+            r = self._recent.setdefault(hex_, _Recent())
+            r.providers.update(p)
+            r.last_seen = now
+        fresh = [o for o in kept if not self._is_dup(o)]
+        for o in fresh:
+            self._recent[o.hex].kept.append((o.ts, o.lat, o.lon))
+        # expire old state
+        for hex_ in [h for h, r in self._recent.items() if now - r.last_seen > self.ttl]:
+            del self._recent[hex_]
+        for r in self._recent.values():
+            r.kept = [k for k in r.kept if now - k[0] <= self.ttl]
+        if not fresh:
+            return 0
+        self.lake.append("aircraft", fresh)
+        n = self.store.insert_aircraft(fresh)
         self.n_written += n
         return n
 
@@ -79,7 +122,7 @@ def health_for(conn: AdsbAggregatorConnector) -> SourceHealth:
         last_ok=conn.last_ok,
         last_error=conn.last_error,
         last_error_at=conn.last_error_at,
-        records_last_hour=conn.n_records,
+        records_last_hour=conn.records_hour.total(),
         error_rate=conn.n_err / total if total else 0.0,
         expected_latency_s=conn.expected_latency_s,
     )

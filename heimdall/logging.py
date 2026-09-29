@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from typing import Any
 
@@ -33,5 +34,6 @@ def get_logger(name: str = "heimdall") -> Any:
     return structlog.get_logger(name)
 
 
-def start_metrics_server(port: int = 9108) -> None:
-    start_http_server(port)
+def start_metrics_server(port: int = 9108, addr: str | None = None) -> None:
+    """Serve Prometheus metrics. Binds loopback unless HEIMDALL_METRICS_HOST/addr overrides."""
+    start_http_server(port, addr=addr or os.environ.get("HEIMDALL_METRICS_HOST", "127.0.0.1"))

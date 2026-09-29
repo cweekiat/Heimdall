@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
-from collections.abc import AsyncIterator, Sequence
+import time
+from collections import defaultdict, deque
+from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,6 +22,27 @@ from heimdall.schemas import AircraftObs, Domain, SourceReliability
 log = get_logger("heimdall.adsb")
 
 MAX_RADIUS_NM = 250.0  # aggregator API cap
+
+
+class SlidingCounter:
+    """Count of events over the trailing `window_s` seconds."""
+
+    def __init__(self, window_s: float = 3600.0, clock: Callable[[], float] = time.monotonic):
+        self.window_s = window_s
+        self._clock = clock
+        self._q: deque[tuple[float, int]] = deque()
+        self._total = 0
+
+    def add(self, n: int) -> None:
+        if n:
+            self._q.append((self._clock(), n))
+            self._total += n
+
+    def total(self) -> int:
+        cutoff = self._clock() - self.window_s
+        while self._q and self._q[0][0] <= cutoff:
+            self._total -= self._q.popleft()[1]
+        return self._total
 
 
 class AdsbAggregatorConnector:
@@ -63,6 +85,7 @@ class AdsbAggregatorConnector:
         self.n_ok = 0
         self.n_err = 0
         self.n_records = 0
+        self.records_hour = SlidingCounter()
         self.n_dropped = 0
 
     def url_for(self, aoi: AOI) -> str:
@@ -98,6 +121,7 @@ class AdsbAggregatorConnector:
         self.n_ok += 1
         self.last_ok = datetime.now(UTC)
         self.n_records += len(obs)
+        self.records_hour.add(len(obs))
         self.n_dropped += dropped
         RECORDS_IN.labels(self.name).inc(len(obs))
         if dropped:
