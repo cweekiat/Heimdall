@@ -38,6 +38,14 @@ SEEDS = [
 ]
 
 
+def _ellipse(lat: float, lon: float) -> dict[str, object]:
+    pts = [
+        [lon + 0.9 * math.cos(t / 30 * 2 * math.pi), lat + 0.5 * math.sin(t / 30 * 2 * math.pi)]
+        for t in range(31)
+    ]
+    return {"type": "Polygon", "coordinates": [pts]}
+
+
 def seed(store: MemoryStore, seed_value: int = 7) -> MemoryStore:
     rnd = random.Random(seed_value)
     now = datetime.now(UTC)
@@ -106,6 +114,7 @@ def seed(store: MemoryStore, seed_value: int = 7) -> MemoryStore:
             h3_res=4,
             lat=lat,
             lon=lon,
+            geometry=_ellipse(lat, lon) if is_jam else None,
             score=conf,
             rules=rules,
             features={"degraded_ratio": ratio, "baseline_ratio": base},

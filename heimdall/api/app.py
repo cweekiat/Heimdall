@@ -221,6 +221,11 @@ def create_app(
             for r in pts
         ]
 
+    @app.get("/api/metrics/{key}/{metric}")
+    def metrics(key: str, metric: str, since: str | None = None) -> list[dict[str, Any]]:
+        start = _since(since, 24) or _now()
+        return [{"ts": t.isoformat(), "value": v} for t, v in st.metric_history(key, metric, start)]
+
     @app.get("/api/aois")
     def aois() -> list[config.AOI]:
         return config.settings().aois

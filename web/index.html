@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Heimdall</title>
+  </head>
+  <body data-panel="map">
+    <header id="top">
+      <strong class="brand">HEIMDALL</strong>
+      <nav id="tabs" aria-label="Views">
+        <button data-panel="queue">Queue</button>
+        <button data-panel="map">Map</button>
+        <button data-panel="detail">Alert</button>
+        <button data-panel="health">Data health</button>
+      </nav>
+      <span id="live" class="pill" title="SSE stream">offline</span>
+      <button id="theme" aria-label="Toggle light/dark theme">Theme</button>
+    </header>
+    <main id="app">
+      <aside id="queue" aria-label="Alert queue"></aside>
+      <section id="mapwrap" aria-label="Operational map">
+        <div id="map"></div>
+        <div id="mapctl"></div>
+        <div id="legend"></div>
+      </section>
+      <aside id="detail" aria-label="Alert detail"></aside>
+      <section id="health" aria-label="Data health"></section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -51,6 +51,12 @@ def test_cells_and_tracks(client: TestClient) -> None:
     assert client.get("/api/tracks/ffffff").json() == []
 
 
+def test_metrics(client: TestClient) -> None:
+    cell = client.get("/api/alerts/alert-0").json()["alert"]["h3_cell"]
+    pts = client.get(f"/api/metrics/{cell}/degraded_ratio").json()
+    assert len(pts) >= 20 and "value" in pts[0]
+
+
 def test_feedback(client: TestClient) -> None:
     r = client.post("/api/alerts/alert-0/feedback", json={"verdict": "dismiss", "reason": "dup"})
     assert r.status_code == 200
