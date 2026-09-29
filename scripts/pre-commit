@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Block commits containing secrets or local data. Installed as .git/hooks/pre-commit.
+set -euo pipefail
+bad=0
+if git diff --cached --name-only | grep -E '(^|/)\.env($|\.)|\.duckdb|^data/|\.pem$|id_(rsa|ed25519)' \
+   | grep -v '\.env\.example$'; then
+  echo "✖ refusing to commit secret/data files listed above"; bad=1
+fi
+if git diff --cached -U0 -- . ':(exclude)scripts/pre-commit' | grep -E '^\+' | grep -E -i \
+  "sk-ant-[a-z0-9_-]{10,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|github_pat_|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY|(api[_-]?key|secret|token|password)[\"']?\s*[:=]\s*[\"'][^\"'\$\{ ]{12,}"; then
+  echo "✖ possible secret in staged changes (lines above)"; bad=1
+fi
+exit $bad

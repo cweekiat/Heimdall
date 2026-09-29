@@ -6,6 +6,12 @@ storage:
   bus: memory          # memory | redis (scale-out)
   store: duckdb        # duckdb | clickhouse (scale-out)
 
+privacy:
+  # Nothing leaves this machine except GET requests to allow-listed data sources.
+  allow_llm_egress: false          # P5: the user must set true before any Evidence is sent to the Claude API
+  allow_outbound_sharing: false    # exports/briefs stay local; no upload/share integrations
+  redact_entities_in_exports: true
+
 api:
   host: 127.0.0.1      # localhost only until auth is enabled
   port: 8000
