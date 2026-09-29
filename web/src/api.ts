@@ -171,8 +171,10 @@ export const api = {
   health: () => req<{ sources: SourceHealth[]; time: string }>("/api/health"),
   playbook: () => req<PlaybookAction[]>("/api/playbook"),
   track: (hex: string) => req<TrackPt[]>(`/api/tracks/${encodeURIComponent(hex)}`),
-  metric: (key: string, metric: string) =>
-    req<{ ts: string; value: number }[]>(`/api/metrics/${key}/${metric}`),
+  metric: (key: string, metric: string, hours = 24) =>
+    req<{ ts: string; value: number }[]>(
+      `/api/metrics/${encodeURIComponent(key)}/${metric}?since=${encodeURIComponent(new Date(Date.now() - hours * 3600_000).toISOString())}`,
+    ),
   feedback: (id: string, verdict: "confirm" | "dismiss", reason: string) =>
     post(`/api/alerts/${encodeURIComponent(id)}/feedback`, { verdict, reason }),
   propose: (id: string, action_id: string) =>
