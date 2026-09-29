@@ -189,3 +189,21 @@ def test_actions_distinct_ids_and_get_action() -> None:
     done = a.model_copy(update={"status": "done", "result": {"ok": 1}})
     s.upsert_action(done)
     assert s.get_action("i1") == done and len(s.actions_for("a1")) == 2
+
+
+def test_notes_roundtrip() -> None:
+    from datetime import UTC, datetime
+
+    from heimdall.adapters.duckdb_store import DuckDBStore
+    from heimdall.schemas import AlertStatus, AnalystNote
+
+    st = DuckDBStore()
+    t = datetime(2026, 9, 30, tzinfo=UTC)
+    st.add_note(AnalystNote(id="n1", alert_id="a1", ts=t, text="checked NOTAMs"))
+    st.add_note(
+        AnalystNote(id="n2", alert_id="a1", ts=t, kind="status", status_to=AlertStatus.ACKNOWLEDGED)
+    )
+    notes = st.notes_for("a1")
+    assert [n.id for n in notes] == ["n1", "n2"]
+    assert notes[1].status_to == AlertStatus.ACKNOWLEDGED
+    assert st.notes_for("other") == []
