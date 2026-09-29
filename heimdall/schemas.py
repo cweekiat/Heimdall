@@ -237,6 +237,7 @@ class Feedback(BaseModel):
 
 
 class ActionRequest(BaseModel):
+    id: str  # uuid4 hex; primary key (ADR-002)
     alert_id: str
     action_id: str  # must exist in config/playbook.yaml
     params: dict[str, Any] = Field(default_factory=dict)

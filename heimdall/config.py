@@ -63,7 +63,10 @@ def _load_yaml(name: str) -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def settings() -> Settings:
-    return Settings.model_validate(_load_yaml("config.yaml"))
+    s = Settings.model_validate(_load_yaml("config.yaml"))
+    if host := os.environ.get("HEIMDALL_API_HOST"):
+        s.api.host = host  # e.g. 0.0.0.0 inside a container; publish on 127.0.0.1 only
+    return s
 
 
 def sources() -> dict[str, Any]:
