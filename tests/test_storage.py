@@ -111,7 +111,7 @@ def test_store_analyst_metrics_health() -> None:
     s.add_feedback(fb)
     assert s.feedback_for("a1") == [fb] and s.feedback_for("x") == []
 
-    act = ActionRequest(alert_id="a1", action_id="notify", params={"k": 1}, ts=T0)
+    act = ActionRequest(id="x1", alert_id="a1", action_id="notify", params={"k": 1}, ts=T0)
     s.upsert_action(act)
     done = act.model_copy(update={"status": "done", "result": {"ok": True}})
     s.upsert_action(done)
@@ -176,3 +176,16 @@ async def test_memory_bus_topics_isolated() -> None:
     first = await asyncio.wait_for(a.__anext__(), 1)
     assert first[0].hex == "h2"  # type: ignore[attr-defined]
     await bus.close()
+
+
+def test_actions_distinct_ids_and_get_action() -> None:
+    s = DuckDBStore()
+    a = ActionRequest(id="i1", alert_id="a1", action_id="notify", ts=T0)
+    b = ActionRequest(id="i2", alert_id="a1", action_id="notify", ts=T0 + timedelta(seconds=1))
+    s.upsert_action(a)
+    s.upsert_action(b)
+    assert [x.id for x in s.actions_for("a1")] == ["i1", "i2"]
+    assert s.get_action("i2") == b and s.get_action("nope") is None
+    done = a.model_copy(update={"status": "done", "result": {"ok": 1}})
+    s.upsert_action(done)
+    assert s.get_action("i1") == done and len(s.actions_for("a1")) == 2

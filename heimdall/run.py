@@ -6,8 +6,12 @@ import asyncio
 import contextlib
 import importlib
 import signal
-from collections.abc import Sequence
+import sys
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
+from typing import Any
+
+import duckdb
 
 from heimdall.adapters.duckdb_store import DuckDBStore
 from heimdall.adapters.memory_bus import MemoryBus
@@ -102,11 +106,44 @@ async def tick_loop(store: Store, cfg: Settings, step_min: int) -> None:
             log.error("tick_failed", error=str(e))
 
 
+def start_api(store: Store, cfg: Settings) -> Any:
+    """Build the in-process API server (ADR-002) if heimdall.api.app is available."""
+    try:
+        from heimdall.api.app import create_app
+    except ImportError:
+        log.info("api_unavailable", note="heimdall.api.app not importable; running headless")
+        return None
+    import uvicorn
+
+    class _Server(uvicorn.Server):
+        def install_signal_handlers(self) -> None:  # runtime owns SIGINT/SIGTERM
+            return
+
+        @contextlib.contextmanager
+        def capture_signals(self) -> Iterator[None]:  # uvicorn >= 0.29
+            yield
+
+    config = uvicorn.Config(
+        create_app(store), host=cfg.api.host, port=cfg.api.port, log_config=None
+    )
+    return _Server(config)
+
+
 async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     cfg = cfg or load_settings()
     bus = bus or MemoryBus()
     lake = ParquetLake(cfg.storage.lake_dir)
-    store = DuckDBStore(cfg.storage.duckdb_path)
+    try:
+        store = DuckDBStore(cfg.storage.duckdb_path)
+    except duckdb.Error as e:
+        # DuckDB holds an exclusive file lock (ADR-002): another heimdall process may own it.
+        msg = (
+            f"cannot open {cfg.storage.duckdb_path}: {e}\n"
+            "Is another `heimdall.run` (or any process holding the DuckDB file) still running?"
+        )
+        log.error("store_unavailable", error=str(e), path=cfg.storage.duckdb_path)
+        print(msg, file=sys.stderr)
+        raise SystemExit(2) from e
     conns = build_connectors(cfg)
     writer = Writer(bus, lake, store)
     step_min = int(cfg.detectors.get("jamming", {}).get("step_min", 5))
@@ -124,9 +161,14 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         asyncio.create_task(tick_loop(store, cfg, step_min)),
         *(asyncio.create_task(pump(c, bus)) for c in conns),
     ]
+    server = start_api(store, cfg)
+    if server is not None:
+        tasks.append(asyncio.create_task(server.serve()))
     log.info("started", connectors=[c.name for c in conns], step_min=step_min)
     await stop.wait()
     log.info("shutting_down")
+    if server is not None:
+        server.should_exit = True
     for t in tasks:
         t.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)

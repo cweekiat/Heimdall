@@ -113,8 +113,8 @@ _DDL = [
     " doc VARCHAR)",
     "CREATE TABLE IF NOT EXISTS feedback (alert_id VARCHAR, verdict VARCHAR, reason VARCHAR,"
     ' "user" VARCHAR, ts TIMESTAMP)',
-    "CREATE TABLE IF NOT EXISTS actions (alert_id VARCHAR, action_id VARCHAR, params VARCHAR,"
-    " status VARCHAR, result VARCHAR, ts TIMESTAMP, PRIMARY KEY (alert_id, action_id))",
+    "CREATE TABLE IF NOT EXISTS actions (id VARCHAR PRIMARY KEY, alert_id VARCHAR,"
+    " action_id VARCHAR, params VARCHAR, status VARCHAR, result VARCHAR, ts TIMESTAMP)",
     "CREATE TABLE IF NOT EXISTS metrics (key VARCHAR, metric VARCHAR, ts TIMESTAMP,"
     " value DOUBLE, PRIMARY KEY (key, metric, ts))",
     "CREATE TABLE IF NOT EXISTS health (source VARCHAR PRIMARY KEY, doc VARCHAR)",
@@ -300,8 +300,9 @@ class DuckDBStore:
 
     def upsert_action(self, action: ActionRequest) -> None:
         self._exec(
-            "INSERT OR REPLACE INTO actions VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO actions VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
+                action.id,
                 action.alert_id,
                 action.action_id,
                 json.dumps(action.params, default=str),
@@ -311,23 +312,30 @@ class DuckDBStore:
             ],
         )
 
+    _ACTION_COLS = "id, alert_id, action_id, params, status, result, ts"
+
+    @staticmethod
+    def _action(r: Sequence[Any]) -> ActionRequest:
+        return ActionRequest(
+            id=r[0],
+            alert_id=r[1],
+            action_id=r[2],
+            params=json.loads(r[3]),
+            status=r[4],
+            result=json.loads(r[5]) if r[5] is not None else None,
+            ts=_from_db(r[6]) or T_MIN,
+        )
+
     def actions_for(self, alert_id: str) -> list[ActionRequest]:
         rows = self._exec(
-            "SELECT alert_id, action_id, params, status, result, ts FROM actions"
-            " WHERE alert_id = ? ORDER BY ts",
+            f"SELECT {self._ACTION_COLS} FROM actions WHERE alert_id = ? ORDER BY ts, id",
             [alert_id],
         )
-        return [
-            ActionRequest(
-                alert_id=r[0],
-                action_id=r[1],
-                params=json.loads(r[2]),
-                status=r[3],
-                result=json.loads(r[4]) if r[4] is not None else None,
-                ts=_from_db(r[5]) or T_MIN,
-            )
-            for r in rows
-        ]
+        return [self._action(r) for r in rows]
+
+    def get_action(self, action_id: str) -> ActionRequest | None:
+        rows = self._exec(f"SELECT {self._ACTION_COLS} FROM actions WHERE id = ?", [action_id])
+        return self._action(rows[0]) if rows else None
 
     # ------------------------------------------------------------------ baselines
     def record_metric(self, key: str, metric: str, ts: datetime, value: float) -> None:
