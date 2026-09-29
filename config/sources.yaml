@@ -1,0 +1,26 @@
+# Source registry. `verified` is set by source-scout after a live check (see docs/sources.md).
+# reliability = Admiralty A–F. Secrets referenced by env var name only.
+sources:
+  adsb_lol:        {domain: air,    reliability: B, latency_s: 5,     base: "https://api.adsb.lol",             auth: none,            rps: 1,   phase: 1, verified: false}
+  adsb_fi:         {domain: air,    reliability: B, latency_s: 5,     base: "https://opendata.adsb.fi/api",     auth: none,            rps: 1,   phase: 1, verified: false}
+  airplanes_live:  {domain: air,    reliability: B, latency_s: 5,     base: "https://api.airplanes.live",       auth: none,            rps: 1,   phase: 1, verified: false}
+  adsb_lol_history:{domain: air,    reliability: B, latency_s: 86400, base: "https://github.com/adsblol",       auth: none,                      phase: 1, verified: false}
+  opensky:         {domain: air,    reliability: B, latency_s: 10,    base: "https://opensky-network.org/api",  auth: OPENSKY_CLIENT_ID, phase: 1, verified: false}
+  gpsjam:          {domain: air,    reliability: B, latency_s: 86400, base: "https://gpsjam.org",               auth: none,                      phase: 1, verified: false}
+  faa_nms_notam:   {domain: air,    reliability: A, latency_s: 300,   base: "https://nms.aim.faa.gov",          auth: FAA_NMS_KEY,               phase: 2, verified: false}
+  aisstream:       {domain: sea,    reliability: B, latency_s: 5,     base: "wss://stream.aisstream.io/v0/stream", auth: AISSTREAM_KEY,          phase: 2, verified: false}
+  gfw:             {domain: sea,    reliability: B, latency_s: 86400, base: "https://gateway.api.globalfishingwatch.org/v3", auth: GFW_TOKEN,   phase: 2, verified: false}
+  nga_msi:         {domain: sea,    reliability: A, latency_s: 3600,  base: "https://msi.nga.mil/api",          auth: none,                      phase: 2, verified: false}
+  china_msa:       {domain: sea,    reliability: B, latency_s: 3600,  base: "https://www.msa.gov.cn",           auth: none,                      phase: 2, verified: false}
+  firms:           {domain: space,  reliability: A, latency_s: 10800, base: "https://firms.modaps.eosdis.nasa.gov/api", auth: FIRMS_MAP_KEY,  phase: 3, verified: false}
+  open_meteo:      {domain: space,  reliability: A, latency_s: 3600,  base: "https://api.open-meteo.com/v1",    auth: none,                      phase: 3, verified: false}
+  celestrak:       {domain: space,  reliability: A, latency_s: 86400, base: "https://celestrak.org",            auth: none,                      phase: 3, verified: false}
+  earth_search:    {domain: space,  reliability: A, latency_s: 86400, base: "https://earth-search.aws.element84.com/v1", auth: none,          phase: 3, verified: false}
+  ioda:            {domain: cyber,  reliability: B, latency_s: 600,   base: "https://api.ioda.inetintel.cc.gatech.edu/v2", auth: none,       phase: 3, verified: false}
+  cloudflare_radar:{domain: cyber,  reliability: B, latency_s: 900,   base: "https://api.cloudflare.com/client/v4/radar", auth: CLOUDFLARE_TOKEN, phase: 3, verified: false}
+  gdelt:           {domain: events, reliability: C, latency_s: 900,   base: "https://api.gdeltproject.org/api/v2", auth: none,                 phase: 4, verified: false}
+  taiwan_mnd:      {domain: events, reliability: B, latency_s: 86400, base: "https://www.mnd.gov.tw",           auth: none,                      phase: 4, verified: false}
+  japan_jso:       {domain: events, reliability: B, latency_s: 86400, base: "https://www.mod.go.jp/js",         auth: none,                      phase: 4, verified: false}
+  reliefweb:       {domain: events, reliability: B, latency_s: 3600,  base: "https://api.reliefweb.int/v2",     auth: none,                      phase: 4, verified: false}
+  acled:           {domain: events, reliability: B, latency_s: 604800,base: "https://acleddata.com/api",        auth: ACLED_EMAIL,               phase: 4, verified: false}
+  telegram:        {domain: events, reliability: E, latency_s: 60,    base: "mtproto",                          auth: TELEGRAM_API_ID,           phase: 4, verified: false}

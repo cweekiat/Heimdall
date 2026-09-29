@@ -1,0 +1,28 @@
+# Allow-listed actions. The UI/Claude may only *propose* these ids; nothing else can execute.
+# risk: low = read-only, may auto-run after approval; high = changes config, requires explicit approval.
+actions:
+  watch_cell:
+    label: "Watch cell for 2 h (raise poll priority)"
+    risk: low
+    applies_to: [gnss_jamming, gnss_spoofing, mil_orbit, ais_spoofing, composite]
+    handler: heimdall.actions.watch_cell
+  queue_imagery:
+    label: "Queue Sentinel-1/2 scene for next pass"
+    risk: low
+    applies_to: [gnss_jamming, mil_orbit, thermal, composite, ais_gap]
+    handler: heimdall.actions.queue_imagery
+  export_brief:
+    label: "Export evidence brief (PDF/Markdown)"
+    risk: low
+    applies_to: ["*"]
+    handler: heimdall.actions.export_brief
+  mark_known_area:
+    label: "Mark as known training / chronic area (suppress baseline)"
+    risk: high
+    applies_to: [gnss_jamming, mil_orbit, warning_area]
+    handler: heimdall.actions.mark_known_area
+  propose_threshold:
+    label: "Propose threshold change from feedback stats"
+    risk: high
+    applies_to: ["*"]
+    handler: heimdall.actions.propose_threshold

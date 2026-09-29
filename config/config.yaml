@@ -1,0 +1,52 @@
+# Heimdall runtime configuration. Thresholds cite provenance; calibrate via backtest before changing.
+
+storage:
+  duckdb_path: data/heimdall.duckdb
+  lake_dir: data/lake
+  bus: memory          # memory | redis (scale-out)
+  store: duckdb        # duckdb | clickhouse (scale-out)
+
+api:
+  host: 127.0.0.1      # localhost only until auth is enabled
+  port: 8000
+  auth: none           # none | oidc (hosted)
+
+aois:
+  # role: primary = monitored & alerted; control = calibration/validation only
+  - {name: myanmar,        role: primary, lat: 20.5, lon: 96.5,  radius_nm: 250}
+  - {name: south_china_sea, role: primary, lat: 12.5, lon: 113.5, radius_nm: 250}
+  - {name: taiwan_luzon,   role: primary, lat: 22.5, lon: 120.5, radius_nm: 250}
+  - {name: malacca_sg,     role: primary, lat: 3.0,  lon: 100.8, radius_nm: 250}
+  - {name: baltic,         role: control, lat: 56.0, lon: 20.5,  radius_nm: 250}
+
+detectors:
+  jamming:
+    h3_res: 4                 # ~1,770 km^2; r6 too sparse for SE Asia traffic
+    window_min: 30
+    step_min: 5
+    nic_bad_below: 7          # GPSJam convention (NIC < 7 = degraded)
+    nacp_bad_below: 8
+    bad_dwell_frac: 0.5       # aircraft counts bad if >=50% of its in-cell reports are degraded
+    min_aircraft: 5
+    ratio_alert: 0.10         # GPSJam 'red' (>10%); de-noised (bad-1)/total
+    ratio_clear: 0.06         # hysteresis
+    baseline_days: 14
+    robust_z: 3.0             # vs median/MAD baseline — alert only on change
+    persistence_windows: 2
+  spoofing:
+    min_dt_s: 5
+    teleport_kt: 1323         # Mach 2 @ ISA SL
+    speed_diff_kt: 150
+    alt_divergence_ft: 1000   # |alt_geom - alt_baro| beyond regional norm
+    mlat_gap_km: 5
+    min_signals: 2
+  orbit:
+    window_min: 75
+    min_points: 20
+    circ_var_min: 0.5
+    cum_turn_min_deg: 360
+    displacement_max: 0.25
+    mil_types: [K35R, KC46, K35E, A332, MRTT, E3TF, E3CF, E737, E7WW, R135, RC35, P8, Q4, GLEX, Y8, Y9, KJ50, KJ2K, H6]
+    jam_proximity_km: 100
+    critical_min_tankers: 2
+    tanker_types: [K35R, K35E, KC46, MRTT, A332, KC10, KC30, Y20U]
