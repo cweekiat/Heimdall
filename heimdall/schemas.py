@@ -53,7 +53,12 @@ class AlertKind(StrEnum):
 
 
 class AlertStatus(StrEnum):
+    """Triage lifecycle (ISA-18.2-style): acknowledge is separate from resolve (ADR-003)."""
+
     NEW = "new"
+    ACKNOWLEDGED = "acknowledged"  # seen by an analyst; still active
+    UNDER_REVIEW = "under_review"  # analyst actively assessing
+    SHELVED = "shelved"  # temporarily suppressed with reason + expiry (see AnalystNote)
     CONFIRMED = "confirmed"
     DISMISSED = "dismissed"
     EXPIRED = "expired"
@@ -236,7 +241,22 @@ class Feedback(BaseModel):
     ts: datetime
 
 
+class AnalystNote(BaseModel):
+    """Analyst journal entry on an alert (ADR-003). Also records status changes and shelving."""
+
+    id: str  # uuid4 hex
+    alert_id: str
+    ts: datetime
+    user: str = "local"
+    kind: Literal["note", "status", "shelve", "assign"] = "note"
+    text: str = ""  # analyst-authored; rendered as plain text only
+    status_to: AlertStatus | None = None
+    shelve_until: datetime | None = None
+    assignee: str | None = None
+
+
 class ActionRequest(BaseModel):
+    id: str  # uuid4 hex; primary key (ADR-002)
     alert_id: str
     action_id: str  # must exist in config/playbook.yaml
     params: dict[str, Any] = Field(default_factory=dict)
