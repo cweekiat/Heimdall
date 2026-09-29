@@ -20,6 +20,7 @@ from heimdall.schemas import (
     AircraftObs,
     Alert,
     AlertStatus,
+    AnalystNote,
     Evidence,
     Feedback,
     GeoEvent,
@@ -118,6 +119,9 @@ _DDL = [
     "CREATE TABLE IF NOT EXISTS metrics (key VARCHAR, metric VARCHAR, ts TIMESTAMP,"
     " value DOUBLE, PRIMARY KEY (key, metric, ts))",
     "CREATE TABLE IF NOT EXISTS health (source VARCHAR PRIMARY KEY, doc VARCHAR)",
+    "CREATE TABLE IF NOT EXISTS notes (id VARCHAR PRIMARY KEY, alert_id VARCHAR, ts TIMESTAMP,"
+    " doc VARCHAR)",
+    "CREATE INDEX IF NOT EXISTS ix_notes ON notes (alert_id, ts)",
 ]
 
 
@@ -297,6 +301,16 @@ class DuckDBStore:
             )
             for r in rows
         ]
+
+    def add_note(self, note: AnalystNote) -> None:
+        self._exec(
+            "INSERT OR REPLACE INTO notes VALUES (?, ?, ?, ?)",
+            [note.id, note.alert_id, _to_db(note.ts), note.model_dump_json()],
+        )
+
+    def notes_for(self, alert_id: str) -> list[AnalystNote]:
+        rows = self._exec("SELECT doc FROM notes WHERE alert_id = ? ORDER BY ts", [alert_id])
+        return [AnalystNote.model_validate_json(r[0]) for r in rows]
 
     def upsert_action(self, action: ActionRequest) -> None:
         self._exec(
