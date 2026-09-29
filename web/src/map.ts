@@ -2,6 +2,7 @@ import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import * as maplibregl from "maplibre-gl";
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { BaseLayers } from "./basemap";
 import type { Provider } from "./basemap";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -52,6 +53,10 @@ export interface MapState {
   showCoverage: boolean;
   hoursAgo: number; // time slider: 0 = now, 24 = 24 h ago
 }
+
+// maplibre-gl v6 ships its worker as separate ES modules that Vite does not emit by itself;
+// bundle it (with its shared chunk) and point MapLibre at it.
+maplibregl.setWorkerUrl(workerUrl);
 
 export class OpsMap {
   private map: maplibregl.Map;

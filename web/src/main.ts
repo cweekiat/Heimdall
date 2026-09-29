@@ -127,9 +127,7 @@ async function boot(): Promise<void> {
     const [{ OpsMap: OpsMapCls, legend }, ui] = await Promise.all([import("./map"), api.uiConfig()]);
     ops = new OpsMapCls($("map"), theme0, ui.basemap, ui.overlays, (id) => void select(id, true));
     $("legend").replaceChildren(legend());
-    const body = ops.layers.panel();
-    body.hidden = matchMedia("(max-width: 720px)").matches;
-    $("layers").replaceChildren(h("button", { "aria-expanded": String(!body.hidden), onclick: (e) => { body.hidden = !body.hidden; (e.target as HTMLElement).setAttribute("aria-expanded", String(!body.hidden)); } }, "Layers"), body);
+    mountLayersDrawer($("layers"), ops.layers.panel());
     await refresh();
   } catch (e) {
     $("queue").replaceChildren(h("div", { class: "empty" }, `API unavailable: ${String(e)}`));
@@ -138,3 +136,25 @@ async function boot(): Promise<void> {
   setInterval(() => void refresh().catch(() => undefined), 60_000);
 }
 void boot();
+
+/** Collapsible layers drawer: closed by default, closes on outside click / Escape. */
+function mountLayersDrawer(root: HTMLElement, body: HTMLElement): void {
+  const btn = h("button", { "aria-expanded": "false", "aria-controls": "layers-drawer" }, "Layers");
+  const close = h("button", { class: "drawer-close", "aria-label": "Close layers" }, "Close");
+  const drawer = h("div", { class: "drawer", id: "layers-drawer" }, close, body);
+  const set = (open: boolean): void => {
+    drawer.hidden = !open;
+    document.body.classList.toggle("layers-open", open);
+    btn.setAttribute("aria-expanded", String(open));
+  };
+  btn.addEventListener("click", () => set(drawer.hidden));
+  close.addEventListener("click", () => set(false));
+  document.addEventListener("pointerdown", (e) => {
+    if (!drawer.hidden && !root.contains(e.target as Node)) set(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") set(false);
+  });
+  root.replaceChildren(btn, drawer);
+  set(false);
+}

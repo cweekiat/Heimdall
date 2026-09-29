@@ -418,6 +418,53 @@ svg.chart {
   max-height: calc(100% - 40px);
   overflow: auto;
 }
+#layers {
+  overflow: visible;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+#layers .drawer {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  width: 250px;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+#layers .drawer[hidden] {
+  display: none;
+}
+.drawer-close {
+  display: none;
+  width: 100%;
+}
+@media (max-width: 720px) {
+  /* Drawer slides over the whole map area; other map panels are hidden while it is open. */
+  #layers .drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: min(300px, 85vw);
+    max-height: none;
+    border-radius: 0;
+    z-index: 20;
+  }
+  .drawer-close {
+    display: block;
+    margin-bottom: 6px;
+  }
+  body.layers-open #mapctl,
+  body.layers-open #legend {
+    visibility: hidden;
+  }
+}
 #layers fieldset {
   border: 1px solid var(--line);
   border-radius: 6px;
