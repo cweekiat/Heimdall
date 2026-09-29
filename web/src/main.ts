@@ -2,7 +2,7 @@ import "./style.css";
 import { api } from "./api";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
 import { h } from "./dom";
-import { OpsMap, legend } from "./map";
+import type { OpsMap } from "./map";
 import { emptyFilters, renderDetail, renderHealth, renderQueue } from "./panels";
 
 const $ = (id: string): HTMLElement => document.getElementById(id) as HTMLElement;
@@ -19,13 +19,13 @@ const theme0: "dark" | "light" =
   storedTheme === "light" || (!storedTheme && matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
 document.documentElement.dataset.theme = theme0;
 
-const ops = new OpsMap($("map"), theme0, (id) => void select(id, true));
+let ops: OpsMap | null = null;
 
 $("theme").addEventListener("click", () => {
   const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = t;
   localStorage.setItem("theme", t);
-  ops.setTheme(t);
+  ops?.setTheme(t);
 });
 
 // ---- panels / tabs
@@ -41,24 +41,24 @@ showPanel(matchMedia("(max-width: 720px)").matches ? "queue" : "map");
 const slider = h("input", { type: "range", min: "0", max: "24", step: "1", value: "0", "aria-label": "Time slider, hours before now" });
 const sliderLbl = h("span", {}, "now");
 slider.addEventListener("input", () => {
-  ops.state.hoursAgo = Number(slider.value);
+  if (ops) ops.state.hoursAgo = Number(slider.value);
   sliderLbl.textContent = slider.value === "0" ? "now" : `-${slider.value} h`;
-  ops.render();
+  ops?.render();
 });
 const cov = h("input", { type: "checkbox", id: "cov" });
 cov.addEventListener("change", () => {
-  ops.state.showCoverage = cov.checked;
-  ops.render();
+  if (ops) ops.state.showCoverage = cov.checked;
+  ops?.render();
 });
 $("mapctl").replaceChildren(
   h("label", { for: "cov" }, cov, "Coverage (quality aircraft)"),
   h("label", {}, "Time ", slider, sliderLbl),
 );
-$("legend").replaceChildren(legend());
 
 function pushMap(evidence: Evidence[] = [], tracks: { hex: string; path: TrackPt[] }[] = []): void {
+  if (!ops) return;
   Object.assign(ops.state, { alerts, cells, aois, selected, evidence, tracks });
-  ops.render();
+  ops?.render();
 }
 
 function drawQueue(): void {
@@ -79,14 +79,14 @@ async function select(id: string, fromMap: boolean): Promise<void> {
     )
   ).filter((t) => t.path.length > 1);
   pushMap(d.evidence, tracks);
-  if (d.alert.lat !== null && d.alert.lon !== null) ops.flyTo(d.alert.lon, d.alert.lat);
+  if (d.alert.lat !== null && d.alert.lon !== null) ops?.flyTo(d.alert.lon, d.alert.lat);
   if (!fromMap || matchMedia("(max-width: 1100px)").matches) showPanel(matchMedia("(max-width: 1100px)").matches ? "detail" : document.body.dataset.panel!);
 }
 
 async function refresh(): Promise<void> {
   [alerts, cells] = await Promise.all([api.alerts(), api.cells()]);
   drawQueue();
-  pushMap(ops.state.evidence, ops.state.tracks);
+  pushMap(ops?.state.evidence, ops?.state.tracks);
 }
 
 async function loadHealth(): Promise<void> {
@@ -101,11 +101,16 @@ function live(): void {
     pill.textContent = "live";
     pill.classList.add("on");
   };
+  es.addEventListener("snapshot", (e) => {
+    alerts = JSON.parse((e as MessageEvent<string>).data) as Alert[];
+    drawQueue();
+    pushMap(ops?.state.evidence, ops?.state.tracks);
+  });
   es.addEventListener("alert", (e) => {
     const a = JSON.parse((e as MessageEvent<string>).data) as Alert;
     alerts = [a, ...alerts.filter((x) => x.id !== a.id)];
     drawQueue();
-    pushMap(ops.state.evidence, ops.state.tracks);
+    pushMap(ops?.state.evidence, ops?.state.tracks);
     if (a.id === selected) void select(a.id, false);
   });
   es.onerror = () => {
@@ -117,6 +122,9 @@ function live(): void {
 async function boot(): Promise<void> {
   try {
     aois = await api.aois();
+    const [{ OpsMap: OpsMapCls, legend }, ui] = await Promise.all([import("./map"), api.uiConfig()]);
+    ops = new OpsMapCls($("map"), theme0, ui.basemap, (id) => void select(id, true));
+    $("legend").replaceChildren(legend());
     await refresh();
   } catch (e) {
     $("queue").replaceChildren(h("div", { class: "empty" }, `API unavailable: ${String(e)}`));

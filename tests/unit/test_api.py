@@ -1,13 +1,16 @@
 import asyncio
+import json
 from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
+from heimdall.adapters.composite_store import CompositeStore
 from heimdall.adapters.memory_store import MemoryStore
 from heimdall.api.app import create_app
 from heimdall.api.demo import seed
 
+HOSTS = ["testserver", "127.0.0.1", "localhost"]
 PB = {
     "actions": {
         "watch_cell": {"label": "w", "risk": "low", "applies_to": ["gnss_jamming"]},
@@ -19,7 +22,7 @@ PB = {
 @pytest.fixture
 def client() -> TestClient:
     store = seed(MemoryStore())
-    return TestClient(create_app(store, playbook=PB))
+    return TestClient(create_app(store, playbook=PB, allowed_hosts=HOSTS))
 
 
 def test_health_aois_playbook(client: TestClient) -> None:
@@ -77,7 +80,11 @@ def test_actions_playbook_validation(client: TestClient) -> None:
     assert ok.status_code == 200 and ok.json()["status"] == "proposed"
     aid = ok.json()["id"]
     ap = client.post(f"/api/actions/{aid}/approve")
-    assert ap.status_code == 200 and ap.json()["result"]["executed"] is False
+    assert (
+        ap.status_code == 200
+        and ap.json()["result"]["executed"] is False
+        and ap.json()["status"] == "approved"
+    )
     assert client.post(f"/api/actions/{aid}/approve").status_code == 404
     ok2 = client.post("/api/alerts/alert-0/actions", json={"action_id": "export_brief"}).json()
     assert client.post(f"/api/actions/{ok2['id']}/reject").json()["status"] == "rejected"
@@ -86,26 +93,63 @@ def test_actions_playbook_validation(client: TestClient) -> None:
     )
 
 
-def test_stream_emits_updates() -> None:
+def test_stream_snapshot_then_updates() -> None:
     store = seed(MemoryStore())
-    app = create_app(store, playbook=PB)
+    app = create_app(store, playbook=PB, allowed_hosts=HOSTS)
 
     async def run() -> list[dict[str, str]]:
         out: list[dict[str, str]] = []
-        gen = app.state.alert_events(interval=0.01, max_ticks=100)
-        async for ev in gen:
+        async for ev in app.state.alert_events(interval=0.01, max_ticks=200):
             out.append(ev)
-            break
+            if len(out) == 2:
+                break
         return out
 
     async def go() -> list[dict[str, str]]:
         task = asyncio.create_task(run())
-        await asyncio.sleep(0.03)
+        await asyncio.sleep(0.05)
         a = store.get_alert("alert-1")
         assert a is not None
         a.last_seen = datetime.now(UTC)
         store.upsert_alert(a)
-        return await asyncio.wait_for(task, 2)
+        return await asyncio.wait_for(task, 3)
 
     events = asyncio.run(go())
-    assert events and events[0]["event"] == "alert"
+    assert events[0]["event"] == "snapshot" and len(json.loads(events[0]["data"])) == 8
+    assert events[1]["event"] == "alert"
+
+
+def test_host_and_origin_guards(client: TestClient) -> None:
+    assert client.get("/api/health", headers={"host": "evil.example"}).status_code == 400
+    body = {"verdict": "confirm"}
+    bad = client.post("/api/alerts/alert-0/feedback", json=body, headers={"origin": "http://evil"})
+    assert bad.status_code == 403
+    ok = client.post(
+        "/api/alerts/alert-0/feedback", json=body, headers={"origin": "http://testserver"}
+    )
+    assert ok.status_code == 200
+
+
+def test_ui_config_default_is_no_third_party(client: TestClient) -> None:
+    assert client.get("/api/ui-config").json() == {"basemap": "none"}
+    c = TestClient(create_app(MemoryStore(), playbook=PB, allowed_hosts=HOSTS, basemap="carto"))
+    assert c.get("/api/ui-config").json() == {"basemap": "carto"}
+
+
+def test_composite_store_routes_writes_to_analyst() -> None:
+    main = seed(MemoryStore())
+    analyst = MemoryStore()
+    c = TestClient(create_app(CompositeStore(main, analyst), playbook=PB, allowed_hosts=HOSTS))
+    assert len(c.get("/api/alerts").json()) == 8
+    assert c.post("/api/alerts/alert-0/feedback", json={"verdict": "dismiss"}).status_code == 200
+    r = c.post("/api/alerts/alert-0/actions", json={"action_id": "watch_cell"}).json()
+    assert len(r["id"]) == 32
+    assert c.post(f"/api/actions/{r['id']}/approve").json()["status"] == "approved"
+    # main store untouched; analyst store holds the writes
+    assert main.alerts["alert-0"].status.value == "new"
+    assert not main.feedback and not main.actions
+    assert analyst.feedback and analyst.actions
+    assert analyst.alerts["alert-0"].status.value == "dismissed"
+    # overlay visible through the API, status filter works on merged view
+    assert [a["id"] for a in c.get("/api/alerts?status=dismissed").json()] == ["alert-0"]
+    assert len(c.get("/api/alerts").json()) == 8

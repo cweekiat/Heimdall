@@ -5,7 +5,9 @@ Run: `uv run python -m heimdall.api.demo` (synthetic data, port 8000) and `cd we
 The API binds 127.0.0.1 by default (`api.host`).
 
 ## Views
-1. **Map** - MapLibre (CARTO dark/light styles) + deck.gl. H3 r4 hexes coloured by degraded ratio
+1. **Map** - MapLibre + deck.gl on a blank local style (background + graticule): no third-party
+   requests by default. CARTO tiles are opt-in via `ui.basemap: carto` in config/config.yaml
+   (exposed at `GET /api/ui-config`); no coastline file is bundled yet. H3 r4 hexes coloured by degraded ratio
    (green <2%, amber 2-10%, red >10%), alert markers coloured by kind, orbit tracks and emitter
    ellipses for the selected alert, AOI outlines (control AOIs grey), coverage toggle (quality
    aircraft per cell), time slider (as-of now .. 24 h ago).
@@ -36,6 +38,19 @@ inserted with `textContent` (untrusted-text rule).
 | POST | `/api/alerts/{id}/actions` | `{action_id}`; 422 unless in playbook and `applies_to` matches; status `proposed`; returns `id` |
 | POST | `/api/actions/{id}/approve` , `/reject` | only for `proposed`; approve is a recording stub |
 | GET | `/api/stream` | SSE, event `alert` with the updated Alert JSON |
+
+Also `GET /api/ui-config` -> `{basemap: none|carto}`. Action ids are uuid4 hex (stored in
+`params.id`, no schema change); approve sets status `approved` (recording stub, runs nothing).
+
+## Security and storage
+- `TrustedHostMiddleware` allows only `127.0.0.1` / `localhost`; POSTs whose `Origin` does not
+  match `Host` get 403.
+- DuckDB is single-writer: observations/evidence/alerts are read from a read-only store; analyst
+  writes (feedback, actions, alert status) go to `data/analyst.duckdb` via `CompositeStore`
+  (`heimdall/adapters/composite_store.py`). Only an ImportError of the DuckDB adapter falls back
+  to an empty MemoryStore, with a logged warning.
+- SSE sends a `snapshot` event with all alerts on connect, then `alert` events per change; store
+  calls run in `asyncio.to_thread`.
 
 Auth: `create_app(auth_check=...)` middleware is a no-op while `api.auth == none`.
 Store: `create_app(store)`; default tries `heimdall.adapters.duckdb_store.DuckDBStore` read-only,

@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -24,6 +28,8 @@ from heimdall.schemas import (
 )
 
 WEB_DIST = config.ROOT / "web" / "dist"
+log = logging.getLogger(__name__)
+LOCAL_HOSTS = ["127.0.0.1", "localhost"]
 
 
 class FeedbackIn(BaseModel):
@@ -40,18 +46,27 @@ def _now() -> datetime:
 
 
 def _default_store() -> Store:
+    """Read-only DuckDB for observations/evidence/alerts + a separate read-write analyst store.
+
+    DuckDB is single-writer (heimdall.run owns the main file), so analyst writes never touch it.
+    """
+    from heimdall.adapters.memory_store import MemoryStore
+
     try:
         from heimdall.adapters.duckdb_store import DuckDBStore
-
-        return DuckDBStore(config.settings().storage.duckdb_path, read_only=True)
-    except Exception:
-        from heimdall.adapters.memory_store import MemoryStore
-
+    except ImportError:
+        log.warning("DuckDB adapter unavailable; API is serving an empty in-memory store")
         return MemoryStore()
 
+    from heimdall.adapters.composite_store import CompositeStore
 
-def action_key(a: ActionRequest) -> str:
-    return f"{a.alert_id}::{a.action_id}"
+    main = Path(config.settings().storage.duckdb_path)
+    analyst_path = main.with_name("analyst.duckdb")
+    return CompositeStore(DuckDBStore(str(main), read_only=True), DuckDBStore(str(analyst_path)))
+
+
+def _action_json(a: ActionRequest) -> dict[str, Any]:
+    return {**a.model_dump(mode="json"), "id": a.params.get("id")}
 
 
 def _since(value: str | None, default_hours: float | None = None) -> datetime | None:
@@ -71,6 +86,8 @@ def create_app(
     playbook: dict[str, Any] | None = None,
     auth_check: Callable[[Request], Awaitable[bool]] | None = None,
     stream_interval_s: float = 2.0,
+    allowed_hosts: list[str] | None = None,
+    basemap: str | None = None,
 ) -> FastAPI:
     st: Store = store if store is not None else _default_store()
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
@@ -78,6 +95,18 @@ def create_app(
     )
     app = FastAPI(title="Heimdall API", version="0.1")
     app.state.store = st
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or LOCAL_HOSTS)
+
+    @app.middleware("http")
+    async def same_origin_writes(
+        request: Request, call_next: Callable[..., Awaitable[Response]]
+    ) -> Response:
+        # CSRF/DNS-rebinding guard: a browser POST must come from the page's own origin.
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            origin = request.headers.get("origin")
+            if origin is not None and urlsplit(origin).netloc != request.headers.get("host"):
+                return Response("cross-origin request rejected", status_code=403)
+        return await call_next(request)
 
     @app.middleware("http")
     async def auth_middleware(
@@ -124,9 +153,7 @@ def create_app(
             "alert": a.model_dump(mode="json"),
             "evidence": [e.model_dump(mode="json") for e in st.get_evidence(a.evidence_ids)],
             "feedback": [f.model_dump(mode="json") for f in st.feedback_for(alert_id)],
-            "actions": [
-                {**x.model_dump(mode="json"), "id": action_key(x)} for x in st.actions_for(alert_id)
-            ],
+            "actions": [_action_json(x) for x in st.actions_for(alert_id)],
             "playbook": playbook_for(a.kind.value),
         }
 
@@ -142,8 +169,8 @@ def create_app(
         a = need_alert(alert_id)
         fb = Feedback(alert_id=alert_id, verdict=body.verdict, reason=body.reason, ts=_now())
         st.add_feedback(fb)
-        a.status = AlertStatus.CONFIRMED if body.verdict == "confirm" else AlertStatus.DISMISSED
-        st.upsert_alert(a)
+        status = AlertStatus.CONFIRMED if body.verdict == "confirm" else AlertStatus.DISMISSED
+        st.upsert_alert(a.model_copy(update={"status": status}))
         return fb
 
     @app.post("/api/alerts/{alert_id}/actions")
@@ -155,15 +182,20 @@ def create_app(
         applies = spec.get("applies_to", [])
         if "*" not in applies and a.kind.value not in applies:
             raise HTTPException(422, f"action {body.action_id} does not apply to {a.kind.value}")
-        req = ActionRequest(alert_id=alert_id, action_id=body.action_id, ts=_now())
+        req = ActionRequest(
+            alert_id=alert_id,
+            action_id=body.action_id,
+            params={"id": uuid.uuid4().hex},
+            ts=_now(),
+        )
         st.upsert_action(req)
-        return {**req.model_dump(mode="json"), "id": action_key(req)}
+        return _action_json(req)
 
     def find_action(action_id: str) -> ActionRequest:
-        alert_id, _, aid = action_id.partition("::")
-        for x in st.actions_for(alert_id):
-            if x.action_id == aid and x.status == "proposed":
-                return x
+        for al in st.list_alerts(limit=1000):
+            for x in st.actions_for(al.id):
+                if x.params.get("id") == action_id and x.status == "proposed":
+                    return x
         raise HTTPException(404, "proposed action not found")
 
     @app.post("/api/actions/{action_id}/approve")
@@ -171,17 +203,17 @@ def create_app(
         x = find_action(action_id)
         if x.action_id not in pb:  # defence in depth
             raise HTTPException(422, "action not in playbook")
-        x.status = "done"  # execution stub: records only, runs nothing
+        x.status = "approved"  # execution stub: records only, runs nothing
         x.result = {"executed": False, "note": "stub: approval recorded, no handler invoked"}
         st.upsert_action(x)
-        return {**x.model_dump(mode="json"), "id": action_key(x)}
+        return _action_json(x)
 
     @app.post("/api/actions/{action_id}/reject")
     def reject_action(action_id: str) -> dict[str, Any]:
         x = find_action(action_id)
         x.status = "rejected"
         st.upsert_action(x)
-        return {**x.model_dump(mode="json"), "id": action_key(x)}
+        return _action_json(x)
 
     # ------------------------------------------------------------------ map data
     @app.get("/api/cells")
@@ -238,6 +270,10 @@ def create_app(
             "sources": [h.model_dump(mode="json") for h in st.list_health()],
         }
 
+    @app.get("/api/ui-config")
+    def ui_config() -> dict[str, str]:
+        return {"basemap": basemap or config.settings().ui.basemap}
+
     @app.get("/api/playbook")
     def get_playbook() -> list[dict[str, Any]]:
         return [{"id": k, **v} for k, v in pb.items()]
@@ -246,20 +282,24 @@ def create_app(
     async def alert_events(
         interval: float = stream_interval_s, max_ticks: int | None = None
     ) -> AsyncIterator[dict[str, str]]:
+        """Snapshot of current alerts on connect, then one `alert` event per change."""
         seen: dict[str, tuple[datetime, str]] = {}
         first = True
         ticks = 0
         while max_ticks is None or ticks < max_ticks:
-            for a in st.list_alerts(limit=500):
-                sig = (a.last_seen, a.status.value)
-                if seen.get(a.id) != sig:
-                    if not first:
-                        yield {
-                            "event": "alert",
-                            "data": json.dumps(a.model_dump(mode="json")),
-                        }
-                    seen[a.id] = sig
-            first = False
+            current = await asyncio.to_thread(st.list_alerts, None, None, None, 500)
+            changed = [a for a in current if seen.get(a.id) != (a.last_seen, a.status.value)]
+            for a in changed:
+                seen[a.id] = (a.last_seen, a.status.value)
+            if first:
+                yield {
+                    "event": "snapshot",
+                    "data": json.dumps([a.model_dump(mode="json") for a in current]),
+                }
+                first = False
+            else:
+                for a in changed:
+                    yield {"event": "alert", "data": json.dumps(a.model_dump(mode="json"))}
             ticks += 1
             await asyncio.sleep(interval)
 

@@ -35,9 +35,15 @@ class ApiCfg(BaseModel):
     auth: str = "none"
 
 
+class UiCfg(BaseModel):
+    # none = no third-party requests (blank local style). carto = opt-in CARTO basemap tiles.
+    basemap: Literal["none", "carto"] = "none"
+
+
 class Settings(BaseModel):
     storage: StorageCfg = Field(default_factory=StorageCfg)
     api: ApiCfg = Field(default_factory=ApiCfg)
+    ui: UiCfg = Field(default_factory=UiCfg)
     aois: list[AOI] = Field(default_factory=list)
     detectors: dict[str, dict[str, Any]] = Field(default_factory=dict)
 

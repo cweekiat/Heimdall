@@ -112,12 +112,15 @@ class MemoryStore:
         return [f for f in self.feedback if f.alert_id == alert_id]
 
     def upsert_action(self, action: ActionRequest) -> None:
+        key = action.params.get("id")
         for i, a in enumerate(self.actions):
-            if (
-                a.alert_id == action.alert_id
-                and a.action_id == action.action_id
-                and a.ts == action.ts
-            ):
+            same = (
+                a.params.get("id") == key
+                if key is not None
+                else (a.alert_id, a.action_id, a.ts)
+                == (action.alert_id, action.action_id, action.ts)
+            )
+            if same:
                 self.actions[i] = action
                 return
         self.actions.append(action)

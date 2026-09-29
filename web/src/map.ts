@@ -8,11 +8,34 @@ import { h } from "./dom";
 
 type RGBA = [number, number, number, number];
 
-// Free vector styles (CARTO basemaps, no key). Attribution is shown by MapLibre.
-const STYLES = {
-  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-};
+export type Basemap = "none" | "carto";
+
+// Default: blank local style (background + 5-degree graticule) so the browser makes NO third-party
+// requests. CARTO vector tiles are an explicit opt-in (config ui.basemap: carto).
+function graticule(): unknown {
+  const features: unknown[] = [];
+  for (let lon = -180; lon <= 180; lon += 5)
+    features.push({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[lon, -85], [lon, 85]] } });
+  for (let lat = -80; lat <= 80; lat += 5)
+    features.push({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[-180, lat], [180, lat]] } });
+  return { type: "FeatureCollection", features };
+}
+
+function styleFor(basemap: Basemap, theme: "dark" | "light"): maplibregl.StyleSpecification | string {
+  if (basemap === "carto")
+    return theme === "dark"
+      ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+      : "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+  const dark = theme === "dark";
+  return {
+    version: 8,
+    sources: { grid: { type: "geojson", data: graticule() as never } },
+    layers: [
+      { id: "bg", type: "background", paint: { "background-color": dark ? "#0b1016" : "#e9eef3" } },
+      { id: "grid", type: "line", source: "grid", paint: { "line-color": dark ? "#1f2b38" : "#c5ced8", "line-width": 1 } },
+    ],
+  };
+}
 
 export const KIND_COLOR: Record<string, RGBA> = {
   gnss_jamming: [248, 81, 73, 255],
@@ -74,11 +97,12 @@ export class OpsMap {
   constructor(
     container: HTMLElement,
     theme: "dark" | "light",
+    private basemap: Basemap,
     private onPick: (id: string) => void,
   ) {
     this.map = new maplibregl.Map({
       container,
-      style: STYLES[theme],
+      style: styleFor(basemap, theme),
       center: [108, 14],
       zoom: 3.2,
       attributionControl: { compact: true },
@@ -89,7 +113,7 @@ export class OpsMap {
   }
 
   setTheme(theme: "dark" | "light"): void {
-    this.map.setStyle(STYLES[theme]);
+    this.map.setStyle(styleFor(this.basemap, theme));
   }
 
   flyTo(lon: number, lat: number): void {

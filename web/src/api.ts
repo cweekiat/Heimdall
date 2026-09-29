@@ -135,6 +135,7 @@ export const api = {
   alert: (id: string) => req<AlertDetail>(`/api/alerts/${encodeURIComponent(id)}`),
   cells: () => req<Cell[]>("/api/cells?res=4"),
   aois: () => req<Aoi[]>("/api/aois"),
+  uiConfig: () => req<{ basemap: "none" | "carto" }>("/api/ui-config"),
   health: () => req<{ sources: SourceHealth[]; time: string }>("/api/health"),
   playbook: () => req<PlaybookAction[]>("/api/playbook"),
   track: (hex: string) => req<TrackPt[]>(`/api/tracks/${encodeURIComponent(hex)}`),

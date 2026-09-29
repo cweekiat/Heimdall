@@ -17,6 +17,9 @@ api:
   port: 8000
   auth: none           # none | oidc (hosted)
 
+ui:
+  basemap: none      # none | carto (carto = third-party tile requests from the browser; opt-in)
+
 aois:
   # role: primary = monitored & alerted; control = calibration/validation only
   - {name: myanmar,        role: primary, lat: 20.5, lon: 96.5,  radius_nm: 250}
