@@ -125,3 +125,64 @@ def test_rerun_tick_idempotent_on_duckdb_store() -> None:
     assert len(store.metric_history(CELL, "jam_ratio", T0)) == 2
     jams = [a for a in store.list_alerts() if a.kind == AlertKind.GNSS_JAMMING]
     assert len(jams) == 1
+
+
+# --------------------------------------------------------------------------- 2. persistence
+
+
+def test_single_5min_event_never_reaches_persistence_2() -> None:
+    from tests.unit.test_fusion import CELL
+
+    background = jammed_cell(n_aircraft=30, n_jammed=0, minutes=60, seed=1)
+    burst = jammed_cell(
+        start=T0 + timedelta(minutes=12),
+        n_aircraft=6,
+        n_jammed=6,
+        minutes=3,
+        seed=9,
+        hex_prefix="j",
+    )  # every degraded report falls inside a < 5-min span
+    store = _store(background, burst)
+    cfg = _settings()
+    seen = []
+    for m in range(20, 50, 5):  # every window containing the burst re-triggers
+        r = tick(store, cfg, T0 + timedelta(minutes=m), playbook=PB, source_grades=GRADES)
+        seen += [e for e in r.evidence if e.kind == AlertKind.GNSS_JAMMING and e.h3_cell == CELL]
+    assert len(seen) >= 3  # the window-level trigger fires repeatedly ...
+    assert max(e.persistence for e in seen) == 1  # ... but it is one short event
+    assert not [a for a in store.alerts.values() if a.kind == AlertKind.GNSS_JAMMING]
+
+
+def test_sustained_event_reaches_persistence_2_on_second_tick() -> None:
+    from tests.unit.test_fusion import CELL
+
+    store = _store(jammed_cell(n_aircraft=30, n_jammed=10, minutes=45))
+    cfg = _settings()
+    ps = []
+    for m in (35, 40):
+        r = tick(store, cfg, T0 + timedelta(minutes=m), playbook=PB, source_grades=GRADES)
+        ps += [e.persistence for e in r.evidence if e.h3_cell == CELL]
+    assert ps == [1, 2]
+
+
+# --------------------------------------------------------------------------- 6. orbit by hex
+
+
+def test_orbit_persistence_follows_aircraft_across_cells() -> None:
+    from tests.synthetic.generators import circle_orbit, destination
+
+    cfg = _settings()
+    store = _store(circle_orbit(hex_="ae0777", lat=20.0, lon=96.0))
+    r1 = tick(store, cfg, T0 + timedelta(minutes=75), playbook=PB, source_grades=GRADES)
+    (o1,) = [e for e in r1.evidence if e.kind == AlertKind.MIL_ORBIT]
+    la, lo = destination(20.0, 96.0, 90.0, 80.0)  # centroid moves ~80 km -> another r4 cell
+    store.aircraft = circle_orbit(hex_="ae0777", start=T0 + timedelta(minutes=5), lat=la, lon=lo)
+    r2 = tick(store, cfg, T0 + timedelta(minutes=80), playbook=PB, source_grades=GRADES)
+    (o2,) = [e for e in r2.evidence if e.kind == AlertKind.MIL_ORBIT]
+    assert o1.h3_cell != o2.h3_cell
+    assert (o1.persistence, o2.persistence) == (1, 2)
+    # a different aircraft in the second cell starts its own run
+    store.aircraft = circle_orbit(hex_="ae0888", start=T0 + timedelta(minutes=10), lat=la, lon=lo)
+    r3 = tick(store, cfg, T0 + timedelta(minutes=85), playbook=PB, source_grades=GRADES)
+    (o3,) = [e for e in r3.evidence if e.kind == AlertKind.MIL_ORBIT]
+    assert o3.persistence == 1

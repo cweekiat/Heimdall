@@ -63,6 +63,7 @@ class AircraftQuality:
     n_known: int = 0
     n_bad: int = 0
     first_bad: AircraftObs | None = None
+    last_bad: AircraftObs | None = None
     by_provider: dict[str, list[int]] = field(default_factory=dict)  # provider -> [known, bad]
 
     def is_bad(self, frac: float) -> bool:
@@ -122,6 +123,7 @@ def cell_stats(
             pv[1] += 1
             if aq.first_bad is None:
                 aq.first_bad = o
+            aq.last_bad = o
     out: dict[str, CellStats] = {}
     frac = c["bad_dwell_frac"]
     for cell, hexes in seen.items():
@@ -268,6 +270,13 @@ def detect(
             "ellipse_minor_km": round(mnr, 2),
             "ellipse_angle_deg": round(ang, 1),
             "held": 1.0 if held else 0.0,
+            # time span of degraded reports from bad aircraft (drives persistence, see pipeline)
+            "anomaly_first_ts": min(
+                a.first_bad.ts for a in st.bad_aircraft if a.first_bad
+            ).timestamp(),
+            "anomaly_last_ts": max(
+                a.last_bad.ts for a in st.bad_aircraft if a.last_bad
+            ).timestamp(),
         }
         if z is not None:
             features["robust_z"] = round(z, 3)

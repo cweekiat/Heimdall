@@ -41,28 +41,77 @@ def _baseline(store: Store, now: datetime, days: float, exclude_after: datetime)
     return fn
 
 
-def _persistence(store: Store, ev: Evidence, step: timedelta) -> int:
-    """1 + persistence of the same kind (and cell; and entity for orbits) in the previous step."""
-    if ev.h3_cell is None:
-        return 1
-    lo, hi = ev.window_end - step * 1.5, ev.window_end - step * 0.5
-    prev = [
-        h
-        for h in store.evidence_history(ev.h3_cell, str(ev.kind), ev.window_end - step * 2)
-        if h.id != ev.id and lo <= h.window_end <= hi
-    ]
-    if ev.kind in ENTITY_PERSISTENCE:
-        prev = [h for h in prev if set(h.entities) & set(ev.entities)]
-    return 1 + max((h.persistence for h in prev), default=0)
+PERSIST_METRIC = "persistence_run_start"  # epoch s of the first anomalous obs of the current run
+PERSIST_TICKS = "persistence_ticks"  # consecutive steps in which the subject triggered
+
+
+def persistence_key(aoi: str, ev: Evidence) -> str:
+    """Persistence subject: the aircraft (ICAO hex) for orbits, else the H3 cell."""
+    if ev.kind in ENTITY_PERSISTENCE and ev.entities:
+        return f"{aoi}|{ev.kind}|hex:{ev.entities[0]}"
+    return f"{aoi}|{ev.kind}|cell:{ev.h3_cell}"
+
+
+def _assign_persistence(
+    store: Store, aoi: str, evs: Sequence[Evidence], step: timedelta
+) -> list[Evidence]:
+    """Persistence = min(consecutive triggered steps, 1 + floor((last obs - run start) / step)).
+
+    Windows (30 min) overlap heavily at a 5-min step, so counting triggered *windows* would turn
+    one short burst into 6 "persistent" windows. Instead each detector reports the time span of
+    the observations that make the anomaly (`anomaly_first_ts`/`anomaly_last_ts`); a run starts at
+    the earliest anomalous observation and is carried forward (via a metric keyed by
+    `persistence_key`) as long as the subject triggers in consecutive steps. A single event shorter
+    than one step can therefore never reach persistence 2, however many windows contain it; and
+    the tick count keeps the ">= 2 evaluations" rule (a first tick is always persistence 1).
+    """
+    groups: dict[str, list[Evidence]] = {}
+    for e in evs:
+        groups.setdefault(persistence_key(aoi, e), []).append(e)
+    out: list[Evidence] = []
+    step_s = step.total_seconds()
+    for key, group in groups.items():
+        end = max(e.window_end for e in group)
+        firsts = [e.features["anomaly_first_ts"] for e in group if "anomaly_first_ts" in e.features]
+        lasts = [e.features["anomaly_last_ts"] for e in group if "anomaly_last_ts" in e.features]
+        if not firsts or not lasts:
+            out += [e.model_copy(update={"persistence": 1}) for e in group]
+            continue
+        lo, hi = end - step * 1.5, end - step * 0.5
+        prev_start = [
+            v for ts, v in store.metric_history(key, PERSIST_METRIC, lo) if lo <= ts <= hi
+        ]
+        prev_ticks = [v for ts, v in store.metric_history(key, PERSIST_TICKS, lo) if lo <= ts <= hi]
+        run_start = min([*firsts, *prev_start])
+        ticks = 1 + int(max(prev_ticks, default=0.0))
+        span_steps = 1 + max(0, int((max(lasts) - run_start) // step_s))
+        p = min(ticks, span_steps)
+        store.record_metric(key, PERSIST_METRIC, end, run_start)
+        store.record_metric(key, PERSIST_TICKS, end, float(ticks))
+        out += [
+            e.model_copy(
+                update={
+                    "persistence": p,
+                    "features": {
+                        **e.features,
+                        "run_start_ts": run_start,
+                        "persist_ticks": float(ticks),
+                        "persist_span_steps": float(span_steps),
+                    },
+                }
+            )
+            for e in group
+        ]
+    return out
 
 
 def _active_jam_cells(
-    store: Store, cells: Sequence[str], win_end: datetime, step: timedelta
+    store: Store, aoi: str, cells: Sequence[str], win_end: datetime, step: timedelta
 ) -> set[str]:
     out = set()
     for cell in cells:
         for h in store.evidence_history(cell, str(AlertKind.GNSS_JAMMING), win_end - step * 2):
-            if win_end - step * 1.5 <= h.window_end < win_end:
+            if h.aoi == aoi and win_end - step * 1.5 <= h.window_end < win_end:
                 out.add(cell)
                 break
     return out
@@ -91,7 +140,7 @@ def run_aoi(
     step = timedelta(minutes=float(jcfg.get("step_min", 5)))
 
     stats = jamming.cell_stats(obs, jcfg, now)
-    active = _active_jam_cells(store, sorted(stats), j_end, step)
+    active = _active_jam_cells(store, aoi.name, sorted(stats), j_end, step)
     jam = jamming.detect(
         obs, jcfg, now, _baseline(store, now, days, j_start), active=active, aoi=aoi.name
     )
@@ -100,11 +149,7 @@ def run_aoi(
         obs, ocfg, now, _baseline(store, now, days, o_start), jam_evidence=jam, aoi=aoi.name
     )
 
-    evs: list[Evidence] = []
-    for e in [*jam, *spoof, *orb]:
-        e = e.model_copy(update={"aoi": aoi.name})
-        e.persistence = _persistence(store, e, step)
-        evs.append(e)
+    evs = _assign_persistence(store, aoi.name, [*jam, *spoof, *orb], step)
 
     min_ac = int(jcfg.get("min_aircraft", 5))
     for cell, st in stats.items():

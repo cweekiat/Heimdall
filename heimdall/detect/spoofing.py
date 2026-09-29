@@ -78,6 +78,7 @@ class AircraftSignals:
     anchor: AircraftObs | None = None  # last good fix before the anomaly (localises the event)
     displaced: AircraftObs | None = None  # first anomalous fix
     records: list[AircraftObs] = field(default_factory=list)
+    anomalous: list[AircraftObs] = field(default_factory=list)  # fixes of fired signals
     n_fixes: int = 0
     providers: set[str] = field(default_factory=set)
 
@@ -145,6 +146,7 @@ def _s1(fixes: list[AircraftObs], c: dict[str, Any], sig: AircraftSignals) -> No
         sig.fired["S1"] = True
         sig.anchor, sig.displaced = a, b
         sig.records += [a, b]
+        sig.anomalous += clean[k0 + 1 :]
         after = [o.nic for o in clean[k0 + 1 :] if o.nic is not None]
         if after:
             sig.features["nic_median_anomalous"] = median([float(n) for n in after])
@@ -176,19 +178,22 @@ def _s3(
         if sig.anchor is None:
             sig.anchor, sig.displaced = bad[0][1], bad[0][0]  # MLAT = truth, ADS-B = claimed
         sig.records += [bad[0][0], bad[0][1]]
+        sig.anomalous += [x for pair in bad for x in pair]
         nics = [float(a.nic) for a, _ in bad if a.nic is not None]
         if nics and "nic_median_anomalous" not in sig.features:
             sig.features["nic_median_anomalous"] = median(nics)
 
 
-def _s4_bins(adsb_by_hex: dict[str, list[AircraftObs]], c: dict[str, Any]) -> dict[str, int]:
+def _s4_bins(
+    adsb_by_hex: dict[str, list[AircraftObs]], c: dict[str, Any]
+) -> dict[str, list[AircraftObs]]:
     """Count time bins in which each aircraft sits in a >=N-aircraft, <=cluster_km cluster whose
     reported tracks disagree (circular variance >= cluster_circvar_min)."""
     bins: dict[int, dict[str, list[AircraftObs]]] = defaultdict(lambda: defaultdict(list))
     for h, fixes in adsb_by_hex.items():
         for o in fixes:
             bins[int(o.ts.timestamp() // c["cluster_bin_s"])][h].append(o)
-    counts: dict[str, int] = defaultdict(int)
+    counts: dict[str, list[AircraftObs]] = defaultdict(list)
     g = c["cluster_km"] / 111.0  # grid size in degrees lat (conservative for lon)
     for per_hex in bins.values():
         pos = {
@@ -220,7 +225,7 @@ def _s4_bins(adsb_by_hex: dict[str, list[AircraftObs]], c: dict[str, Any]) -> di
             ):
                 hit.update(near)
         for h in hit:
-            counts[h] += 1
+            counts[h].append(per_hex[h][0])
     return counts
 
 
@@ -271,6 +276,13 @@ def aircraft_signals(
             sig.features["alt_norm_available"] = 1.0 if has_norm else 0.0
             if n_over >= c["alt_min_fixes"] and n_over / len(dev) >= c["alt_min_frac"]:
                 sig.fired["S2"] = True
+                sig.anomalous += [
+                    o
+                    for o in fs
+                    if o.alt_geom is not None
+                    and o.alt_baro is not None
+                    and abs(o.alt_geom - o.alt_baro - norm) > c["alt_divergence_ft"]
+                ]
                 if sig.anchor is None:
                     first = next(
                         o
@@ -282,9 +294,10 @@ def aircraft_signals(
                     sig.anchor = first
                     sig.records.append(first)
         _s3(fs, mlat_d.get(h, []), c, sig)
-        sig.features["cluster_bins"] = float(s4.get(h, 0))
-        if s4.get(h, 0) >= c["cluster_min_bins"]:
+        sig.features["cluster_bins"] = float(len(s4.get(h, [])))
+        if len(s4.get(h, [])) >= c["cluster_min_bins"]:
             sig.fired["S4"] = True
+            sig.anomalous += s4[h]
             if sig.anchor is None:
                 sig.anchor = fs[0]
                 sig.records.append(fs[0])
@@ -394,6 +407,9 @@ def detect(
         feats = dict(f)
         feats.update({k: 1.0 if s.fired[k] else 0.0 for k in SIGNALS})
         feats["n_signals"] = float(n)
+        if s.anomalous:
+            feats["anomaly_first_ts"] = min(o.ts for o in s.anomalous).timestamp()
+            feats["anomaly_last_ts"] = max(o.ts for o in s.anomalous).timestamp()
         cf = (
             f"Fired {', '.join(fired)}. Would not fire with < {c['min_signals']} signals "
             "and no MLAT gap"

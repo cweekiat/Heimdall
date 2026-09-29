@@ -109,6 +109,8 @@ def track_shape(fixes: Sequence[AircraftObs], c: dict[str, Any]) -> dict[str, fl
         "radius_km": round(sum(haversine_km(p[0], p[1], lat_c, lon_c) for p in pts) / len(pts), 2),
         "duration_min": round((thin[-1].ts - thin[0].ts).total_seconds() / 60.0, 1),
         "mlat_frac": round(sum(1 for o in thin if not o.is_true_adsb) / len(thin), 3),
+        "anomaly_first_ts": thin[0].ts.timestamp(),
+        "anomaly_last_ts": thin[-1].ts.timestamp(),
     }
 
 

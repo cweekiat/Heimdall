@@ -117,7 +117,7 @@ def _f(e: Evidence, k: str, default: float = 0.0) -> float:
 def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: str | None) -> str:
     prov = ", ".join(lead.coverage.providers) or "no providers"
     cov = f"coverage {lead.coverage.confidence:.0%} ({prov})"
-    pers = f"held {lead.persistence} consecutive windows"
+    pers = f"persistence {lead.persistence} (5-min steps spanned by anomalous reports)"
     ents = sorted({x for e in group for x in e.entities})
     if kind == AlertKind.GNSS_JAMMING:
         rr = next((r for r in lead.rules if r.rule == "degraded_ratio"), None)
