@@ -124,7 +124,14 @@ else bearing from previous fix.
    5 contradicted; 6 no evidence.
 7. Summary is a template over Evidence features (no LLM). `recommended_actions` = playbook ids
    whose `applies_to` contains the kind or "*".
-8. NEW alerts without fresh Evidence for `expire_after_min` (60) → EXPIRED. At upsert the
+8. **Dismissed episodes (anti-chattering, ISA-18.2).** A DISMISSED alert owns its episode: while
+   gated Evidence for the same kind+cell+AOI keeps arriving within `expire_after_min` (60 min, the
+   clear gap) of the dismissed alert's last_seen, the Evidence is attached to the dismissed alert
+   (evidence_ids and last_seen only; status, severity, summary untouched) and no new alert opens.
+   A new alert opens only after the anomaly has been absent for >= the clear gap and re-triggers,
+   **or** immediately if the new Evidence's severity is higher than the dismissed alert's
+   (escalation is never suppressed).
+9. NEW alerts without fresh Evidence for `expire_after_min` (60) → EXPIRED. At upsert the
    pipeline re-reads the alert and expires it only if the stored copy is still NEW, its last_seen
    is < now − expire_after_min and not newer than the snapshot fusion saw (a refresh between
    list and upsert wins); expiry never copies stale evidence fields. Alerts in an analyst

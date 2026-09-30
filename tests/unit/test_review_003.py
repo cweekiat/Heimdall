@@ -32,11 +32,44 @@ def test_fusion_matches_analyst_status_without_duplicate(status: AlertStatus) ->
     assert b.evidence_ids == ["e1", "e2"]
 
 
-def test_dismissed_alert_is_closed_new_alert_opens() -> None:
-    (a,) = fuse([ev()], [], NOW, None, PB, GRADES)
+def test_dismissed_episode_continuing_attaches_no_new_alert() -> None:
+    (a,) = fuse([ev(score=0.9, conf=0.9)], [], NOW, None, PB, GRADES)
     gone = a.model_copy(update={"status": AlertStatus.DISMISSED})
     (b,) = fuse([ev(ident="e2", end_offset_min=5)], [gone], NOW, None, PB, GRADES)
+    assert b.id == a.id and b.status == AlertStatus.DISMISSED
+    assert b.evidence_ids == ["e1", "e2"] and b.last_seen == a.last_seen + timedelta(minutes=5)
+    assert b.summary == a.summary and b.severity == a.severity
+
+
+def test_dismissed_episode_cleared_then_retriggered_opens_new_alert() -> None:
+    (a,) = fuse([ev()], [], NOW, None, PB, GRADES)
+    gone = a.model_copy(update={"status": AlertStatus.DISMISSED})
+    (b,) = fuse([ev(ident="e2", end_offset_min=90)], [gone], NOW, None, PB, GRADES)
     assert b.id != a.id and b.status == AlertStatus.NEW
+
+
+def test_dismissed_episode_escalation_opens_new_alert() -> None:
+    (a,) = fuse([ev(score=0.5, conf=0.5)], [], NOW, None, PB, GRADES)
+    assert a.severity == "low"
+    gone = a.model_copy(update={"status": AlertStatus.DISMISSED})
+    (b,) = fuse(
+        [ev(ident="e2", end_offset_min=5, score=1.0, conf=0.9)], [gone], NOW, None, PB, GRADES
+    )
+    assert b.id != a.id and b.status == AlertStatus.NEW and b.severity == "high"
+
+
+def test_pipeline_dismiss_does_not_chatter() -> None:
+    store = _store(jammed_cell(n_aircraft=30, n_jammed=10, minutes=90))
+    cfg = _settings()
+    for m in (35, 40):
+        tick(store, cfg, T0 + timedelta(minutes=m), playbook=PB, source_grades=GRADES)
+    (a,) = [x for x in store.alerts.values() if x.kind == AlertKind.GNSS_JAMMING]
+    store.upsert_alert(a.model_copy(update={"status": AlertStatus.DISMISSED}))
+    for m in range(45, 65, 5):
+        tick(store, cfg, T0 + timedelta(minutes=m), playbook=PB, source_grades=GRADES)
+    jams = [x for x in store.alerts.values() if x.kind == AlertKind.GNSS_JAMMING]
+    assert len(jams) == 1 and jams[0].status == AlertStatus.DISMISSED
+    assert jams[0].last_seen > a.last_seen
 
 
 @pytest.mark.parametrize("status", ANALYST)

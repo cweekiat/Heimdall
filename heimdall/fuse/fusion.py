@@ -204,6 +204,12 @@ def fuse(
         groups[(AlertKind.COMPOSITE, j.h3_cell)] = [j, *orbits]
 
     by_key = {(a.kind, a.h3_cell): a for a in open_alerts if a.status in ACTIVE}
+    # dismissed alerts own their episode (anti-chattering, ISA-18.2): most recent per kind+cell
+    dismissed: dict[tuple[AlertKind, str | None], Alert] = {}
+    for a in sorted(open_alerts, key=lambda a: a.last_seen):
+        if a.status == AlertStatus.DISMISSED:
+            dismissed[(a.kind, a.h3_cell)] = a
+    clear_gap = timedelta(minutes=c["expire_after_min"])
     by_cell: dict[str | None, list[Evidence]] = defaultdict(list)
     for e in gated:
         by_cell[e.h3_cell].append(e)
@@ -221,6 +227,25 @@ def fuse(
             conf = lead.coverage.confidence
         if control:
             sev = Severity.INFO
+        prev = by_key.get((kind, cell))
+        d = dismissed.get((kind, cell))
+        if (
+            prev is None
+            and d is not None
+            and min(e.window_end for e in group) - d.last_seen <= clear_gap
+            and _SEV_ORDER.index(sev) <= _SEV_ORDER.index(d.severity)
+        ):
+            # same episode still running: attach evidence, keep the analyst's DISMISSED status
+            ids = list(dict.fromkeys([*d.evidence_ids, *(e.id for e in group)]))
+            alert = d.model_copy(
+                update={
+                    "evidence_ids": ids[-c["max_evidence_ids"] :],
+                    "last_seen": max(d.last_seen, max(e.window_end for e in group)),
+                }
+            )
+            touched.add(alert.id)
+            out.append(alert)
+            continue
         dom = KIND_DOMAIN.get(kind, Domain.AIR)
         corr = [
             Corroboration(
@@ -238,7 +263,6 @@ def fuse(
             if any(x.relation == "contradicts" for x in corr)
             else ("corroborated" if supports_other else "uncorroborated")
         )
-        prev = by_key.get((kind, cell))
         adm = grade(
             group,
             corr,
@@ -317,6 +341,14 @@ def apply_evidence_update(
     """
     if current is None:
         return update
+    if current.status == AlertStatus.DISMISSED:  # episode bookkeeping only
+        ids = list(dict.fromkeys([*current.evidence_ids, *update.evidence_ids]))
+        return current.model_copy(
+            update={
+                "evidence_ids": ids[-max_evidence_ids:],
+                "last_seen": max(current.last_seen, update.last_seen),
+            }
+        )
     if update.status == AlertStatus.EXPIRED:
         stale = current.last_seen <= update.last_seen and (
             expire_before is None or current.last_seen < expire_before

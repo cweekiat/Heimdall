@@ -18,7 +18,7 @@ from heimdall.fuse.admiralty import grades_from_sources
 from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
 from heimdall.geo import within_radius_nm
 from heimdall.ports import Store
-from heimdall.schemas import AircraftObs, Alert, AlertKind, Evidence
+from heimdall.schemas import AircraftObs, Alert, AlertKind, AlertStatus, Evidence
 
 ENTITY_PERSISTENCE = {AlertKind.MIL_ORBIT}  # persistence tracked per aircraft, else per cell
 
@@ -161,6 +161,11 @@ def run_aoi(
         res.metrics += 1
 
     open_alerts = store.list_alerts(status=list(ACTIVE), aoi=aoi.name, limit=10_000)
+    # recently dismissed alerts own their continuing episode (no re-alert chattering)
+    clear_gap = timedelta(minutes=float(fcfg.get("expire_after_min", 60)))
+    open_alerts += store.list_alerts(
+        since=now - 2 * clear_gap, status=[AlertStatus.DISMISSED], aoi=aoi.name, limit=10_000
+    )
     alerts = fuse(
         evs,
         open_alerts,
