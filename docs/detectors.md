@@ -101,6 +101,54 @@ else bearing from previous fix.
 * `jam_evidence`: distance from centroid to nearest jamming Evidence → features `jam_distance_km`,
   `near_jamming` (≤ `jam_proximity_km` 100) and informational rule `near_jamming`.
 
+## AIS spoofing (detect/ais_spoofing.py, `ais-spoofing-1.0.0`)
+Input `Sequence[VesselObs]`, window 60 min at a 5-min step (aligned like the GNSS detectors).
+Invalid positions (out of range, exactly (0, 0)) are dropped first; (mmsi, ts) duplicates from several
+receivers are one fix. Every Evidence carries per-signal rules, `anomaly_first_ts`/`anomaly_last_ts`,
+one RecordRef per anomalous MMSI fix (capped at 40), a counterfactual and coverage
+(`n_observed` = MMSIs in the r4 cell; confidence = min(1, fixes/20), x 0.8 if one provider).
+* **A1 jump** (per MMSI, `per_vessel`=1): pair flagged iff implied speed > `teleport_kn` (60) **and**
+  distance > `jump_min_km` (5). Glitch removal as GNSS S1 (both adjacent pairs flagged, bridging pair
+  clean -> drop the fix). Fires when flagged pairs (+ trailing clean pairs if exactly one jump) >=
+  `persist_pairs` (2). Anomalous span = fixes within `span_cap_s` (300) after each jump, so a lone
+  jump cannot reach persistence 2. Score 0.5 + 0.5 min(1, v_max / (10 x teleport)).
+  **MMSI-collision guard**: fixes split by distance from the first fix (> `collision_km` 50) with
+  >= 3 switches and no flagged pair *inside* a cluster = two ships, one MMSI -> no Evidence
+  (`ais_spoofing.mmsi_collisions` exposes the diagnosis, gap "mmsi_collision").
+* **A2 identical**: per `identical_bin_s` (300) bin and position rounded to `identical_decimals` (5,
+  ~1 m) >= `identical_min_vessels` (3) distinct MMSIs. Rafted ships 20 m apart differ at 5 decimals.
+  Score 0.6 + 0.4 min(1, (n-2)/5).
+* **A3 ring**: per `ring_bin_s` bin (last fix per MMSI) >= 5 MMSIs with centroid radial distances
+  CV = sd/mean <= 0.1, bearing circular variance (geo.circular_variance) >= 0.7 and median radius
+  in [0.2, 30] km. Score 0.7 + 0.3 min(1, n/10).
+* **A4 circle** (per MMSI, `per_vessel`=1): >= 20 fixes, Kasa least-squares circle fit (centred
+  normal equations, 3x3 elimination; degenerate -> none) with relative RMSE <= 0.05, radius <= 5 km
+  and |net signed turn| = |sum of angle_diff of segment bearings| >= 720 deg (>= 2 laps; a one-lap
+  purse-seine set gives ~360 and does not fire). Score 0.6 + 0.4 turn/1440.
+Not detected: identity spoofing (MMSI/IMO mismatch), land mask. All thresholds are priors, not backtested.
+
+## AIS dark gap (detect/ais_gap.py, `ais-gap-1.0.0`)
+Lookback `window_h` (24). Gap = consecutive fixes of one MMSI with dt >= `gap_min_h` (2), or *open*
+(no fix from the last fix to the aligned `now`, >= 2 h). A closed gap is reported for
+`closed_report_h` (6) after it ended. Skipped if at the last fix nav_status in {1, 5} and sog < 0.5 kn
+(unknown sog counts as slow). **Coverage test**: the gap is cut into hourly bins from the last fix;
+a bin is covered iff >= `gap_min_neighbors` (3) *other* MMSIs were heard in it within
+`gap_neighbor_km` (20) of the last fix; Evidence only if covered bins / bins >= `gap_covered_frac`
+(0.5), else `find_gaps` reports reason "no reception evidence" and nothing is emitted. Features
+gap_h, open, dist_km, implied_speed_kn (dist / gap_h; 0 for open), covered_frac,
+neighbors_median. score = min(1, gap_h/12) x covered_frac; coverage confidence = min(1, median
+neighbours per covered bin / 6). Persistence subject `aoi|ais_gap|mmsi:<mmsi>`: an open gap has a
+fixed run start (the last fix), so it reaches persistence 2 on the second tick.
+
+## Warning areas (detect/warning_area.py, `warning-area-1.0.0`, ADR-005 A/B)
+One `WARNING_AREA` Evidence per **active** notice (kind nav_warning|notam, `attrs.status=="active"`,
+`valid_from <= now`, `valid_to` None or > now) of a configured category (military_exercise,
+live_firing, missile_rocket, gnss_interference) that intersects the AOI (centroid or any covering
+cell centre within radius + 25 km). Context only: fusion never opens an alert from it. `title`/`text`
+are never read; only `attrs.ref` (re-sanitised to `[A-Z0-9/ -]`, 40 chars), source, category, id,
+url and times enter Evidence. Partial geometry (no_geometry/too_large/partial) -> centroid match,
+confidence 0.6.
+
 ## Fusion v0 (fuse/fusion.py) and Admiralty (fuse/admiralty.py)
 1. **Persistence gate** (set by the pipeline). Windows are 30 min at a 5-min step, so counting
    triggered windows would make one short burst "persist" for 6 windows. Per subject
@@ -122,16 +170,30 @@ else bearing from previous fix.
    ≥ 0.15 low, else info. **CRITICAL composite**: ≥ 2 distinct tanker (`tanker_types`) orbit
    Evidence (gated) within 100 km of a gated jamming Evidence → `composite` alert in the jam cell.
 4. **Control AOIs** (role=control, e.g. Baltic) produce Evidence and alerts, severity capped at info.
-5. Corroborations: other-kind gated Evidence in the same cell = `context`. Status "corroborated"
-   only when a *different domain* supports; otherwise "uncorroborated" (never "false").
+5. Corroborations come from `fuse/corroborate.py::cross_source(gated, context, notices, cfg)`
+   (ADR-005 D; `fusion.corroboration`: proximity_km 50, jam_ais_km 100, jam_orbit_km 100, sar_km 10,
+   time_slack_h 2). **supports**: jamming/GNSS spoofing/mil orbit <- active notice of category
+   military_exercise|live_firing|missile_rocket|gnss_interference covering the cell (or within
+   proximity) overlapping the window +- slack; jamming <-> AIS spoofing within jam_ais_km; mil orbit
+   <- gated jamming within jam_orbit_km (same ADS-B feed); AIS gap <- GFW gap of the same MMSI
+   overlapping the gap, or a SAR detection within sar_km of the last fix during the gap.
+   **context**: GFW loitering/encounter of the same MMSI; other-kind gated Evidence in the same cell.
+   Notes use only `attrs.ref`, source and category. An absent notice is never `contradicts`.
+   **Families**: `fusion.source_family` maps sources to adsb|ais|gfw|sar|notice; an Evidence's
+   families are those of its record sources, a support's those of its records/notice source.
+   "corroborated" iff >= 2 families in total (own + supporting); else "uncorroborated".
+   WARNING_AREA Evidence is never gated: it cannot open an alert.
 6. **Admiralty reliability = best grade among providers whose own reports show the anomaly** —
    the `source` of the Evidence `records` (detectors emit records only for anomaly-showing
    providers; `coverage.providers`, who merely covered the area, are ignored). Grades from
    sources.yaml (provider 'adsb.lol' → key 'adsb_lol'; unknown or none → F). Rationale:
    aggregators mirror the same broadcast, so the finding is as reliable as the best source that
-   independently shows it; a weaker extra mirror must not downgrade it. **Credibility**: 1 analyst-confirmed or ≥ 3 domains; 2 two domains; 3 single
-   domain with lead score ≥ `strong_score` (0.6) and persistent; 4 single domain otherwise;
-   5 contradicted; 6 no evidence.
+   independently shows it; a weaker extra mirror must not downgrade it. **Credibility counts independent source families, not domains** (jamming and a tanker
+   orbit are both `air` but one ADS-B feed; a NOTAM is independent): 1 analyst-confirmed or
+   ≥ 3 families; 2 two families; 3 one family with lead score ≥ `strong_score` (0.6) and
+   persistent, **or** one family with same-family support (tanker orbit near jamming); 4 one
+   family otherwise; 5 contradicted; 6 no evidence. `grade(..., families=None)` keeps the legacy
+   domain count.
 7. Summary is a template over Evidence features (no LLM). `recommended_actions` = playbook ids
    whose `applies_to` contains the kind or "*".
 8. **Dismissed episodes (anti-chattering, ISA-18.2).** A DISMISSED alert owns its episode: while
@@ -156,9 +218,13 @@ else bearing from previous fix.
    status never expire automatically.
 
 ## Pipeline (pipeline.py)
-`tick(store, settings, now)`: one `aircraft_window` pull covering the longest window; per AOI
+`tick(store, settings, now)`: one `aircraft_window` pull covering the longest window, one
+`vessels_window` (24 h) and one `events_window` (`notice_lookback_days` 30, notices filtered to
+active); per AOI
 (radius filter) run jamming (with `active` cells from `evidence_history`), spoofing, orbit (with
-the jamming Evidence); set `aoi` + persistence; record `jam_ratio` per cell with total ≥
+the jamming Evidence), AIS spoofing, AIS gap (vessels within the AOI radius) and warning areas;
+set `aoi` + persistence (subject `aoi|ais_gap|mmsi:<mmsi>`, `aoi|ais_spoofing|mmsi:<mmsi>` for the
+per-vessel A1/A4, per cell for A2/A3); record `ais_vessels` (distinct MMSIs) per r4 cell; record `jam_ratio` per cell with total ≥
 `min_aircraft` and `orbit_active` per orbit cell; fuse against live alerts; upsert Evidence and
 alerts. `record_metric` is an upsert on (key, metric, ts), so re-running the same tick is
 idempotent (same ids, metrics not duplicated, persistence not inflated).

@@ -8,8 +8,10 @@ Steps (see docs/detectors.md "Fusion v0"):
 3. CRITICAL composite: >= critical_min_tankers distinct tanker orbits within jam_proximity_km of
    a gated jamming Evidence.
 4. Severity from s = lead.score x lead.coverage.confidence; control AOIs capped at INFO.
-5. Admiralty grade, corroborations (co-located other-kind Evidence = context), template summary
-   (no LLM), recommended_actions from playbook `applies_to`.
+5. Corroborations from `fuse/corroborate.py` (ADR-005: notices, AIS/jamming, GFW/SAR; co-located
+   other-kind Evidence = context). Credibility counts independent source *families*. Admiralty
+   grade, template summary (no LLM, no notice text), recommended_actions from playbook `applies_to`.
+   WARNING_AREA Evidence is context-only: it never opens an alert.
 6. Open alerts not refreshed for expire_after_min -> EXPIRED.
 """
 
@@ -21,20 +23,33 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from heimdall.fuse.admiralty import KIND_DOMAIN, grade
+from heimdall.fuse.admiralty import grade
+from heimdall.fuse.corroborate import (
+    DEFAULT_CORROBORATION,
+    DEFAULT_SOURCE_FAMILY,
+    cross_source,
+    family_index,
+    family_of,
+)
 from heimdall.geo import haversine_km
 from heimdall.schemas import (
     Alert,
     AlertKind,
     AlertStatus,
     Corroboration,
-    Domain,
     Evidence,
+    GeoEvent,
     Severity,
 )
 
 DEFAULTS: dict[str, Any] = {
-    "persistence_windows": {"gnss_jamming": 2, "gnss_spoofing": 2, "mil_orbit": 2},
+    "persistence_windows": {
+        "gnss_jamming": 2,
+        "gnss_spoofing": 2,
+        "mil_orbit": 2,
+        "ais_spoofing": 2,
+        "ais_gap": 2,
+    },
     "default_persistence": 2,
     "severity": {"high": 0.6, "medium": 0.35, "low": 0.15},
     "strong_score": 0.6,
@@ -43,6 +58,8 @@ DEFAULTS: dict[str, Any] = {
     "max_evidence_ids": 100,
     "jam_proximity_km": 100,
     "critical_min_tankers": 2,
+    "source_family": DEFAULT_SOURCE_FAMILY,
+    "corroboration": DEFAULT_CORROBORATION,
 }
 
 _SEV_ORDER = [Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
@@ -150,6 +167,21 @@ def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: s
             f"CRITICAL composite in H3 {cell}: {len(tk)} tanker orbits ({', '.join(tk)}) near "
             f"active GNSS jamming (R'={_f(jam, 'ratio'):.2f}, {jam.persistence} windows)."
         )
+    if kind == AlertKind.AIS_SPOOFING:
+        sigs = sorted({s for e in group for s in ("A1", "A2", "A3", "A4") if _f(e, s)})
+        return (
+            f"Possible AIS spoofing in H3 {cell}: {len(ents)} MMSI "
+            f"({', '.join(ents[:5])}{'...' if len(ents) > 5 else ''}) with signals "
+            f"{', '.join(sigs)}; {pers}; {cov}."
+        )
+    if kind == AlertKind.AIS_GAP:
+        return (
+            f"AIS dark gap in H3 {cell}: MMSI {', '.join(ents[:5])}"
+            f"{'...' if len(ents) > 5 else ''} silent {_f(lead, 'gap_h'):.1f} h "
+            f"({'still open' if _f(lead, 'open') else 'resumed'}) while "
+            f"{_f(lead, 'covered_frac'):.0%} of hourly bins had good reception nearby; "
+            f"{pers}; {cov}."
+        )
     return f"{kind} in H3 {cell}: {len(group)} evidence items; {pers}; {cov}."
 
 
@@ -158,6 +190,8 @@ _TITLES = {
     AlertKind.GNSS_SPOOFING: "GNSS spoofing",
     AlertKind.MIL_ORBIT: "Military orbit",
     AlertKind.COMPOSITE: "Tanker orbits near GNSS jamming",
+    AlertKind.AIS_SPOOFING: "AIS spoofing",
+    AlertKind.AIS_GAP: "AIS dark gap",
 }
 
 
@@ -193,11 +227,22 @@ def fuse(
     *,
     aoi: str | None = None,
     control: bool = False,
+    notices: Sequence[GeoEvent] | None = None,
 ) -> list[Alert]:
-    """Return new/updated/expired alerts (caller upserts them)."""
+    """Return new/updated/expired alerts (caller upserts them).
+
+    `notices`: active area notices and GFW/SAR events (ADR-005) used only for corroboration.
+    """
     c = _cfg(cfg)
     grades = source_grades or {}
-    gated = [e for e in evidence if e.persistence >= required_persistence(e.kind, c)]
+    gated = [
+        e
+        for e in evidence
+        if e.kind != AlertKind.WARNING_AREA  # context-only: never opens an alert
+        and e.persistence >= required_persistence(e.kind, c)
+    ]
+    xs = cross_source(gated, gated, notices or [], c["corroboration"])
+    fam_idx = family_index(gated, notices or [], c["source_family"])
     groups: dict[tuple[AlertKind, str | None], list[Evidence]] = defaultdict(list)
     for e in gated:
         groups[(e.kind, e.h3_cell)].append(e)
@@ -249,22 +294,23 @@ def fuse(
             touched.add(alert.id)
             out.append(alert)
             continue
-        dom = KIND_DOMAIN.get(kind, Domain.AIR)
-        corr = [
-            Corroboration(
-                domain=KIND_DOMAIN.get(o.kind, Domain.AIR),
-                evidence_id=o.id,
-                relation="context",
-                note=f"co-located {o.kind} evidence in the same cell",
-            )
-            for o in by_cell.get(cell, [])
-            if o.kind != kind and o not in group
-        ]
-        supports_other = any(x.relation == "supports" and x.domain != dom for x in corr)
+        in_group = {e.id for e in group}
+        uniq: dict[tuple[str, str], Corroboration] = {}
+        for e in group:
+            for x in xs.get(e.id, []):
+                if x.evidence_id not in in_group:
+                    uniq.setdefault((x.evidence_id, x.relation), x)
+        corr = sorted(uniq.values(), key=lambda x: (x.relation != "supports", x.evidence_id))
+        fam_own = {family_of(r.source, c["source_family"]) for e in group for r in e.records}
+        fam_sup: set[str] = set()
+        for x in corr:
+            if x.relation == "supports":
+                fam_sup |= fam_idx.get(x.evidence_id, set())
+        families = fam_own | fam_sup
         status_c: CorrStatus = (
             "contradicted"
             if any(x.relation == "contradicts" for x in corr)
-            else ("corroborated" if supports_other else "uncorroborated")
+            else ("corroborated" if len(families) >= 2 else "uncorroborated")
         )
         adm = grade(
             group,
@@ -273,11 +319,15 @@ def fuse(
             required_persistence=required_persistence(lead.kind, c),
             strong_score=c["strong_score"],
             analyst_confirmed=prev is not None and prev.status == AlertStatus.CONFIRMED,
+            families=families,
+            same_family_support=bool(fam_sup & fam_own),
         )
         ev_ids = [e.id for e in sorted(group, key=lambda e: e.id)]
         first = min(e.window_start for e in group)
         last = max(e.window_end for e in group)
         summary = _summary(kind, group, lead, cell) + f" Admiralty {adm}."
+        if len(families) > 1:
+            summary += f" Independent source families: {', '.join(sorted(families))}."
         if control:
             summary += " [control AOI: calibration only, severity capped at info]"
         title = f"{_TITLES.get(kind, str(kind))}" + (f" — {aoi}" if aoi else "")

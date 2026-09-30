@@ -104,5 +104,12 @@ def test_near_jamming_feature() -> None:
 
 
 def test_registry() -> None:
-    assert set(DETECTORS) == {"jamming", "spoofing", "orbit"}
+    assert set(DETECTORS) == {
+        "jamming",
+        "spoofing",
+        "orbit",
+        "ais_spoofing",
+        "ais_gap",
+        "warning_area",
+    }
     assert DETECTORS["orbit"].version == orbit.VERSION
