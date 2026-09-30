@@ -14,7 +14,14 @@ export interface KeyDeps {
 const KEY_HELP: Record<string, string> = {
   OPENSKY_CLIENT_ID: "OpenSky account → Account → API client",
   OPENSKY_CLIENT_SECRET: "OpenSky account → Account → API client",
+  EARTHDATA_TOKEN: "NASA Earthdata (urs.earthdata.nasa.gov) → Generate Token; used for SMAP L-band RFI",
 };
+
+/** Server's plain reason from an Error("422 {\"detail\": ...}"), never the key value. */
+export function keyReason(e: unknown): string {
+  const m = /"detail"\s*:\s*"([^"]{1,80})"/.exec(String(e));
+  return m ? ` (${m[1]})` : "";
+}
 
 export const KEY_BANNER = "Key saved; source restarted. Refresh the page to see new data.";
 export const KEY_CLEARED_BANNER = "Key cleared; source restarted. Refresh the page to see new data.";
@@ -42,7 +49,7 @@ export class KeysSection {
   }
 
   private async submit(name: string, input: HTMLInputElement): Promise<void> {
-    const value = input.value;
+    const value = input.value.trim(); // pasted tokens often carry a trailing newline
     input.value = ""; // clear straight away; the value lives only in this local variable
     if (!value) return;
     try {
@@ -50,8 +57,8 @@ export class KeysSection {
       this.banner = KEY_BANNER;
       this.error = "";
       this.editing = null;
-    } catch {
-      this.error = "The key was not saved. Check it and try again.";
+    } catch (e) {
+      this.error = `The key was not saved${keyReason(e)}. Check it and try again.`;
     }
     await this.load();
   }

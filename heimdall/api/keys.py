@@ -19,7 +19,8 @@ LOCAL_CLIENTS = {"127.0.0.1", "::1", "localhost"}
 
 
 class KeyIn(BaseModel):
-    value: str = Field(min_length=1, max_length=512, pattern=r"^[\x21-\x7e]+$")
+    # 4096: NASA Earthdata tokens are JWTs of ~1 kB (a 512 cap silently rejected them).
+    value: str = Field(min_length=1, max_length=4096, pattern=r"^[\x21-\x7e]+$")
 
 
 def _bad(status: int, msg: str) -> JSONResponse:
@@ -51,7 +52,14 @@ def keys_router(secrets: SecretStore | None, sources: SourceControl | None) -> A
             return denied
         try:
             body = KeyIn.model_validate(await request.json())
-        except (ValidationError, ValueError):
+        except ValidationError as e:
+            kind = e.errors()[0].get("type", "") if e.errors() else ""
+            msg = {
+                "string_too_long": "key too long (max 4096 characters)",
+                "string_pattern_mismatch": "key has spaces or non-printable characters",
+            }.get(kind, "invalid key value")
+            return _bad(422, msg)
+        except ValueError:
             return _bad(422, "invalid key value")
         secrets.set(name, body.value)
         await _restart(sources, KEY_CONNECTORS[name])

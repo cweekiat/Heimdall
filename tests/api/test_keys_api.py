@@ -93,3 +93,14 @@ def test_malformed_body_no_echo(env: tuple[TestClient, FakeSources, Path], paylo
     r = c.put("/api/keys/FAA_NMS_KEY", content=CANARY + "{", headers=LOCAL)
     assert r.status_code == 422 and CANARY not in r.text
     assert src.restarted == []
+
+
+def test_jwt_length_earthdata_token_saves(env: tuple[TestClient, FakeSources, Path]) -> None:
+    """Earthdata tokens are ~1 kB JWTs; the old 512-char cap rejected them (bug 2026-10-01)."""
+    c, src, _ = env
+    jwt_like = "hdr." + "a" * 900 + "." + "b" * 300
+    r = c.put("/api/keys/EARTHDATA_TOKEN", json={"value": jwt_like}, headers=LOCAL)
+    assert r.status_code == 200 and jwt_like not in r.text and src.restarted == ["smap_rfi"]
+    assert c.put("/api/keys/EARTHDATA_TOKEN", json={"value": "x" * 5000}, headers=LOCAL).json() == {
+        "detail": "key too long (max 4096 characters)"
+    }
