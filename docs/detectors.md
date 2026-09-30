@@ -193,6 +193,38 @@ Known limits: pixel jitter across r8 boundaries can leak a flare (T3 ratio is th
 cover mask (crop burning suppressed only via the baseline); persistence is fusion's (>= 2 windows);
 priors, not backtested (calibrate on the FIRMS archive, task 016).
 
+## Internet outage (detect/outage.py, `outage-1.0.0`, ADR-007, task 021b)
+`detect(events, cfg, now, *, aoi)` over IODA `outage_signal` (value = observed/baseline; recomputed from
+attrs if None) and Cloudflare `outage_annotation` GeoEvents, window `window_h` (6 h). Entity =
+`entity_type:entity_code`, located at the mean event lat/lon and required within AOI radius +
+`aoi_margin_km` (100).
+* **O1**: in one time bin >= `min_datasources` (2) datasources have ratio <= `drop_ratio_max` (0.7).
+  Different bins do not add up, so a single-datasource blip is silent.
+* **O2**: an active annotation (`valid_from < window_end`, `valid_to` None or >= window_start) with
+  `attrs.location == entity_code`. Supporting; fires alone only if `annotation_alone` (default false),
+  then keyed `annotation:<loc>` and requiring the annotation to carry lat/lon.
+* Score = clamp(1 - min_ratio) (+0.15 with O2); 0.3 for annotation-only. Features `min_ratio`,
+  `n_datasources`, `duration_h` (first to last qualifying bin + 5 min), `annotation_active`.
+* Coverage: `n_observed` = datasources with data, `confidence = with_data / len(datasources)`; gap
+  "datasource missing: <name>". `geometry` None. `title`/`text` are never read; `attrs.location` is
+  re-sanitised to `[A-Za-z0-9_-]`.
+
+## Night-lights drop (detect/night_lights.py, `night-lights-1.0.0`, ADR-007, task 021b)
+Per r4 cell, nightly `night_lights` events (mean radiance of clean pixels, `attrs.date`, `valid_frac`).
+Valid night: N3 `valid_frac >= min_valid_frac` (0.5); invalid nights are skipped everywhere. Forward pass:
+B = median of the last `baseline_nights` (30) *clean* (not-dropped) valid nights, needing >=
+`min_history_nights` (5); a night is dropped iff N1 `B >= min_baseline_radiance` (5.0) and N2
+`value / B <= drop_ratio_max` (0.5). Dropped nights do not enter the baseline; a non-dropped night resets
+the run. Fire iff the run ends on the latest reported night (which must be valid) and N4 run length >=
+`min_nights` (2), and the latest night is <= `max_lag_days` (10) old. Emits `OUTAGE` with
+`night_lights_ratio` (latest), `worst_ratio`, `baseline_radiance`, `n_dropped_nights`, gap "imagery lag: N
+days" (+ excluded nights, short baseline). Score = (1 - worst_ratio) * min(1, run / (2 min_nights));
+coverage confidence = min(1, clean nights / baseline_nights) * mean valid_frac. Window = first dropped
+night 00:00Z to latest night + 1 d (stable id while the run start is unchanged). Cloudy or unlit cells
+produce nothing (the "gap only" case has no Evidence to attach to). Known limits: a permanent change keeps
+alerting; snow, moonlight and lunar-phase effects are handled only by upstream pixel masking. Priors, not
+backtested (2021 Myanmar / Baltic control).
+
 ## Fusion v0 (fuse/fusion.py) and Admiralty (fuse/admiralty.py)
 1. **Persistence gate** (set by the pipeline). Windows are 30 min at a 5-min step, so counting
    triggered windows would make one short burst "persist" for 6 windows. Per subject
