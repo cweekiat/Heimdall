@@ -221,3 +221,21 @@ async def test_pump_survives_connector_crash() -> None:
             yield []  # pragma: no cover
 
     await pump(_Boom(), MemoryBus())  # logs, does not raise
+
+
+async def test_sea_and_events_keep_flowing_after_first_flush() -> None:
+    """Regression: flush() swaps the buffers; later batches must still be written."""
+    bus, lake, store = MemoryBus(), _Lake(), MemoryStore()
+    w = Writer(bus, lake, store)
+    consumer = asyncio.create_task(w.consume())
+    await asyncio.sleep(0.01)  # let the subscriptions register
+    await bus.publish(TOPIC_SEA, [_sea(563000001)])
+    await asyncio.sleep(0.01)
+    w.flush(T0)
+    await bus.publish(TOPIC_SEA, [_sea(563000002)])
+    await bus.publish(TOPIC_EVENTS, [_evt()])
+    await asyncio.sleep(0.01)
+    w.flush(T0 + timedelta(seconds=2))
+    assert len(store.vessels) == 2 and len(store.events) == 1
+    consumer.cancel()
+    await asyncio.gather(consumer, return_exceptions=True)

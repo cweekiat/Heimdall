@@ -121,9 +121,13 @@ class Writer:
             self.buf.extend(b for b in batch if isinstance(b, AircraftObs))
 
     async def consume(self) -> None:
-        async def _one(topic: str, buf: list[Any], typ: type[BaseModel]) -> None:
+        async def _one(topic: str, attr: str, typ: type[BaseModel]) -> None:
+            # look the buffer up on every batch: flush() swaps in a new list, so a list
+            # captured once would keep collecting rows that are never written
             async for batch in self.bus.subscribe(topic):
-                buf.extend(b for b in batch if isinstance(b, typ))
+                rows = [b for b in batch if isinstance(b, typ)]
+                with self._lock:
+                    getattr(self, attr).extend(rows)
 
         async def _air() -> None:
             async for batch in self.bus.subscribe(TOPIC_AIR):
@@ -131,8 +135,8 @@ class Writer:
 
         await asyncio.gather(
             _air(),
-            _one(TOPIC_SEA, self.sea_buf, VesselObs),
-            _one(TOPIC_EVENTS, self.evt_buf, GeoEvent),
+            _one(TOPIC_SEA, "sea_buf", VesselObs),
+            _one(TOPIC_EVENTS, "evt_buf", GeoEvent),
         )
 
     def _is_dup(self, o: AircraftObs) -> bool:
@@ -171,7 +175,8 @@ class Writer:
         return n
 
     def _flush_sea(self, now: datetime) -> None:
-        rows, self.sea_buf = self.sea_buf, []
+        with self._lock:
+            rows, self.sea_buf = self.sea_buf, []
         for k in [k for k, t in self._sea_seen.items() if now - t > self.ttl]:
             del self._sea_seen[k]
         fresh: list[VesselObs] = []
@@ -185,7 +190,8 @@ class Writer:
             self.n_sea += self.store.insert_vessels(fresh)
 
     def _flush_events(self) -> None:
-        rows, self.evt_buf = self.evt_buf, []
+        with self._lock:
+            rows, self.evt_buf = self.evt_buf, []
         if rows:  # Lake keeps every revision; the Store upserts by id (ADR-004)
             self.lake.append("events", rows)
             self.n_events += self.store.insert_events(rows)
