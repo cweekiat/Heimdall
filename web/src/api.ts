@@ -36,8 +36,28 @@ export interface Corroboration {
   relation: "supports" | "contradicts" | "context";
   note: string;
 }
+export interface AlertSource {
+  connector: string;
+  family: string;
+  admiralty: Admiralty;
+}
+export interface Footprint {
+  kind: "area_cell" | "single_track";
+  description: string;
+}
+/** Write-only view of a stored API key: never the value, at most its last 4 characters. */
+export interface KeyStatus {
+  name: string;
+  connector: string;
+  is_set: boolean;
+  last4: string | null;
+  origin: "store" | "env" | null;
+}
 export interface Alert {
   id: string;
+  ref?: string | null;
+  sources?: AlertSource[];
+  footprint?: Footprint | null;
   kind: string;
   severity: "info" | "low" | "medium" | "high" | "critical";
   confidence: number;
@@ -254,6 +274,15 @@ export const api = {
     post<ActionRec>(`/api/alerts/${encodeURIComponent(id)}/actions`, { action_id }),
   approve: (actionKey: string) => post<ActionRec>(`/api/actions/${encodeURIComponent(actionKey)}/approve`),
   sources: () => req<SourceState[]>("/api/sources"),
+  keys: () => req<KeyStatus[]>("/api/keys"),
+  // Same-origin fetch: the browser adds the Origin header the server checks. The value is sent once and never kept.
+  putKey: (name: string, value: string) =>
+    req<{ saved: boolean }>(`/api/keys/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }),
+    }),
+  deleteKey: (name: string) => req<{ deleted: boolean }>(`/api/keys/${encodeURIComponent(name)}`, { method: "DELETE" }),
   setSource: (key: string, enabled: boolean) => post<SourceState>(`/api/sources/${encodeURIComponent(key)}`, { enabled }),
   air: (bbox: string, sources: string[]) =>
     req<FC<AirProps>>(`/api/traffic/air?bbox=${bbox}&max_age_s=60${sources.length ? `&sources=${sources.join(",")}` : ""}`),

@@ -8,28 +8,13 @@ import type { Provider } from "./basemap";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
 import { h } from "./dom";
-import { kindLabel } from "./labels";
 import { haversineNm } from "./geoutil";
+import { css, currentMode, intensity, rgba, setMode, severityStyle, surfaceRgba } from "./theme/palette";
 
 type RGBA = [number, number, number, number];
 
-export const KIND_COLOR: Record<string, RGBA> = {
-  gnss_jamming: [248, 81, 73, 255],
-  gnss_spoofing: [219, 109, 255, 255],
-  mil_orbit: [88, 166, 255, 255],
-  ais_spoofing: [63, 185, 200, 255],
-  ais_gap: [120, 200, 120, 255],
-  thermal: [255, 140, 0, 255],
-  outage: [200, 200, 200, 255],
-  event_surge: [255, 211, 61, 255],
-  warning_area: [255, 160, 200, 255],
-  composite: [255, 255, 255, 255],
-};
-const GREEN: RGBA = [63, 185, 80, 170];
-const AMBER: RGBA = [210, 153, 34, 190];
-const RED: RGBA = [248, 81, 73, 210];
-
-export const ratioColor = (r: number): RGBA => (r > 0.1 ? RED : r >= 0.02 ? AMBER : GREEN);
+/** Share of affected traffic -> same red, stronger with more; almost none stays a faint neutral. */
+export const ratioColor = (r: number): RGBA => (r < 0.02 ? rgba("neutral", 0.3) : rgba("alert", intensity(Math.min(1, r / 0.3))));
 
 function circle(lat: number, lon: number, nm: number): number[][] {
   const out: number[][] = [];
@@ -57,6 +42,11 @@ export interface MapState {
   asOf: number | null; // global time window end (ms); overrides the slider when set
   tool: "none" | "measure" | "ring";
   points: [number, number][]; // measure polyline / ring centre (+ radius point)
+}
+
+/** Cluster marker opacity: more or higher-priority alerts look stronger, colour stays red. */
+function clusterOpacity(c: { alerts: Alert[] }): number {
+  return c.alerts.length > 1 ? 0.95 : severityStyle(c.alerts[0]!.severity).opacity;
 }
 
 export interface Cluster {
@@ -196,7 +186,9 @@ export class OpsMap {
   }
 
   setTheme(theme: "dark" | "light"): void {
+    setMode(theme);
     this.layers.setTheme(theme);
+    this.render();
   }
 
   flyTo(lon: number, lat: number): void {
@@ -228,10 +220,7 @@ export class OpsMap {
         } as never,
         stroked: true,
         filled: false,
-        getLineColor: (f: { properties: { role: string } }) =>
-          f.properties.role === "control"
-            ? [160, 160, 160, 160]
-            : [88, 166, 255, 160],
+        getLineColor: (f: { properties: { role: string } }) => (f.properties.role === "control" ? rgba("notice", 0.6) : rgba("neutral", 0.7)),
         getLineWidth: 2,
         lineWidthUnits: "pixels",
       }),
@@ -240,7 +229,7 @@ export class OpsMap {
           id: "coverage",
           data: cells,
           getHexagon: (d) => d.h3,
-          getFillColor: (d) => [120, 140, 255, Math.min(200, 30 + d.n_quality * 12)],
+          getFillColor: (d) => rgba("neutral", Math.min(0.5, 0.06 + d.n_quality * 0.02)),
           getElevation: 0,
           extruded: false,
           pickable: false,
@@ -250,8 +239,8 @@ export class OpsMap {
           id: "nodata",
           data: cells.filter((c) => c.n_quality < 3),
           getHexagon: (d) => d.h3,
-          getFillColor: [150, 150, 150, 90],
-          getLineColor: [200, 200, 200, 200],
+          getFillColor: rgba("notice", 0.3),
+          getLineColor: rgba("notice", 0.8),
           lineWidthMinPixels: 1,
           stroked: true,
           extruded: false,
@@ -262,7 +251,7 @@ export class OpsMap {
         data: ratioCells,
         getHexagon: (d) => d.h3,
         getFillColor: (d) => ratioColor(d.ratio ?? 0),
-        getLineColor: [255, 255, 255, 90],
+        getLineColor: rgba("base", 0.35),
         lineWidthMinPixels: 1,
         stroked: true,
         extruded: false,
@@ -273,8 +262,8 @@ export class OpsMap {
         data: s.evidence.filter((e) => e.geometry).map((e) => ({ type: "Feature", properties: {}, geometry: e.geometry })) as never,
         stroked: true,
         filled: true,
-        getFillColor: [248, 81, 73, 50],
-        getLineColor: [248, 81, 73, 255],
+        getFillColor: rgba("alert", 0.2),
+        getLineColor: rgba("alert", 1),
         lineWidthMinPixels: 2,
       }),
       ...(this.extraLayers(s.tool, this.map.getZoom()) as never[]),
@@ -282,7 +271,7 @@ export class OpsMap {
         id: "tracks",
         data: s.tracks,
         getPath: (d) => d.path.map((p) => [p.lon, p.lat] as [number, number]),
-        getColor: [88, 166, 255, 255],
+        getColor: rgba("neutral", 1),
         widthMinPixels: 3,
       }),
       new ScatterplotLayer<Cluster>({
@@ -293,7 +282,7 @@ export class OpsMap {
         radiusUnits: "pixels",
         stroked: true,
         filled: false,
-        getLineColor: [255, 211, 61, 220],
+        getLineColor: rgba("military", 0.9),
         getLineWidth: 3,
         lineWidthUnits: "pixels",
       }),
@@ -301,15 +290,15 @@ export class OpsMap {
         id: "alerts",
         data: clusters,
         getPosition: (c) => [c.lon, c.lat],
-        getFillColor: (c) => (c.alerts.length > 1 ? [110, 118, 129, 235] : (KIND_COLOR[c.alerts[0]!.kind] ?? [255, 255, 255, 255])),
-        getLineColor: (c) => (c.alerts.some((a) => a.id === s.selected) ? [255, 211, 61, 255] : [0, 0, 0, 255]),
+        getFillColor: (c) => rgba("alert", clusterOpacity(c)),
+        getLineColor: (c) => (c.alerts.some((a) => a.id === s.selected) ? rgba("military", 1) : surfaceRgba(1)),
         getLineWidth: (c) => (c.alerts.some((a) => a.id === s.selected) ? 4 : 1.5),
-        getRadius: (c) => (c.alerts.length > 1 ? 14 : c.alerts[0]!.id === s.selected ? 13 : 9),
+        getRadius: (c) => (c.alerts.length > 1 ? 14 : severityStyle(c.alerts[0]!.severity).radius + (c.alerts[0]!.id === s.selected ? 3 : 0)),
         radiusUnits: "pixels",
         lineWidthUnits: "pixels",
         stroked: true,
         pickable: s.tool === "none",
-        updateTriggers: { getLineColor: s.selected, getLineWidth: s.selected, getRadius: s.selected, getFillColor: zoomKey },
+        updateTriggers: { getLineColor: [s.selected, currentMode()], getLineWidth: s.selected, getRadius: s.selected, getFillColor: [zoomKey, currentMode()] },
         onHover: (info) => {
           const c = info.object as Cluster | undefined;
           this.onHover(c ? c.alerts : null, info.x, info.y);
@@ -327,7 +316,7 @@ export class OpsMap {
         getPosition: (c) => [c.lon, c.lat],
         getText: (c) => String(c.alerts.length),
         getSize: 13,
-        getColor: [255, 255, 255, 255],
+        getColor: rgba("base", 1),
         fontWeight: 700,
       }),
       s.points.length > 0 &&
@@ -337,7 +326,7 @@ export class OpsMap {
           getPosition: (d) => d,
           getRadius: 5,
           radiusUnits: "pixels",
-          getFillColor: [255, 211, 61, 255],
+          getFillColor: rgba("military", 1),
         }),
       s.tool === "measure" &&
         s.points.length > 1 &&
@@ -345,7 +334,7 @@ export class OpsMap {
           id: "measure",
           data: [{ p: s.points }],
           getPath: (d) => d.p,
-          getColor: [255, 211, 61, 255],
+          getColor: rgba("military", 1),
           widthMinPixels: 2,
         }),
       s.tool === "ring" &&
@@ -354,7 +343,7 @@ export class OpsMap {
           id: "ring",
           data: [{ p: circle(s.points[0]![1], s.points[0]![0], haversineNm(s.points[0]!, s.points[1]!)) }],
           getPath: (d) => d.p as [number, number][],
-          getColor: [255, 211, 61, 255],
+          getColor: rgba("military", 1),
           widthMinPixels: 2,
         }),
     ];
@@ -363,18 +352,16 @@ export class OpsMap {
 }
 
 export function legend(): HTMLElement {
-  const sw = (c: RGBA | number[], label: string) =>
-    h("span", {}, h("i", { class: "sw", style: `background:rgb(${c[0]},${c[1]},${c[2]})` }), label);
+  const sw = (style: string, label: string) => h("div", { class: "lg" }, h("i", { class: "sw", style }), label);
+  const dot = (c: string) => `background:${c};border-radius:50%`;
   return h(
     "div",
-    {},
-    h("div", {}, "Aircraft affected", sw(GREEN, "<2%"), sw(AMBER, "2-10%"), sw(RED, ">10%")),
-    h(
-      "div",
-      {},
-      "Alerts",
-      ...["gnss_jamming", "gnss_spoofing", "mil_orbit", "composite"].map((k) => sw(KIND_COLOR[k]!, kindLabel(k))),
-    ),
-    h("div", {}, "Coverage", h("i", { class: "sw", style: "background:rgba(150,150,150,.5);outline:1px solid #ccc" }), "grey outline = too little data (no data is not no activity)"),
+    { class: "legend-body" },
+    sw(dot(css("alert")), "Red: needs attention (an alert). Bigger and stronger = higher priority"),
+    sw(`background:${css("alert", 0.25)};outline:1px solid ${css("alert")}`, "Red area: share of aircraft with bad GPS (stronger = more)"),
+    sw(dot(css("neutral")), "Grey-blue: normal aircraft, ships and tracks (aircraft are planes, ships are arrows)"),
+    sw(`background:${css("military")};transform:rotate(45deg)`, "Amber diamond: military aircraft. Amber ring: selected"),
+    sw(`background:transparent;outline:1px dashed ${css("notice")}`, "Grey outline: navigation warning or NOTAM area"),
+    sw(`background:${css("notice", 0.35)};outline:1px solid ${css("notice")}`, "Grey box: too little data to judge (no data is not no activity)"),
   );
 }

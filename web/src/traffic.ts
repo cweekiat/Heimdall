@@ -4,6 +4,7 @@
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { api } from "./api";
 import type { AirProps, FC, SeaProps, SourceState } from "./api";
+import { rgba } from "./theme/palette";
 import { h } from "./dom";
 import { icon, iconButton } from "./icons";
 import { T } from "./labels";
@@ -12,7 +13,6 @@ import { activeSources, filters, matchAir, matchSea, onFilters } from "./filters
 import { closeWindow, createWindow, EDGE_TOP, openWindow, setTitle } from "./wm";
 import { state as store, selectAlert } from "./store";
 
-type RGB = [number, number, number];
 type Pt = { lon: number; lat: number };
 type Air = AirProps & Pt;
 type Sea = SeaProps & Pt;
@@ -31,8 +31,8 @@ function atlas(): HTMLCanvasElement {
   c.width = TILE * NAMES.length;
   c.height = TILE;
   const g = c.getContext("2d")!;
-  g.fillStyle = "#fff";
-  g.strokeStyle = "#fff";
+  g.fillStyle = "white";
+  g.strokeStyle = "white";
   const at = (i: number, f: () => void): void => {
     g.save();
     g.translate(i * TILE + TILE / 2, TILE / 2);
@@ -91,24 +91,9 @@ function atlas(): HTMLCanvasElement {
 }
 const MAPPING = Object.fromEntries(NAMES.map((n, i) => [n, { x: i * TILE, y: 0, width: TILE, height: TILE, mask: true, anchorY: TILE / 2 }]));
 
-// ---- colours
-const lerp = (a: RGB, b: RGB, t: number): RGB => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-const GROUND: RGB = [138, 150, 160];
-const LOW: RGB = [38, 186, 176];
-const HIGH: RGB = [150, 112, 240];
-export function altColour(p: AirProps): RGB {
-  if (p.on_ground) return GROUND;
-  if (p.alt_baro === null) return [120, 170, 200];
-  return lerp(LOW, HIGH, Math.min(1, Math.max(0, p.alt_baro / 40000)));
-}
-const SHIP_RGB: Record<string, RGB> = {
-  cargo: [104, 150, 200],
-  tanker: [150, 120, 178],
-  passenger: [110, 186, 158],
-  fishing: [128, 176, 112],
-  military: [176, 180, 210],
-  other: [128, 140, 154],
-};
+// ---- colours: every normal aircraft/ship/track is the neutral token (shape tells them apart);
+// military is amber; anything in an alert is red (see theme/palette.ts).
+const isMil = (r: { mil?: boolean; ship_class?: string }): boolean => r.mil === true || r.ship_class === "military";
 
 const flat = <P extends object>(fc: FC<P>): (P & Pt)[] =>
   fc.features
@@ -304,7 +289,7 @@ export class Traffic {
     const sel = this.sel;
     const out: unknown[] = [];
     if (this.trail.length > 1) {
-      out.push(new PathLayer<{ p: number[][] }>({ id: "trail", data: [{ p: this.trail }], getPath: (d) => d.p as [number, number][], getColor: [120, 200, 230, 230], widthMinPixels: 2.5 }));
+      out.push(new PathLayer<{ p: number[][] }>({ id: "trail", data: [{ p: this.trail }], getPath: (d) => d.p as [number, number][], getColor: rgba("neutral", 0.9), widthMinPixels: 2.5 }));
     }
     out.push(
       new IconLayer<{ row: Sea; n: number }>({
@@ -316,7 +301,7 @@ export class Traffic {
         getPosition: (d) => [d.row.lon, d.row.lat],
         getAngle: (d) => -(d.row.cog ?? d.row.heading ?? 0),
         getSize: (d) => ((d.row.sog ?? 0) > 0.5 ? 15 : 10),
-        getColor: (d) => [...(SHIP_RGB[d.row.ship_class] ?? SHIP_RGB.other!), 235] as [number, number, number, number],
+        getColor: (d) => (isMil(d.row) ? rgba("military", 0.95) : rgba("neutral", 0.9)),
         sizeUnits: "pixels",
         pickable: pick,
         onHover: (i) => this.hover(i.object ? `${(i.object as { row: Sea }).row.name ?? `MMSI ${(i.object as { row: Sea }).row.mmsi}`} · ${fmtSpeed((i.object as { row: Sea }).row.sog)}` : null, i.x, i.y),
@@ -331,7 +316,7 @@ export class Traffic {
         getPosition: (d) => [d.row.lon, d.row.lat],
         getAngle: (d) => -(d.row.track ?? 0),
         getSize: (d) => (d.row.mil ? 17 : 16),
-        getColor: (d) => [...altColour(d.row), 240] as [number, number, number, number],
+        getColor: (d) => (isMil(d.row) ? rgba("military", 1) : rgba("neutral", 0.95)),
         sizeUnits: "pixels",
         pickable: pick,
         onHover: (i) => {
@@ -349,7 +334,7 @@ export class Traffic {
         radiusUnits: "pixels",
         stroked: true,
         filled: false,
-        getLineColor: [255, 176, 32, 230],
+        getLineColor: rgba("alert", 0.9),
         getLineWidth: 1.2,
         lineWidthUnits: "pixels",
       }),
@@ -362,8 +347,8 @@ export class Traffic {
         radiusUnits: "pixels",
         stroked: true,
         filled: true,
-        getFillColor: [248, 81, 73, 40],
-        getLineColor: [248, 81, 73, 220],
+        getFillColor: rgba("alert", 0.16),
+        getLineColor: rgba("alert", 0.86),
         getLineWidth: 2,
         lineWidthUnits: "pixels",
       }),
@@ -380,7 +365,7 @@ export class Traffic {
             radiusUnits: "pixels",
             stroked: true,
             filled: false,
-            getLineColor: [255, 255, 255, 255],
+            getLineColor: rgba("base", 1),
             getLineWidth: 2,
             lineWidthUnits: "pixels",
           }),
@@ -395,7 +380,7 @@ export class Traffic {
           getPosition: (d) => [d.row.lon, d.row.lat],
           getText: (d) => String(d.n),
           getSize: 11,
-          getColor: [220, 230, 240, 255],
+          getColor: rgba("base", 1),
           getPixelOffset: [12, -12],
           fontWeight: 700,
         }),

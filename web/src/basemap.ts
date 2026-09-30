@@ -4,6 +4,7 @@
 // unaffected by map.setStyle().
 import * as maplibregl from "maplibre-gl";
 import { h } from "./dom";
+import { css, surfaceCss } from "./theme/palette";
 
 export type Provider = "openfreemap" | "carto" | "none";
 type Style = maplibregl.StyleSpecification | string;
@@ -40,7 +41,7 @@ function graticule(): unknown {
 const blank = (theme: Theme): Style => ({
   version: 8,
   sources: {},
-  layers: [{ id: "bg", type: "background", paint: { "background-color": theme === "dark" ? "#0b1016" : "#e9eef3" } }],
+  layers: [{ id: "bg", type: "background", paint: { "background-color": surfaceCss(theme) } }],
 });
 
 const satellite = (): Style => ({
@@ -108,7 +109,7 @@ function hatch(): ImageData {
   const c = document.createElement("canvas");
   c.width = c.height = HATCH;
   const g = c.getContext("2d")!;
-  g.strokeStyle = "rgba(248,81,73,0.85)";
+  g.strokeStyle = css("military", 0.85);
   g.lineWidth = 2;
   g.beginPath();
   g.moveTo(0, HATCH);
@@ -197,6 +198,7 @@ export class BaseLayers {
 
     const on = (id: string) => this.overlays.has(id);
     const dark = this.baseId === "dark" || this.baseId === "satellite" || this.baseId === "blank-dark";
+    const mode: Theme = dark ? "dark" : "light";
     const needsVector = on("borders") || on("military");
     if (needsVector) {
       m.addSource("hm-ofm", { type: "vector", url: `${OFM}/planet`, attribution: OFM_ATTR });
@@ -228,7 +230,7 @@ export class BaseLayers {
         id: "hm-grid",
         type: "line",
         source: "hm-grid",
-        paint: { "line-color": dark ? "#5b7085" : "#8a99a8", "line-width": 0.6, "line-opacity": 0.6 },
+        paint: { "line-color": css("neutral", 1, mode), "line-width": 0.6, "line-opacity": 0.6 },
       });
     }
     if (on("military")) {
@@ -247,7 +249,7 @@ export class BaseLayers {
         source: "hm-ofm",
         "source-layer": "landuse",
         filter: ["==", ["get", "class"], "military"] as never,
-        paint: { "line-color": "#f85149", "line-width": 1.2 },
+        paint: { "line-color": css("military", 1, mode), "line-width": 1.2 },
       });
       m.addLayer({
         id: "hm-runways",
@@ -256,7 +258,7 @@ export class BaseLayers {
         "source-layer": "aeroway",
         minzoom: 8,
         filter: ["in", ["get", "class"], ["literal", ["runway", "taxiway"]]] as never,
-        paint: { "line-color": "#ffd33d", "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1, 14, 5] as never },
+        paint: { "line-color": css("neutral", 1, mode), "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1, 14, 5] as never },
       });
       m.addLayer({
         id: "hm-airports",
@@ -266,8 +268,8 @@ export class BaseLayers {
         minzoom: 4,
         paint: {
           "circle-radius": 5,
-          "circle-color": ["case", ["==", ["get", "class"], "military"], "#f85149", "#ffd33d"] as never,
-          "circle-stroke-color": "#000",
+          "circle-color": ["case", ["==", ["get", "class"], "military"], css("military", 1, mode), css("neutral", 1, mode)] as never,
+          "circle-stroke-color": surfaceCss(mode),
           "circle-stroke-width": 1,
         },
       });
@@ -281,7 +283,7 @@ export class BaseLayers {
         "source-layer": "boundary",
         filter: country as never,
         paint: {
-          "line-color": dark ? "#ffffff" : "#1b2733",
+          "line-color": css("base", 1, mode),
           "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.8, 6, 1.8, 10, 3] as never,
           "line-opacity": 0.9,
         },
@@ -292,7 +294,7 @@ export class BaseLayers {
         source: "hm-ofm",
         "source-layer": "boundary",
         filter: ["all", ["==", ["get", "admin_level"], 2], ["==", ["get", "disputed"], 1]] as never,
-        paint: { "line-color": "#ff9f43", "line-width": 1.6, "line-dasharray": [3, 2] },
+        paint: { "line-color": css("notice", 1, mode), "line-width": 1.6, "line-dasharray": [3, 2] },
       });
     }
     // Text layers need glyphs; CARTO styles use a different font stack, so labels are skipped there.
@@ -312,8 +314,8 @@ export class BaseLayers {
           "text-letter-spacing": 0.08,
         },
         paint: {
-          "text-color": dark ? "#ffffff" : "#14202b",
-          "text-halo-color": dark ? "#0b1016" : "#ffffff",
+          "text-color": css("base", 1, mode),
+          "text-halo-color": surfaceCss(mode),
           "text-halo-width": 1.6,
         },
       });
@@ -333,8 +335,8 @@ export class BaseLayers {
           "text-anchor": "top",
         },
         paint: {
-          "text-color": dark ? "#ffd33d" : "#7a4b00",
-          "text-halo-color": dark ? "#000" : "#fff",
+          "text-color": css("military", 1, mode),
+          "text-halo-color": surfaceCss(mode),
           "text-halo-width": 1.5,
         },
       });
