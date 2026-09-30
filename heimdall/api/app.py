@@ -27,6 +27,7 @@ from heimdall.api.basemap import basemap_router
 from heimdall.api.keys import keys_router
 from heimdall.api.layers import layers_router
 from heimdall.api.traffic import traffic_router
+from heimdall.live import LivePositions
 from heimdall.ports import SecretStore, SourceControl, Store
 from heimdall.schemas import (
     ActionRequest,
@@ -133,6 +134,7 @@ def create_app(
     secrets: SecretStore | None = None,
     aoi_service: AoiService | None = None,
     ui_extra: dict[str, Any] | None = None,
+    live: LivePositions | None = None,
 ) -> FastAPI:
     st: Store = store
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
@@ -505,7 +507,7 @@ def create_app(
                 )
         return sorted(out, key=lambda a: a["ts"], reverse=True)
 
-    app.include_router(traffic_router(st))
+    app.include_router(traffic_router(st, index=live))
     app.include_router(layers_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(

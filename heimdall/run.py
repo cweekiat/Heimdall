@@ -29,6 +29,7 @@ from heimdall.config import sources as load_sources
 from heimdall.geo import haversine_km
 from heimdall.ingest.adsb import merge_providers
 from heimdall.ingest.registry import build_connectors
+from heimdall.live import LivePositions
 from heimdall.logging import configure_logging, get_logger, start_metrics_server
 from heimdall.ports import Bus, Connector, Lake, SourceControl, Store
 from heimdall.schemas import AircraftObs, GeoEvent, VesselObs
@@ -103,8 +104,16 @@ class Writer:
     guarded by `_lock`; Lake/Store writes happen outside the lock.
     """
 
-    def __init__(self, bus: Bus, lake: Lake, store: Store, ttl_s: float = DEDUPE_TTL_S) -> None:
+    def __init__(
+        self,
+        bus: Bus,
+        lake: Lake,
+        store: Store,
+        ttl_s: float = DEDUPE_TTL_S,
+        live: LivePositions | None = None,
+    ) -> None:
         self.bus, self.lake, self.store = bus, lake, store
+        self.live = live  # 026a: latest-fix index the API serves traffic from
         self.ttl = timedelta(seconds=ttl_s)
         self.buf: list[AircraftObs] = []
         self.sea_buf: list[VesselObs] = []
@@ -176,6 +185,10 @@ class Writer:
                 del self._recent[hex_]
             for r in self._recent.values():
                 r.kept = [k for k in r.kept if now - k[3] <= self.ttl]
+            provs = {o.hex: set(self._recent[o.hex].providers) for o in fresh}
+        if self.live is not None:
+            self.live.update_air(fresh, now, provs)
+            self.live.expire(now)
         self._flush_sea(now)
         self._flush_events()
         self._flush_global_air(glob, now)
@@ -197,6 +210,8 @@ class Writer:
                 self._glob_seen[(o.hex, o.ts)] = now
                 fresh.append(o)
         if fresh:
+            if self.live is not None:
+                self.live.update_air(fresh, now)
             self.lake.append(GLOBAL_AIR, fresh)
             self.n_global += self.store.insert_aircraft(fresh)
 
@@ -212,6 +227,8 @@ class Writer:
                 self._sea_seen[key] = now
                 fresh.append(v)
         if fresh:
+            if self.live is not None:
+                self.live.update_sea(fresh, now)
             local = [v for v in fresh if not v.is_global]
             if local:
                 self.lake.append("vessels", local)
@@ -279,6 +296,7 @@ def start_api(
     cfg: Settings,
     sources: SourceControl | None = None,
     aoi_service: AoiService | None = None,
+    live: LivePositions | None = None,
 ) -> Any:
     """Build the in-process API server (ADR-002) if heimdall.api.app is available."""
     try:
@@ -297,7 +315,9 @@ def start_api(
             yield
 
     config = uvicorn.Config(
-        create_app(store, sources=sources, secrets=default_store(), aoi_service=aoi_service),
+        create_app(
+            store, sources=sources, secrets=default_store(), aoi_service=aoi_service, live=live
+        ),
         host=cfg.api.host,
         port=cfg.api.port,
         log_config=None,
@@ -346,7 +366,8 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         manager,
         all_src,
     )
-    writer = Writer(bus, lake, store)
+    live = LivePositions()
+    writer = Writer(bus, lake, store, live=live)
     step_min = int(cfg.detectors.get("jamming", {}).get("step_min", 5))
 
     stop = asyncio.Event()
@@ -363,7 +384,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         asyncio.create_task(tick_loop(store, cfg, step_min)),
     ]
     await manager.start()
-    server = start_api(store, cfg, manager, aoi_svc)
+    server = start_api(store, cfg, manager, aoi_svc, live)
     if server is not None:
         tasks.append(asyncio.create_task(server.serve()))
     log.info("started", connectors=[c.name for c in manager.connectors], step_min=step_min)
