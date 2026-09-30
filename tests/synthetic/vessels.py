@@ -183,12 +183,20 @@ def background_traffic(
     hours: float = 24.0,
     dt_min: int = 10,
     base_mmsi: int = 900000000,
+    along_east_km: float = 150.0,
 ) -> list[VesselObs]:
-    """Ships loitering within ~5 km of (lat, lon), reporting every `dt_min` for `hours`."""
+    """Ships loitering within ~5 km of (lat, lon), reporting every `dt_min` for `hours`.
+
+    `along_east_km` > 0 adds the same cluster every 15 km eastwards (reception along a ship's
+    dead-reckoned track, ais-gap-1.3.0)."""
     out = []
     steps = int(hours * 60 / dt_min)
-    for k in range(n_ships):
-        la, lo = destination(lat, lon, 360.0 * k / n_ships, 3.0)
+    centres = [(lat, lon)] + [
+        destination(lat, lon, 90.0, d) for d in range(15, int(along_east_km) + 1, 15)
+    ]
+    for k in range(n_ships * len(centres)):
+        clat, clon = centres[k // n_ships]
+        la, lo = destination(clat, clon, 360.0 * (k % n_ships) / n_ships, 3.0)
         for i in range(steps):
             ts = end - timedelta(minutes=dt_min * (steps - i)) + timedelta(seconds=7 * k)
             out.append(make_vessel(base_mmsi + k, ts, la, lo, sog=2.0))

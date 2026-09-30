@@ -45,10 +45,9 @@ def test_ship_leaving_aoi_is_not_a_gap() -> None:
     ship = _outbound_transit()
     edge = G.destination(V.LAT0, V.LON0, 90.0, 30.0)  # covered neighbours near the AOI edge
     allv = ship + V.background_traffic(*edge)
-    # old pipeline behaviour (AOI-filtered input) mistook the exit for a dark gap ...
-    filtered = [o for o in allv if _in_aoi(o.lat, o.lon)]
-    assert any(e.entities == [str(ship[0].mmsi)] for e in gap_detect(filtered, {}, END))
-    # ... unfiltered window + assignment by last fix gives nothing
+    # (the old AOI-filtered input used to mistake the exit for a dark gap; since ais-gap-1.3.0 the
+    # coverage probe follows the ship's track, so even that input no longer fires)
+    # unfiltered window + assignment by last fix gives nothing
     evs = gap_detect(allv, {}, END, in_region=_in_aoi)
     assert not [e for e in evs if e.entities == [str(ship[0].mmsi)]]
 

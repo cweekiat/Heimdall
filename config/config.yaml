@@ -129,6 +129,9 @@ detectors:
     gap_neighbor_km: 20     # Prior, not backtested
     gap_covered_frac: 0.5   # gap needs reception evidence in >= half of its hourly bins. Prior
     closed_report_h: 6      # a closed gap is reported for 6 h after it ended. Prior, not backtested
+    gap_dr_max_km: 150      # coverage probed along the ship's expected track (ais-gap-1.3.0). Taiwan 2026-09-30: 55 gap alerts, closed ones were 8-16 kn transits out of receiver range. Prior
+    valid_mmsi_min: 100000000   # skip 0xx group calls
+    valid_mmsi_max: 799999999   # skip 8xx/9xx handhelds, AtoN, SART, fishing-net buoys (900/901/916 seen dark near Taiwan)
   warning_area:             # task 010; ADR-005; every value below is a prior, not backtested
     categories: [military_exercise, live_firing, missile_rocket, gnss_interference]
     aoi_margin_km: 25       # one r4 cell radius. Prior

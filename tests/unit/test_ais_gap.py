@@ -13,7 +13,7 @@ def run(obs: list[VesselObs]) -> list[Evidence]:
 
 def test_covered_open_gap_fires() -> None:
     (e,) = run(V.dark_gap_covered())
-    assert e.kind == AlertKind.AIS_GAP and e.detector_version == "ais-gap-1.2.0"
+    assert e.kind == AlertKind.AIS_GAP and e.detector_version == "ais-gap-1.3.0"
     assert e.entities == [str(TARGET)]
     f = e.features
     assert abs(f["gap_h"] - 5.0) < 0.1 and f["open"] == 1.0 and f["covered_frac"] >= 0.5
@@ -43,7 +43,8 @@ def test_short_gap_does_not_fire() -> None:
 
 def test_closed_gap_reports_distance_and_speed() -> None:
     obs = V.gap_target(silent_h=8.0, resume_after_h=4.0) + V.background_traffic(V.LAT0, V.LON0)
-    (e,) = run(obs)
+    # the single resume fix is followed by silence again (an open gap, covered along its track)
+    (e,) = [x for x in run(obs) if x.features["open"] == 0.0]
     assert e.features["open"] == 0.0 and abs(e.features["gap_h"] - 4.0) < 0.1
     assert e.features["dist_km"] > 50 and e.features["implied_speed_kn"] > 5
     assert len(e.records) == 2
@@ -77,3 +78,15 @@ def test_open_gap_persists_to_two_ticks() -> None:
             _assign_persistence(store, AOI(name="scs", lat=5, lon=105, radius_nm=250), evs, step)
         )
     assert p[0][0].persistence == 1 and p[1][0].persistence == 2
+
+
+def test_ship_sailing_out_of_receiver_range_is_not_dark() -> None:
+    """Taiwan 2026-09-30: transits leaving a shore receiver's range read as dark when coverage was
+    judged at the last fix. Neighbours only around the last fix, ship heading away at 8 kn."""
+    obs = V.gap_target(silent_h=5.0) + V.background_traffic(V.LAT0, V.LON0, along_east_km=0)
+    assert [x for x in run(obs) if x.entities == [str(TARGET)]] == []
+
+
+def test_net_buoy_mmsi_is_ignored() -> None:
+    obs = V.gap_target(mmsi=916000001, silent_h=5.0) + V.background_traffic(V.LAT0, V.LON0)
+    assert [x for x in run(obs) if x.entities == ["916000001"]] == []

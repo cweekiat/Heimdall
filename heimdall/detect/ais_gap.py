@@ -52,7 +52,7 @@ from heimdall.geo import KT_PER_KMH, haversine_km
 from heimdall.schemas import AlertKind, Coverage, Evidence, RecordRef, RuleResult, VesselObs
 
 NAME = "ais_gap"
-VERSION = "ais-gap-1.2.0"
+VERSION = "ais-gap-1.3.0"
 
 DEFAULTS: dict[str, Any] = {
     "h3_res": 4,
@@ -67,6 +67,15 @@ DEFAULTS: dict[str, Any] = {
     "closed_report_h": 6,
     "anchored_nav_status": [1, 5],
     "anchored_sog_kn": 0.5,
+    # Coverage is probed where the ship should be during each hourly bin (interpolated for a
+    # closed gap, dead-reckoned from sog/cog for an open one), not at its last fix: ships sailing
+    # out of a shore receiver's range were read as "dark" (Taiwan, 2026-09-30: closed gaps showed
+    # normal 8-16 kn transits of 55-75 km). Prior, not backtested.
+    "gap_dr_max_km": 150,
+    # Skip 0xx group calls and 8xx/9xx (handhelds, AtoN, SART, fishing-net buoys: Taiwan
+    # 2026-09-30 had 900/901/916 "vessels" going dark). Prior, not backtested.
+    "valid_mmsi_min": 100_000_000,
+    "valid_mmsi_max": 799_999_999,
 }
 
 _GRID_DEG = 0.5  # >= 2 * neighbour radius at any latitude below ~70 deg with a 3x3 search
@@ -107,6 +116,23 @@ def _anchored(o: VesselObs, c: dict[str, Any]) -> bool:
     )
 
 
+def _probe(
+    a: VesselObs, b: VesselObs | None, t: datetime, c: dict[str, Any]
+) -> tuple[float, float]:
+    """Where the vessel should be at time t during its gap."""
+    if b is not None:
+        span = (b.ts - a.ts).total_seconds()
+        f = min(1.0, max(0.0, (t - a.ts).total_seconds() / span)) if span > 0 else 0.0
+        return a.lat + (b.lat - a.lat) * f, a.lon + (b.lon - a.lon) * f
+    if a.sog is None or a.cog is None or a.sog < 0.5:
+        return a.lat, a.lon
+    km = min(c["gap_dr_max_km"], a.sog * 1.852 * (t - a.ts).total_seconds() / 3600.0)
+    br = math.radians(a.cog)
+    dlat = km / 111.32 * math.cos(br)
+    dlon = km / (111.32 * max(0.1, math.cos(math.radians(a.lat)))) * math.sin(br)
+    return a.lat + dlat, a.lon + dlon
+
+
 def find_gaps(
     obs: Sequence[VesselObs],
     cfg: dict[str, Any],
@@ -133,6 +159,8 @@ def find_gaps(
     recent = end - timedelta(hours=c["closed_report_h"])
     out: list[dict[str, Any]] = []
     for mmsi, fx in sorted(by.items()):
+        if not c["valid_mmsi_min"] <= mmsi <= c["valid_mmsi_max"]:
+            continue
         segs: list[tuple[VesselObs, VesselObs | None, datetime]] = [
             (a, b, b.ts) for a, b in itertools.pairwise(fx) if b.ts - a.ts >= min_gap
         ]
@@ -160,19 +188,26 @@ def find_gaps(
                 rec.update(fire=False, reason="anchored")
                 out.append(rec)
                 continue
-            near = [
-                o
-                for o in index.near(a.lat, a.lon, c["gap_neighbor_km"])
-                if o.mmsi != mmsi and a.ts < o.ts < t_end
-            ]
             n_bins = max(1, math.ceil(gap_h - 1e-9))
             if n_bins > 1 and (n_bins - gap_h) * 60.0 > 60.0 - c["gap_min_bin_min"] + 1e-6:
                 n_bins -= 1  # trailing partial bin shorter than gap_min_bin_min: ignored
             per_bin: list[set[int]] = [set() for _ in range(n_bins)]
-            for o in near:
-                k = int((o.ts - a.ts).total_seconds() // 3600)
-                if k < n_bins:
-                    per_bin[k].add(o.mmsi)
+            near: list[VesselObs] = []
+            for k in range(n_bins):
+                b0 = a.ts + timedelta(hours=k)
+                b1 = min(t_end, b0 + timedelta(hours=1))
+                plat, plon = _probe(a, b, b0 + (b1 - b0) / 2, c)
+                for o in index.near(plat, plon, c["gap_neighbor_km"]):
+                    if o.mmsi != mmsi and b0 <= o.ts < b1 and a.ts < o.ts < t_end:
+                        per_bin[k].add(o.mmsi)
+                        near.append(o)
+            if b is None:  # feed-live test at the expected current position
+                plat, plon = _probe(a, b, t_end, c)
+                near += [
+                    o
+                    for o in index.near(plat, plon, c["gap_neighbor_km"])
+                    if o.mmsi != mmsi and a.ts < o.ts < t_end
+                ]
             covered = [len(s) for s in per_bin if len(s) >= c["gap_min_neighbors"]]
             rec["covered_frac"] = len(covered) / n_bins
             rec["neighbors_median"] = median([float(x) for x in covered])
