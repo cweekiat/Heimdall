@@ -312,3 +312,24 @@ class SourceState(BaseModel):
     error_rate: float = 0.0
     reliability: SourceReliability = SourceReliability.F
     needs_key: bool = False
+
+
+# ADR-006: API keys the UI may set (write-only). Maps key name -> connector key in sources.yaml.
+KEY_CONNECTORS: dict[str, str] = dict(
+    [
+        ("AISSTREAM_KEY", "aisstream"),
+        ("GFW_TOKEN", "gfw"),
+        ("FAA_NMS_KEY", "faa_nms_notam"),
+        ("FAA_NMS_SECRET", "faa_nms_notam"),
+    ]
+)
+
+
+class KeyStatus(BaseModel):
+    """Write-only view of a stored API key: never the value, at most its last 4 characters."""
+
+    name: str
+    connector: str
+    is_set: bool = False
+    last4: str | None = None
+    origin: Literal["store", "env"] | None = None

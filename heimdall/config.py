@@ -89,5 +89,7 @@ def playbook() -> dict[str, Any]:
 
 
 def secret(name: str) -> str | None:
-    """Read a secret from env (never from config files)."""
-    return os.environ.get(name) or None
+    """Read a secret from the SecretStore (data/secrets), falling back to env (ADR-006)."""
+    from heimdall.adapters.secrets_file import default_store
+
+    return default_store().get(name)

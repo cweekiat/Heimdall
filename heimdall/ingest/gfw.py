@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -18,7 +17,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from heimdall.config import AOI, Settings
+from heimdall.config import AOI, Settings, secret
 from heimdall.geo import bbox_for_radius, h3_cell, within_radius_nm
 from heimdall.ingest.adsb import SlidingCounter
 from heimdall.ingest.http import CircuitOpenError, RateLimitedClient
@@ -310,7 +309,7 @@ def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connector:
         key,
         str(cfg["base"]),
         settings.aois,
-        os.environ.get(env) or None,
+        secret(env),
         datasets=list(cfg.get("datasets", ["gaps", "loitering", "encounters"])),
         sar=bool(cfg.get("sar", False)),
         lookback_days=int(cfg.get("lookback_days", 3)),

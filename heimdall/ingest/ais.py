@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import random
 import re
 import time
@@ -20,7 +19,7 @@ from typing import Any
 import websockets
 from pydantic import BaseModel, ValidationError
 
-from heimdall.config import AOI, Settings
+from heimdall.config import AOI, Settings, secret
 from heimdall.geo import bbox_for_radius, h3_cell
 from heimdall.ingest.adsb import SlidingCounter
 from heimdall.logging import DROPPED, RECORDS_IN, get_logger
@@ -417,7 +416,7 @@ def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connector:
         key,
         str(cfg["base"]),
         settings.aois,
-        os.environ.get(env) or None,
+        secret(env),
         message_types=list(cfg.get("message_types", DEFAULT_MESSAGE_TYPES)),
         min_interval_s=float(cfg.get("min_interval_s", 10)),
         reliability=SourceReliability(cfg.get("reliability", "B")),

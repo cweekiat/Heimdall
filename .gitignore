@@ -14,3 +14,4 @@ web/dist/
 .claude/worktrees/
 .claude/settings.local.json
 .claude/state/
+data/secrets/

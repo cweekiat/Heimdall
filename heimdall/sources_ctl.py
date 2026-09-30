@@ -196,3 +196,12 @@ class SourceManager:
                 await self._stop(key)
             self._save()
         return self._state(key)
+
+    async def restart(self, key: str) -> None:
+        if key not in self._cfg:
+            raise KeyError(key)
+        if not self._enabled[key]:
+            return
+        await self._stop(key)
+        self._start(key)
+        await self._drain_orphans()
