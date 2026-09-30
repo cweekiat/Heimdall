@@ -12,6 +12,8 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
 import { h } from "./dom";
 import { haversineNm } from "./geoutil";
+import { circleRing, dedupeTail, distNm, toLatLon } from "./aogeo";
+import type { DisplayAo, LonLat } from "./aogeo";
 import { css, currentMode, intensity, rgba, setMode, severityStyle, surfaceRgba } from "./theme/palette";
 
 type RGBA = [number, number, number, number];
@@ -19,24 +21,11 @@ type RGBA = [number, number, number, number];
 /** Share of affected traffic -> same red, stronger with more; almost none stays a faint neutral. */
 export const ratioColor = (r: number): RGBA => (r < 0.02 ? rgba("neutral", 0.3) : rgba("alert", intensity(Math.min(1, r / 0.3))));
 
-function circle(lat: number, lon: number, nm: number): number[][] {
-  const out: number[][] = [];
-  const r = (nm * 1.852) / 6371.0088;
-  const la = (lat * Math.PI) / 180;
-  const lo = (lon * Math.PI) / 180;
-  for (let i = 0; i <= 90; i++) {
-    const b = (i / 90) * 2 * Math.PI;
-    const p = Math.asin(Math.sin(la) * Math.cos(r) + Math.cos(la) * Math.sin(r) * Math.cos(b));
-    const l = lo + Math.atan2(Math.sin(b) * Math.sin(r) * Math.cos(la), Math.cos(r) - Math.sin(la) * Math.sin(p));
-    out.push([(l * 180) / Math.PI, (p * 180) / Math.PI]);
-  }
-  return out;
-}
-
 export interface MapState {
   alerts: Alert[];
   cells: Cell[];
   aois: Aoi[];
+  aoAreas: DisplayAo[]; // outlines to draw (task 015)
   tracks: { hex: string; path: TrackPt[] }[];
   evidence: Evidence[];
   selected: string | null;
@@ -78,6 +67,12 @@ maplibregl.setWorkerUrl(workerUrl);
 // Offline basemap: pmtiles:// URLs are served by HTTP range requests to /basemap/world.pmtiles.
 maplibregl.addProtocol("pmtiles", new Protocol().tile);
 
+export type DrawMode = "circle" | "polygon";
+export type DrawResult =
+  | { shape: "circle"; lat: number; lon: number; radius_nm: number }
+  | { shape: "polygon"; polygon: [number, number][] };
+export type DrawEvent = { kind: "progress"; text: string; ready: boolean } | { kind: "done"; result: DrawResult } | { kind: "cancel" };
+
 export class OpsMap {
   private map: maplibregl.Map;
   readonly layers: BaseLayers;
@@ -89,6 +84,7 @@ export class OpsMap {
     alerts: [],
     cells: [],
     aois: [],
+    aoAreas: [],
     tracks: [],
     evidence: [],
     selected: null,
@@ -101,6 +97,8 @@ export class OpsMap {
   onCursor: (lon: number, lat: number, zoom: number) => void = () => undefined;
   onHover: (a: Alert[] | null, x: number, y: number) => void = () => undefined;
   onTool: () => void = () => undefined;
+  onDraw: (e: DrawEvent) => void = () => undefined;
+  private draw: { mode: DrawMode; pts: LonLat[]; cursor: LonLat | null; dragging: boolean } | null = null;
   /** Fires (debounced by the caller) when the view changes; used to refetch visible traffic. */
   onMove: () => void = () => undefined;
   /** Extra deck layers (traffic, notices) drawn above the alert cells and below alert markers. */
@@ -123,9 +121,11 @@ export class OpsMap {
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     this.map.addControl(new maplibregl.ScaleControl({ unit: "nautical", maxWidth: 120 }), "bottom-left");
     this.map.on("mousemove", (e) => this.onCursor(e.lngLat.lng, e.lngLat.lat, this.map.getZoom()));
+    this.wireDraw();
     this.map.on("zoomend", () => this.render());
     this.map.on("moveend", () => this.onMove());
     this.map.on("click", (e) => {
+      if (this.draw) return;
       if (this.state.tool === "none") return;
       const p: [number, number] = [e.lngLat.lng, e.lngLat.lat];
       this.state.points = this.state.tool === "ring" ? [...this.state.points.slice(0, 1), p].slice(-2) : [...this.state.points, p];
@@ -172,6 +172,147 @@ export class OpsMap {
     if (st.available) return;
     this.hintEl = unavailableHint(st.hint, document) as unknown as HTMLElement;
     this.container.append(this.hintEl);
+  }
+
+  // ---- drawing an area of operation: circle (press centre, drag radius) or polygon (click points, double-click to finish)
+  private wireDraw(): void {
+    const at = (e: { lngLat: { lng: number; lat: number } }): LonLat => [e.lngLat.lng, e.lngLat.lat];
+    const down = (e: { lngLat: { lng: number; lat: number } }): void => {
+      const d = this.draw;
+      if (!d || d.mode !== "circle") return;
+      d.pts = [at(e)];
+      d.cursor = at(e);
+      d.dragging = true;
+      this.render();
+    };
+    const move = (e: { lngLat: { lng: number; lat: number } }): void => {
+      const d = this.draw;
+      if (!d) return;
+      d.cursor = at(e);
+      if (d.mode === "circle" && d.dragging) this.onDraw({ kind: "progress", text: `Radius ${distNm(d.pts[0]!, d.cursor).toFixed(1)} nm. Release to finish.`, ready: false });
+      if (d.mode === "circle" ? d.dragging : d.pts.length > 0) this.render();
+    };
+    const up = (e: { lngLat: { lng: number; lat: number } }): void => {
+      const d = this.draw;
+      if (!d || d.mode !== "circle" || !d.dragging) return;
+      d.dragging = false;
+      const nm = Math.round(distNm(d.pts[0]!, at(e)) * 10) / 10;
+      if (nm < 1) {
+        d.pts = [];
+        this.onDraw({ kind: "progress", text: "Press on the centre, then drag outwards.", ready: false });
+        return this.render();
+      }
+      const [lat, lon] = toLatLon([d.pts[0]!])[0]!;
+      this.endDraw();
+      this.onDraw({ kind: "done", result: { shape: "circle", lat, lon, radius_nm: nm } });
+    };
+    this.map.on("mousedown", down);
+    this.map.on("touchstart", down);
+    this.map.on("mousemove", move);
+    this.map.on("touchmove", move);
+    this.map.on("mouseup", up);
+    this.map.on("touchend", (e) => {
+      const d = this.draw;
+      if (d?.mode === "circle" && d.cursor) up({ lngLat: { lng: d.cursor[0], lat: d.cursor[1] } });
+      else up(e);
+    });
+    this.map.on("click", (e) => {
+      const d = this.draw;
+      if (!d || d.mode !== "polygon") return;
+      d.pts.push(at(e));
+      this.polygonProgress();
+      this.render();
+    });
+    this.map.on("dblclick", (e) => {
+      if (this.draw?.mode !== "polygon") return;
+      e.preventDefault();
+      this.finishPolygon();
+    });
+  }
+
+  private polygonProgress(): void {
+    const n = this.draw?.pts.length ?? 0;
+    this.onDraw({ kind: "progress", text: n < 3 ? `${n} point(s). Click at least 3.` : `${n} points. Double-click, or press Finish, to close the area.`, ready: n >= 3 });
+  }
+
+  startDraw(mode: DrawMode): void {
+    this.setTool("none");
+    this.draw = { mode, pts: [], cursor: null, dragging: false };
+    this.map.getCanvas().style.cursor = "crosshair";
+    this.map.doubleClickZoom.disable();
+    if (mode === "circle") this.map.dragPan.disable();
+    this.onDraw({ kind: "progress", text: mode === "circle" ? "Press on the centre, then drag outwards." : "Click the corners of the area.", ready: false });
+    this.render();
+  }
+
+  private endDraw(): void {
+    this.draw = null;
+    this.map.getCanvas().style.cursor = "";
+    this.map.doubleClickZoom.enable();
+    this.map.dragPan.enable();
+    this.render();
+  }
+
+  cancelDraw(): void {
+    if (!this.draw) return;
+    this.endDraw();
+    this.onDraw({ kind: "cancel" });
+  }
+
+  undoPoint(): void {
+    if (this.draw?.mode !== "polygon" || !this.draw.pts.length) return;
+    this.draw.pts.pop();
+    this.polygonProgress();
+    this.render();
+  }
+
+  finishPolygon(): void {
+    const d = this.draw;
+    if (d?.mode !== "polygon") return;
+    const pts = dedupeTail(d.pts);
+    if (pts.length < 3) {
+      d.pts = pts;
+      this.polygonProgress();
+      return this.render();
+    }
+    this.endDraw();
+    this.onDraw({ kind: "done", result: { shape: "polygon", polygon: toLatLon(pts) } });
+  }
+
+  isDrawing(): boolean {
+    return this.draw !== null;
+  }
+
+  private draftLayers(): unknown[] {
+    const d = this.draw;
+    if (!d || !d.pts.length) return [];
+    let path: LonLat[] = [];
+    if (d.mode === "circle") {
+      if (d.dragging && d.cursor) path = circleRing(d.pts[0]![1], d.pts[0]![0], Math.max(0.5, distNm(d.pts[0]!, d.cursor)));
+    } else {
+      path = [...d.pts, ...(d.cursor ? [d.cursor] : []), d.pts[0]!];
+    }
+    return [
+      new PathLayer<{ p: LonLat[] }>({
+        id: "ao-draft",
+        data: [{ p: path }],
+        getPath: (x) => x.p,
+        getColor: rgba("base", 0.95),
+        widthMinPixels: 2,
+      }),
+      new ScatterplotLayer<LonLat>({
+        id: "ao-draft-pts",
+        data: d.pts,
+        getPosition: (p) => p,
+        getRadius: 5,
+        radiusUnits: "pixels",
+        getFillColor: rgba("base", 1),
+        getLineColor: rgba("military", 1),
+        stroked: true,
+        getLineWidth: 2,
+        lineWidthUnits: "pixels",
+      }),
+    ];
   }
 
   setTool(t: MapState["tool"]): void {
@@ -255,16 +396,29 @@ export class OpsMap {
         id: "aoi",
         data: {
           type: "FeatureCollection",
-          features: s.aois.map((a) => ({
+          features: s.aoAreas.map((a) => ({
             type: "Feature",
-            properties: { name: a.name, role: a.role },
-            geometry: { type: "Polygon", coordinates: [circle(a.lat, a.lon, a.radius_nm)] },
+            properties: { role: a.role, active: a.active },
+            geometry: { type: "Polygon", coordinates: [a.ring] },
           })),
         } as never,
         stroked: true,
         filled: false,
-        getLineColor: (f: { properties: { role: string } }) => (f.properties.role === "control" ? rgba("notice", 0.6) : rgba("neutral", 0.7)),
+        getLineColor: (f: { properties: { role: string; active: boolean } }) =>
+          f.properties.role === "control" ? rgba("notice", f.properties.active ? 0.6 : 0.3) : rgba("neutral", f.properties.active ? 0.7 : 0.35),
         getLineWidth: 2,
+        lineWidthUnits: "pixels",
+      }),
+      new GeoJsonLayer({
+        id: "aoi-selected",
+        data: {
+          type: "FeatureCollection",
+          features: s.aoAreas.filter((a) => a.selected).map((a) => ({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [a.ring] } })),
+        } as never,
+        stroked: true,
+        filled: false,
+        getLineColor: rgba("military", 0.95),
+        getLineWidth: 4,
         lineWidthUnits: "pixels",
       }),
       s.showCoverage &&
@@ -310,6 +464,7 @@ export class OpsMap {
         lineWidthMinPixels: 2,
       }),
       ...(this.extraLayers(s.tool, this.map.getZoom()) as never[]),
+      ...(this.draftLayers() as never[]),
       new PathLayer<{ hex: string; path: TrackPt[] }>({
         id: "tracks",
         data: s.tracks,
@@ -384,7 +539,7 @@ export class OpsMap {
         s.points.length > 1 &&
         new PathLayer<{ p: number[][] }>({
           id: "ring",
-          data: [{ p: circle(s.points[0]![1], s.points[0]![0], haversineNm(s.points[0]!, s.points[1]!)) }],
+          data: [{ p: circleRing(s.points[0]![1], s.points[0]![0], haversineNm(s.points[0]!, s.points[1]!)) }],
           getPath: (d) => d.p as [number, number][],
           getColor: rgba("military", 1),
           widthMinPixels: 2,
@@ -405,6 +560,7 @@ export function legend(): HTMLElement {
     sw(dot(css("neutral")), "Grey-blue: normal aircraft, ships and tracks (aircraft are planes, ships are arrows)"),
     sw(`background:${css("military")};transform:rotate(45deg)`, "Amber diamond: military aircraft. Amber ring: selected"),
     sw(`background:transparent;outline:1px dashed ${css("notice")}`, "Grey outline: navigation warning or NOTAM area"),
+    sw(`background:transparent;outline:2px solid ${css("neutral")}`, "Thin outline: a monitored area. Draw your own with the pen icon (amber = selected)"),
     sw(`background:${css("notice", 0.35)};outline:1px solid ${css("notice")}`, "Grey box: too little data to judge (no data is not no activity)"),
   );
 }

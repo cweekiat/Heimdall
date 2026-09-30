@@ -62,6 +62,7 @@ export const T = {
   brandTip: "Public-source information only. Alerts are unconfirmed until a second source agrees.",
   area: "Area",
   areas: "Areas",
+  drawAreas: "Draw areas",
   alerts: "Alerts",
   type: "Type",
   status: "Status",

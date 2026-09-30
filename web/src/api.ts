@@ -146,6 +146,29 @@ export interface Aoi {
   lon: number;
   radius_nm: number;
   label?: string | null;
+  /** "user" = drawn in the UI; polygon is [lat, lon] vertices when drawn as a polygon (lat/lon/radius are its bounding circle). */
+  origin?: "config" | "user";
+  polygon?: [number, number][] | null;
+}
+export interface UserAoi {
+  id: string;
+  name: string;
+  role: "primary" | "control";
+  active: boolean;
+  shape: "circle" | "polygon";
+  lat: number;
+  lon: number;
+  radius_nm: number;
+  polygon: [number, number][] | null;
+}
+export interface NewAoi {
+  name: string;
+  role: "primary" | "control";
+  shape: "circle" | "polygon";
+  lat?: number;
+  lon?: number;
+  radius_nm?: number;
+  polygon?: [number, number][];
 }
 export interface SourceHealth {
   source: string;
@@ -256,6 +279,11 @@ export const api = {
   alert: (id: string) => req<AlertDetail>(`/api/alerts/${encodeURIComponent(id)}`),
   cells: () => req<Cell[]>("/api/cells?res=4"),
   aois: () => req<Aoi[]>("/api/aois"),
+  userAois: () => req<UserAoi[]>("/api/aois/user"),
+  createAoi: (a: NewAoi) => post<UserAoi>("/api/aois/user", a),
+  patchAoi: (id: string, p: Partial<Pick<UserAoi, "name" | "role" | "active">>) =>
+    req<UserAoi>(`/api/aois/user/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }),
+  deleteAoi: (id: string) => req<{ deleted: boolean }>(`/api/aois/user/${encodeURIComponent(id)}`, { method: "DELETE" }),
   aoiSummary: () => req<AoiSummary[]>("/api/aois/summary"),
   setStatus: (id: string, status: AlertStatus, reason?: string, shelve_until?: string) =>
     post<{ alert: Alert; note: Note }>(`/api/alerts/${encodeURIComponent(id)}/status`, { status, reason, shelve_until }),
