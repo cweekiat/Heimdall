@@ -107,6 +107,9 @@ def _retry_after(resp: httpx.Response) -> float | None:
             return None
 
 
+MIN_RPS = 0.05  # floor for adaptive slow-down after HTTP 429 (one request per 20 s)
+
+
 class RateLimitedClient:
     def __init__(
         self,
@@ -127,6 +130,8 @@ class RateLimitedClient:
         self.backoff_cap = backoff_cap
         self._sleep = sleep
         self.bucket = TokenBucket(rps, clock=clock, sleep=sleep)
+        self.max_rps = rps
+        self.min_rps = min(rps, MIN_RPS)
         self.breaker = CircuitBreaker(clock=clock)
         self._client = httpx.AsyncClient(
             headers={"User-Agent": USER_AGENT}, timeout=timeout, transport=transport
@@ -157,12 +162,18 @@ class RateLimitedClient:
             except httpx.TransportError as e:
                 last_exc = e
             else:
+                if resp.status_code == 429:
+                    # adaptive: the server says we are too fast, so halve our own rate
+                    self.bucket.rate = max(self.min_rps, self.bucket.rate / 2)
+                    log.info("rate_reduced", source=self.source, rps=round(self.bucket.rate, 3))
                 if resp.status_code == 429 or resp.status_code >= 500:
                     last_exc = httpx.HTTPStatusError(
                         f"{resp.status_code}", request=resp.request, response=resp
                     )
                 else:
                     self.breaker.success()
+                    # recover slowly (+5% per success) back towards the configured rate
+                    self.bucket.rate = min(self.max_rps, self.bucket.rate * 1.05)
                     resp.raise_for_status()  # other 4xx: not retryable
                     return resp
             self._fail()
