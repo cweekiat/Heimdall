@@ -279,6 +279,11 @@ export function placeWindow(id: string, x: number, y: number): void {
   w.geo = clamp({ ...w.geo, x, y });
   apply(w);
 }
+/** Current on-screen box of a window (for placing another beside it). */
+export function winRect(id: string): { x: number; y: number; w: number; h: number } | null {
+  const w = wins.get(id);
+  return w && w.open ? { ...w.geo } : null;
+}
 export const hasSavedGeometry = (id: string): boolean => Boolean(saved[id]);
 /** Close the focused window (Esc). Returns true if one was closed. */
 export function closeFocused(): boolean {

@@ -146,6 +146,79 @@ export interface TrackPt {
   gs: number | null;
 }
 
+export interface GeoFeature {
+  type: "Feature";
+  geometry: { type: string; coordinates: number[][] };
+  properties: Record<string, unknown>;
+}
+export interface FC<P> {
+  type: "FeatureCollection";
+  features: { type: "Feature"; geometry: { type: string; coordinates: unknown }; properties: P }[];
+  truncated?: boolean;
+}
+export interface AirProps {
+  hex: string;
+  flight: string | null;
+  registration: string | null;
+  type_code: string | null;
+  mil: boolean;
+  alt_baro: number | null;
+  gs: number | null;
+  track: number | null;
+  on_ground: boolean;
+  provider: string;
+  providers: string[];
+  age_s: number;
+  gps_bad: boolean;
+  in_alert: boolean;
+  squawk?: string | null;
+}
+export interface SeaProps {
+  mmsi: number;
+  name: string | null;
+  ship_type: number | null;
+  ship_class: string;
+  sog: number | null;
+  cog: number | null;
+  heading: number | null;
+  destination: string | null;
+  provider: string;
+  age_s: number;
+  in_alert: boolean;
+}
+export interface NoticeProps {
+  id: string;
+  source: string;
+  kind: string;
+  category: string | null;
+  ref: string | null;
+  title: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  url: string | null;
+  alt_lower_ft: number | null;
+  alt_upper_ft: number | null;
+  text: string;
+}
+export interface SourceState {
+  key: string;
+  label: string;
+  domain: string;
+  enabled: boolean;
+  status: "ok" | "degraded" | "down" | "needs_key" | "disabled" | "off";
+  detail: string | null;
+  last_ok: string | null;
+  records_last_hour: number;
+  error_rate: number;
+  reliability: string;
+  needs_key: boolean;
+}
+export interface BoardAction extends ActionRec {
+  alert: { id: string; title: string; kind: string; severity: string };
+  label: string;
+  risk: "low" | "high";
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, init);
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
@@ -180,5 +253,15 @@ export const api = {
   propose: (id: string, action_id: string) =>
     post<ActionRec>(`/api/alerts/${encodeURIComponent(id)}/actions`, { action_id }),
   approve: (actionKey: string) => post<ActionRec>(`/api/actions/${encodeURIComponent(actionKey)}/approve`),
+  sources: () => req<SourceState[]>("/api/sources"),
+  setSource: (key: string, enabled: boolean) => post<SourceState>(`/api/sources/${encodeURIComponent(key)}`, { enabled }),
+  air: (bbox: string, sources: string[]) =>
+    req<FC<AirProps>>(`/api/traffic/air?bbox=${bbox}&max_age_s=60${sources.length ? `&sources=${sources.join(",")}` : ""}`),
+  sea: (bbox: string, sources: string[]) =>
+    req<FC<SeaProps>>(`/api/traffic/sea?bbox=${bbox}&max_age_s=900${sources.length ? `&sources=${sources.join(",")}` : ""}`),
+  airTrail: (hex: string) => req<GeoFeature>(`/api/traffic/air/${encodeURIComponent(hex)}/trail?min=30`),
+  seaTrail: (mmsi: number) => req<GeoFeature>(`/api/traffic/sea/${mmsi}/trail?min=120`),
+  notices: () => req<FC<NoticeProps>>("/api/notices"),
+  board: (sinceH = 72) => req<BoardAction[]>(`/api/actions?since_h=${sinceH}`),
   reject: (actionKey: string) => post<ActionRec>(`/api/actions/${encodeURIComponent(actionKey)}/reject`),
 };

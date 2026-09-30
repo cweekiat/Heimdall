@@ -1,6 +1,7 @@
 import "./style.css";
 import { api } from "./api";
 import type { Alert } from "./api";
+import { ActionsBoard } from "./actionsboard";
 import { renderBoard } from "./board";
 import { ago, h } from "./dom";
 import { icon, iconButton } from "./icons";
@@ -10,12 +11,16 @@ import { installKeys } from "./keys";
 import { alertTitle, aoiName, CORROBORATION_LABEL, setAois, sourceLabel, T, truthLabel } from "./labels";
 import type { OpsMap } from "./map";
 import { showHelp, showShift } from "./overlays";
-import { PRIORITY, renderHealth, renderQueue, visibleAlerts } from "./panels";
+import { PRIORITY, renderQueue, visibleAlerts } from "./panels";
 import { patch, refreshAll, refreshHealth, selectAlert, state, subscribe, triage, upsertAlert } from "./store";
 import { renderTimeline } from "./timeline";
 import { mountToolbar, setAlertBadge } from "./toolbar";
 import type { Tool } from "./toolbar";
-import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, isOpen, openWindow, toggleWindow } from "./wm";
+import { Sources } from "./sources";
+import { Traffic } from "./traffic";
+import { Notices } from "./notices";
+import { filters, mountFilters, onFilters } from "./filters";
+import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, hasSavedGeometry, isOpen, openWindow, placeWindow, toggleWindow, winRect } from "./wm";
 
 const $ = (id: string): HTMLElement => document.getElementById(id) as HTMLElement;
 
@@ -35,12 +40,11 @@ function cycleTheme(): void {
 
 // ---- windows (the map is the whole viewport; everything else floats above it)
 const layersBody = h("div", { id: "layers-body" });
-const placeholder = (text: string): HTMLElement => h("div", { class: "empty" }, text);
 createWindow({ id: "queue", title: T.alerts, icon: "alerts", body: $("queue"), x: EDGE_LEFT + 8, y: EDGE_TOP + 8, w: 380, h: 560 });
 createWindow({ id: "board", title: T.areas, icon: "areas", body: $("board"), x: EDGE_LEFT + 8, y: EDGE_TOP + 8, w: 340, h: 340 });
 createWindow({ id: "layers", title: T.layers, icon: "layers", body: layersBody, x: -60, y: EDGE_TOP + 8, w: 320, h: 520 });
-createWindow({ id: "sources", title: T.sources, icon: "sources", body: $("health"), x: -60, y: EDGE_TOP + 8, w: 620, h: 420, onOpen: () => void refreshHealth().catch(() => undefined) });
-createWindow({ id: "actions", title: T.actions, icon: "actions", body: h("div", { id: "actions-body" }, placeholder(T.placeholderActions)), x: -60, y: EDGE_TOP + 8, w: 560, h: 420 });
+const sourcesWin = new Sources();
+const actionsWin = new ActionsBoard();
 createWindow({ id: "timeline", title: T.timeline, icon: "timeline", body: $("timeline"), x: EDGE_LEFT + 8, y: -12, w: 820, h: 220, minH: 140 });
 createWindow({
   id: "inspector",
@@ -228,6 +232,25 @@ function renderToast(): void {
 
 // ---- linked rendering
 let lastSelected: string | null = null;
+/** Open the details window beside the selected alert (its map marker, else the alert list); once the analyst moves it, that spot is remembered. */
+function placeInspector(): void {
+  if (hasSavedGeometry("inspector") || window.innerWidth < 768) return;
+  const a = state.alerts.find((x) => x.id === state.selected);
+  const w = 440;
+  const vw = window.innerWidth;
+  if (ops && a && a.lat !== null && a.lon !== null) {
+    const p = ops.project(a.lon, a.lat);
+    const off = $("map").getBoundingClientRect();
+    const px = p.x + off.left;
+    const py = p.y + off.top;
+    if (px >= 0 && px <= vw && py >= 0) {
+      placeWindow("inspector", px + 26 + w <= vw - 8 ? px + 26 : px - 26 - w, py - 60);
+      return;
+    }
+  }
+  const q = winRect("queue");
+  if (q) placeWindow("inspector", q.x + q.w + 8 + w <= vw ? q.x + q.w + 8 : q.x - w - 8, q.y);
+}
 function draw(changed: Set<string>): void {
   const has = (...k: string[]): boolean => k.some((x) => changed.has(x));
   if (has("alerts", "filters", "selected", "checked", "window")) {
@@ -245,14 +268,16 @@ function draw(changed: Set<string>): void {
   }
   if (has("selected") && state.selected !== lastSelected) {
     lastSelected = state.selected;
-    if (state.selected) openWindow("inspector");
+    if (state.selected) {
+      openWindow("inspector");
+      placeInspector();
+    }
     else closeWindow("inspector");
   }
   if (has("alerts", "window", "playing", "filters")) renderTimeline($("timeline"));
-  if (has("health")) renderHealth($("health"), state.health);
   if (ops && has("alerts", "cells", "aois", "selected", "detail", "tracks", "filters", "window")) {
     Object.assign(ops.state, {
-      alerts: visibleAlerts(),
+      alerts: filters.alerts ? visibleAlerts() : [],
       cells: state.cells,
       aois: state.aois,
       selected: state.selected,
@@ -292,11 +317,32 @@ async function boot(): Promise<void> {
     ops = new OpsMapCls($("map"), theme === "light" ? "light" : "dark", ui.basemap, ui.overlays, (id) => void selectAlert(id, false));
     $("legend").replaceChildren(legend());
     wireMapExtras(ops);
+    const traffic = new Traffic(ops, $("mapwrap"));
+    const notices = new Notices(ops);
+    ops.extraLayers = (tool, zoom) => [...notices.layers(tool), ...traffic.layers(tool, zoom)];
+    const filterBox = h("div", { class: "filters" });
+    const refreshFilters = mountFilters(filterBox, { counts: traffic.getCounts, sources: () => sourcesWin.list });
+    traffic.onCounts = refreshFilters;
+    sourcesWin.onChange = () => {
+      traffic.setSources(sourcesWin.list);
+      refreshFilters();
+    };
+    onFilters(() => {
+      if (ops) ops.state.alerts = filters.alerts ? visibleAlerts() : [];
+      ops?.render();
+    });
     getBody("layers")!.replaceChildren(
-      h("label", { for: "cov", class: "chk" }, cov, T.coverageLayer),
-      h("label", { class: "chk" }, "Look back ", slider, sliderLbl),
+      filterBox,
+      h("fieldset", {}, h("legend", {}, T.mapExtras), h("label", { for: "cov", class: "chk" }, cov, T.coverageLayer), h("label", { class: "chk" }, "Look back ", slider, sliderLbl)),
       ops.layers.panel(),
     );
+    void sourcesWin.refresh().then(() => {
+      traffic.start();
+      void notices.refresh();
+    });
+    setInterval(() => void notices.refresh(), 300_000);
+    setInterval(() => void sourcesWin.refresh(), 60_000);
+    void actionsWin.refresh();
     await Promise.all([refreshAll(), refreshHealth().catch(() => undefined)]);
     patch({ aois });
   } catch (e) {
