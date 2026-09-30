@@ -29,11 +29,19 @@ uv sync                       # Python deps (creates .venv)
 cd web && npm ci && npm run build && cd ..   # builds web/dist, served by the API
 ```
 
-Optional API keys are needed from Phase 2 onward:
+Optional API keys (Phase 2+). Each keyed source switches itself off and shows "needs key" in Data health until its key is set:
 
 ```bash
 cp env.example .env           # then fill in only the keys you have; never commit .env
 ```
+
+| Source | Key(s) in `.env` | Free sign-up | Without a key |
+|---|---|---|---|
+| AISStream (live ships) | `AISSTREAM_KEY` | aisstream.io | shows **needs key**, makes no requests |
+| Global Fishing Watch (gaps, loitering, encounters) | `GFW_TOKEN` | globalfishingwatch.org (non-commercial) | needs key |
+| FAA NOTAMs | `FAA_NMS_KEY`, `FAA_NMS_SECRET` | FAA NMS API (approval) | needs key |
+| NGA MSI nav warnings | none | — | runs (portal was under maintenance at last check → shows **down**) |
+| China MSA nav warnings | none | — | off by default (`enabled: false`): blocks non-China IPs |
 
 Phase 1 needs **no keys**: adsb.lol and adsb.fi are free and keyless. airplanes.live now grants access by approval only, so it is off (`enabled: false` in `config/sources.yaml`) until you have it.
 
