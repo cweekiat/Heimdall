@@ -114,6 +114,7 @@ class AdsbAggregatorConnector:
         self.sweep = list(sweep)
         self.sweep_every = max(1, sweep_every)
         self.sweep_backoff = sweep_backoff
+        self._k = 0  # AOI round-robin position
         self._j = 0  # sweep position
         self._pass = 0  # completed sweep passes
         self._skip_until: dict[int, int] = {}
@@ -170,7 +171,9 @@ class AdsbAggregatorConnector:
                 return [o.model_copy(update={"is_global": True}) for o in obs]
         if not self.aois:
             return []
-        return await self._poll(self.aois[self._i % len(self.aois)])
+        aoi = self.aois[self._k % len(self.aois)]
+        self._k += 1
+        return await self._poll(aoi)
 
     async def _poll(self, aoi: AOI) -> list[AircraftObs]:
         try:
