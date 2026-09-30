@@ -13,6 +13,7 @@ from heimdall.api.app import create_app
 from heimdall.api.demo import seed
 
 HOSTS = ["testserver", "127.0.0.1", "localhost"]
+OH = {"Origin": "http://testserver"}
 PB = {
     "actions": {
         "watch_cell": {"label": "w", "risk": "low", "applies_to": ["gnss_jamming"]},
@@ -24,7 +25,7 @@ PB = {
 @pytest.fixture
 def client() -> TestClient:
     store = seed(MemoryStore())
-    return TestClient(create_app(store, playbook=PB, allowed_hosts=HOSTS))
+    return TestClient(create_app(store, playbook=PB, allowed_hosts=HOSTS), headers=OH)
 
 
 def test_health_aois_playbook(client: TestClient) -> None:
@@ -134,7 +135,9 @@ def test_host_and_origin_guards(client: TestClient) -> None:
 
 def test_ui_config_default_and_override(client: TestClient) -> None:
     assert client.get("/api/ui-config").json()["basemap"] == "openfreemap"
-    c = TestClient(create_app(MemoryStore(), playbook=PB, allowed_hosts=HOSTS, basemap="carto"))
+    c = TestClient(
+        create_app(MemoryStore(), playbook=PB, allowed_hosts=HOSTS, basemap="carto"), headers=OH
+    )
     assert c.get("/api/ui-config").json()["basemap"] == "carto"
 
 
@@ -146,7 +149,7 @@ def test_composite_store_duckdb_status_overrides_only(tmp_path: Path) -> None:
     main = DuckDBStore(main_path, read_only=True)  # pipeline-owned, never written by the API
     analyst = DuckDBStore(tmp_path / "analyst.duckdb")
     comp = CompositeStore(main, analyst)
-    c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS))
+    c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS), headers=OH)
     assert len(c.get("/api/alerts").json()) == 8
     assert (
         c.post(

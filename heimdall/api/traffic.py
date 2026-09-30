@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Path, Query
 
 from heimdall import config
-from heimdall.geo import haversine_km
+from heimdall.geo import BBox, haversine_km, in_bbox
 from heimdall.ports import Store
 from heimdall.schemas import AircraftObs, AlertStatus, VesselObs
 
@@ -24,9 +24,9 @@ NOTICE_KINDS = ["nav_warning", "notam"]
 NOTICE_LOOKBACK = timedelta(days=30)
 TEXT_MAX = 2000
 _OPEN = (AlertStatus.NEW, AlertStatus.ACKNOWLEDGED, AlertStatus.UNDER_REVIEW)
+AT_MIN = datetime(2000, 1, 1, tzinfo=UTC)
+AT_MAX = datetime(2100, 1, 1, tzinfo=UTC)
 _FUTURE = timedelta(minutes=5)  # tolerate small clock skew on fix timestamps
-
-BBox = tuple[float, float, float, float]
 
 
 def parse_bbox(raw: str) -> BBox:
@@ -39,13 +39,6 @@ def parse_bbox(raw: str) -> BBox:
     if not (-90 <= s < n <= 90 and -180 <= w <= 180 and -180 <= e <= 180):
         raise HTTPException(422, "bbox out of range")
     return w, s, e, n
-
-
-def in_bbox(lat: float, lon: float, bb: BBox) -> bool:
-    w, s, e, n = bb
-    if not s <= lat <= n:
-        return False
-    return w <= lon <= e if w <= e else (lon >= w or lon <= e)  # w > e crosses the antimeridian
 
 
 def _source_filter(raw: str | None) -> set[str] | None:
@@ -112,12 +105,19 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
     r = APIRouter()
     clock = now or (lambda: datetime.now(UTC))
 
+    cache: dict[str, Any] = {"key": None, "ids": set()}
+
     def in_alert_entities() -> set[str]:
+        # One list_alerts per poll; the evidence lookup is redone only when the open-alert set
+        # (ids, status, evidence ids) changes.
         t = clock()
-        ids: set[str] = set()
-        for al in store.list_alerts(since=t - timedelta(hours=24), status=list(_OPEN), limit=1000):
-            ids.update(e.lower() for ev in store.get_evidence(al.evidence_ids) for e in ev.entities)
-        return ids
+        alerts = store.list_alerts(since=t - timedelta(hours=24), status=list(_OPEN), limit=1000)
+        key = tuple((a.id, a.status, tuple(a.evidence_ids)) for a in alerts)
+        if cache["key"] != key:
+            ev_ids = sorted({i for a in alerts for i in a.evidence_ids})
+            cache["ids"] = {e.lower() for ev in store.get_evidence(ev_ids) for e in ev.entities}
+            cache["key"] = key
+        return cache["ids"]
 
     @r.get("/api/traffic/air")
     def air(
@@ -126,7 +126,7 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
         sources: str | None = None,
     ) -> dict[str, Any]:
         bb, want, t = parse_bbox(bbox), _source_filter(sources), clock()
-        rows = store.aircraft_window(t - timedelta(seconds=max_age_s), t + _FUTURE)
+        rows = store.aircraft_window(t - timedelta(seconds=max_age_s), t + _FUTURE, bbox=bb)
         latest: dict[str, AircraftObs] = {}
         provs: dict[str, set[str]] = {}
         for o in sorted(rows, key=lambda x: x.ts):
@@ -172,7 +172,7 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
         sources: str | None = None,
     ) -> dict[str, Any]:
         bb, want, t = parse_bbox(bbox), _source_filter(sources), clock()
-        rows = store.vessels_window(t - timedelta(seconds=max_age_s), t + _FUTURE)
+        rows = store.vessels_window(t - timedelta(seconds=max_age_s), t + _FUTURE, bbox=bb)
         latest: dict[int, VesselObs] = {}
         for v in sorted(rows, key=lambda x: x.ts):
             if want is None or _pkey(v.provider) in want:
@@ -221,9 +221,7 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
         hex_id: str = Path(pattern=r"^~?[0-9a-fA-F]{6}$"), min: int = Query(30, ge=1, le=1440)
     ) -> dict[str, Any]:
         t, h = clock(), hex_id.lower()
-        rows = [
-            o for o in store.aircraft_window(t - timedelta(minutes=min), t + _FUTURE) if o.hex == h
-        ]
+        rows = store.aircraft_window(t - timedelta(minutes=min), t + _FUTURE, ident=h)
         rows.sort(key=lambda o: o.ts)
         return _trail([[o.lon, o.lat] for o in rows], {"hex": h, "n": len(rows)})
 
@@ -232,11 +230,7 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
         mmsi: int = Path(ge=0, le=999_999_999), min: int = Query(120, ge=1, le=1440)
     ) -> dict[str, Any]:
         t = clock()
-        rows = [
-            v
-            for v in store.vessels_window(t - timedelta(minutes=min), t + _FUTURE)
-            if v.mmsi == mmsi
-        ]
+        rows = store.vessels_window(t - timedelta(minutes=min), t + _FUTURE, ident=mmsi)
         rows.sort(key=lambda v: v.ts)
         return _trail([[v.lon, v.lat] for v in rows], {"mmsi": mmsi, "n": len(rows)})
 
@@ -248,7 +242,9 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
                 t = datetime.fromisoformat(at.replace("Z", "+00:00"))
             except ValueError as e:
                 raise HTTPException(422, f"invalid at: {at}") from e
-            t = t if t.tzinfo else t.replace(tzinfo=UTC)
+            t = t.astimezone(UTC) if t.tzinfo else t.replace(tzinfo=UTC)
+            if not AT_MIN <= t <= AT_MAX:
+                raise HTTPException(422, "at out of range")
         area = None
         if aoi:
             match = [a for a in config.settings().aois if a.name == aoi]

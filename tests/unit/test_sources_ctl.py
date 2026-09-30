@@ -105,7 +105,7 @@ async def test_unknown_key(tmp_path: Path) -> None:
 def test_api_toggle_unknown_origin_and_key_format(tmp_path: Path) -> None:
     m = _manager(tmp_path / "s.json", [])
     app = create_app(MemoryStore(), playbook={"actions": {}}, allowed_hosts=HOSTS, sources=m)
-    with TestClient(app) as c:
+    with TestClient(app, headers={"Origin": "http://testserver"}) as c:
         assert {s["key"] for s in c.get("/api/sources").json()} == {"alpha", "beta"}
         r = c.post("/api/sources/beta", json={"enabled": True})
         assert r.status_code == 200 and r.json()["status"] == "ok"

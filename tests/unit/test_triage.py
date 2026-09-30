@@ -13,6 +13,7 @@ from heimdall.api.demo import seed
 from heimdall.schemas import Alert, AlertStatus
 
 HOSTS = ["testserver", "127.0.0.1", "localhost"]
+OH = {"Origin": "http://testserver"}
 PB = {"actions": {"export_brief": {"label": "e", "risk": "low", "applies_to": ["*"]}}}
 S = AlertStatus
 
@@ -26,7 +27,7 @@ def store() -> MemoryStore:
 
 @pytest.fixture
 def client(store: MemoryStore) -> TestClient:
-    return TestClient(create_app(store, playbook=PB, allowed_hosts=HOSTS))
+    return TestClient(create_app(store, playbook=PB, allowed_hosts=HOSTS), headers=OH)
 
 
 def _future(h: int = 2) -> str:
@@ -103,7 +104,7 @@ def test_composite_overlay_notes_and_shelve_expiry(tmp_path: Path) -> None:
     main = DuckDBStore(main_path, read_only=True)
     analyst = DuckDBStore(tmp_path / "a.duckdb")
     comp = CompositeStore(main, analyst)
-    c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS))
+    c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS), headers=OH)
     assert c.post("/api/alerts/alert-3/status", json={"status": "under_review"}).status_code == 200
     # the pipeline's stored alert stays NEW; the API overlays the analyst status
     main_alert = main.get_alert("alert-3")
@@ -136,7 +137,7 @@ def test_live_composite_pipeline_upsert_keeps_ack(tmp_path: Path) -> None:
     main = DuckDBStore(tmp_path / "m.duckdb")
     seed(main)
     comp = CompositeStore(main, DuckDBStore(tmp_path / "a.duckdb"))
-    c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS))
+    c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS), headers=OH)
     assert c.post("/api/alerts/alert-3/status", json={"status": "acknowledged"}).status_code == 200
     a = main.get_alert("alert-3")
     assert a is not None

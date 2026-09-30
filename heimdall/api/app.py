@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Path, Request, Response
+from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -55,6 +55,45 @@ class SourceIn(BaseModel):
 
 class ActionIn(BaseModel):
     action_id: str
+
+
+# Third-party hosts the web UI (web/src/basemap.ts) may contact, by configured provider. Vector
+# styles + tiles + glyphs + sprites come from the provider host; the raster layers (satellite, EEZ,
+# seamarks) are offered whenever a provider is set. "none" = fully private, nothing allowed.
+_PROVIDER_HOSTS: dict[str, list[str]] = {
+    "openfreemap": ["https://tiles.openfreemap.org"],
+    "carto": ["https://basemaps.cartocdn.com", "https://tiles.basemaps.cartocdn.com"],
+}
+_RASTER_HOSTS = [
+    "https://tiles.maps.eox.at",
+    "https://geo.vliz.be",
+    "https://tiles.openseamap.org",
+]
+
+
+def csp_for(provider: str) -> str:
+    hosts = _PROVIDER_HOSTS.get(provider, []) + _RASTER_HOSTS if provider in _PROVIDER_HOSTS else []
+    ext = " ".join(hosts)
+
+    def join(*parts: str) -> str:
+        return " ".join(p for p in parts if p)
+
+    return "; ".join(
+        [
+            "default-src 'self'",
+            "script-src 'self'",
+            join("style-src 'self' 'unsafe-inline'", ext),
+            join("img-src 'self' data: blob:", ext),
+            join("font-src 'self' data:", ext),
+            join("connect-src 'self'", ext),
+            "worker-src 'self' blob:",
+            "child-src blob:",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        ]
+    )
 
 
 def _now() -> datetime:
@@ -101,9 +140,24 @@ def create_app(
         # CSRF/DNS-rebinding guard: a browser POST must come from the page's own origin.
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             origin = request.headers.get("origin")
-            if origin is not None and urlsplit(origin).netloc != request.headers.get("host"):
-                return Response("cross-origin request rejected", status_code=403)
+            if origin is not None:
+                if urlsplit(origin).netloc != request.headers.get("host"):
+                    return Response("cross-origin request rejected", status_code=403)
+            elif request.headers.get("sec-fetch-site") != "same-origin":
+                return Response("origin required", status_code=403)
         return await call_next(request)
+
+    csp = csp_for(basemap or config.settings().ui.basemap)
+
+    @app.middleware("http")
+    async def security_headers(
+        request: Request, call_next: Callable[..., Awaitable[Response]]
+    ) -> Response:
+        resp = await call_next(request)
+        resp.headers["Content-Security-Policy"] = csp
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        return resp
 
     @app.middleware("http")
     async def auth_middleware(
@@ -388,7 +442,9 @@ def create_app(
 
     # ------------------------------------------------------------------ actions board
     @app.get("/api/actions")
-    def actions_board(status: str | None = None, since_h: float = 72) -> list[dict[str, Any]]:
+    def actions_board(
+        status: str | None = None, since_h: float = Query(72, gt=0, le=720, allow_inf_nan=False)
+    ) -> list[dict[str, Any]]:
         want = set(status.split(",")) if status else None
         out: list[dict[str, Any]] = []
         for al in st.list_alerts(since=_now() - timedelta(hours=since_h), limit=1000):
