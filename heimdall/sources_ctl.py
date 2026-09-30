@@ -111,6 +111,14 @@ class SourceManager:
             except Exception as e:
                 log.error("source_aclose_failed", key=key, error=str(e))
 
+    async def _drain_orphans(self) -> None:
+        orphans, self._orphans = self._orphans, []
+        for conn in orphans:
+            try:
+                await conn.aclose()
+            except Exception as e:
+                log.error("source_orphan_aclose_failed", error=str(e))
+
     async def start(self) -> None:
         for key, on in self._enabled.items():
             if on:
@@ -119,6 +127,7 @@ class SourceManager:
     async def stop(self) -> None:
         for key in list(self._tasks):
             await self._stop(key)
+        await self._drain_orphans()
 
     # ------------------------------------------------------------ SourceControl
     def _state(self, key: str) -> SourceState:
@@ -182,6 +191,7 @@ class SourceManager:
             self._enabled[key] = enabled
             if enabled:
                 self._start(key)
+                await self._drain_orphans()
             else:
                 await self._stop(key)
             self._save()
