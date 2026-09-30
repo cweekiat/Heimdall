@@ -45,7 +45,13 @@ class StorageCfg(BaseModel):
     store: str = "duckdb"
 
 
+class LayersCfg(BaseModel):
+    max_features: int = 5000  # UI budget, not a threshold
+    max_hours: int = 720
+
+
 class ApiCfg(BaseModel):
+    layers: LayersCfg = Field(default_factory=LayersCfg)
     host: str = "127.0.0.1"
     port: int = 8000
     auth: str = "none"

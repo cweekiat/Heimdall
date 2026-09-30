@@ -25,6 +25,7 @@ from heimdall.api import triage
 from heimdall.api.aois import aois_router
 from heimdall.api.basemap import basemap_router
 from heimdall.api.keys import keys_router
+from heimdall.api.layers import layers_router
 from heimdall.api.traffic import traffic_router
 from heimdall.ports import SecretStore, SourceControl, Store
 from heimdall.schemas import (
@@ -505,6 +506,7 @@ def create_app(
         return sorted(out, key=lambda a: a["ts"], reverse=True)
 
     app.include_router(traffic_router(st))
+    app.include_router(layers_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(
         aois_router(

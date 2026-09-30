@@ -17,6 +17,7 @@ api:
   host: 127.0.0.1      # localhost only until auth is enabled
   port: 8000
   auth: none           # none | oidc (hosted)
+  layers: {max_features: 5000, max_hours: 720}   # UI budget, not a threshold
 
 ui:
   # Base map. openfreemap = OpenFreeMap vector tiles (third party sees viewed areas; user-accepted).
