@@ -20,7 +20,7 @@ def test_ring_fires() -> None:
     evs = run(V.ring_spoof())
     assert signals(evs) == {"A3"}
     (e,) = evs
-    assert e.kind == AlertKind.AIS_SPOOFING and e.detector_version == "ais-spoofing-1.0.0"
+    assert e.kind == AlertKind.AIS_SPOOFING and e.detector_version == "ais-spoofing-1.1.0"
     assert len(e.entities) == 8 and e.features["ring_cv"] <= 0.1
     assert e.counterfactual and e.records and e.aoi == "scs"
     assert all(r.passed for r in e.rules)

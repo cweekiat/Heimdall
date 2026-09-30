@@ -16,7 +16,13 @@ Assumptions
   apart differ at 5 decimals and never match.
 * **A3 ring**: in one `ring_bin_s` bin (last fix per MMSI) >= `ring_min_vessels` MMSIs whose radial
   distances to their centroid have CV <= `ring_cv_max`, bearing circular variance >=
-  `ring_bearing_circvar_min` and median radius in `ring_radius_km`.
+  `ring_bearing_circvar_min` and median radius in `ring_radius_km`. The test runs per
+  *neighbourhood*, not over the whole AOI (background traffic would move the centroid): a ring of
+  radius <= R_max fits in a square of side 4 R_max, so fixes are bucketed in 4 half-cell-shifted
+  square grids (cell side 4 R_max, local km projection) and each bucket with enough vessels is
+  tested; if the raw bucket fails, a RANSAC circle search (circumcircle of 3 vessels, radius in
+  `ring_radius_km`, inliers within `ring_cv_max * R` of the circle; <= 600 seeded samples) picks
+  the largest concentric set, which is then re-tested with the same CV/bearing/radius rules.
 * **A4 circle**: one MMSI, >= `circle_min_fixes` fixes, Kasa least-squares circle fit with
   relative RMSE <= `circle_rel_rmse_max`, |net signed turn| >= `circle_min_turn_deg` (>= 2 laps:
   a purse-seine set is one lap) and radius <= `circle_max_radius_km`.
@@ -28,6 +34,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import random
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime, timedelta
@@ -63,7 +70,7 @@ from heimdall.schemas import (
 )
 
 NAME = "ais_spoofing"
-VERSION = "ais-spoofing-1.0.0"
+VERSION = "ais-spoofing-1.1.0"
 
 DEFAULTS: dict[str, Any] = {
     "h3_res": 4,
@@ -267,6 +274,77 @@ def _ring(bin_fixes: dict[int, VesselObs], c: dict[str, Any]) -> dict[str, Any] 
     return None
 
 
+_RING_SAMPLES = 600  # max circumcircle candidates per neighbourhood (exhaustive when fewer)
+
+
+def _circle_inliers(xy: dict[int, tuple[float, float]], c: dict[str, Any]) -> list[int]:
+    """RANSAC circle: the largest set of points within `ring_cv_max * R` of a circle through three
+    of them, with R in `ring_radius_km`. Deterministic (fixed seed, exhaustive if C(n,3) is small)."""
+    ids = sorted(xy)
+    lo, hi = c["ring_radius_km"]
+    triples: Sequence[tuple[int, int, int]]
+    if math.comb(len(ids), 3) <= _RING_SAMPLES:
+        triples = list(itertools.combinations(ids, 3))
+    else:
+        rng = random.Random(len(ids))
+        triples = [tuple(sorted(rng.sample(ids, 3))) for _ in range(_RING_SAMPLES)]  # type: ignore[misc]
+    best: list[int] = []
+    for a, b, d in triples:
+        (x1, y1), (x2, y2), (x3, y3) = xy[a], xy[b], xy[d]
+        det = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
+        if abs(det) < 1e-9:
+            continue
+        s1, s2, s3 = x1 * x1 + y1 * y1, x2 * x2 + y2 * y2, x3 * x3 + y3 * y3
+        cx = (s1 * (y2 - y3) + s2 * (y3 - y1) + s3 * (y1 - y2)) / det
+        cy = (s1 * (x3 - x2) + s2 * (x1 - x3) + s3 * (x2 - x1)) / det
+        rad = math.hypot(x1 - cx, y1 - cy)
+        if not lo <= rad <= hi:
+            continue
+        tol = c["ring_cv_max"] * rad
+        inl = [m for m in ids if abs(math.hypot(xy[m][0] - cx, xy[m][1] - cy) - rad) <= tol]
+        if len(inl) > len(best):
+            best = inl
+    return best
+
+
+def _rings_in_bin(bin_fixes: dict[int, VesselObs], c: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rings among one bin's last fixes, found per neighbourhood (see module docstring, A3)."""
+    if len(bin_fixes) < c["ring_min_vessels"]:
+        return []
+    side = 4.0 * float(c["ring_radius_km"][1])
+    proj = {
+        m: (o.lon * 111.32 * math.cos(math.radians(o.lat)), o.lat * 110.57)
+        for m, o in bin_fixes.items()
+    }
+    buckets: dict[tuple[int, int, int], dict[int, VesselObs]] = defaultdict(dict)
+    for m, o in bin_fixes.items():
+        x, y = proj[m]
+        for sx in (0, 1):
+            for sy in (0, 1):
+                key = (
+                    sx * 2 + sy,
+                    math.floor(x / side + 0.5 * sx),
+                    math.floor(y / side + 0.5 * sy),
+                )
+                buckets[key][m] = o
+    found: list[dict[str, Any]] = []
+    used: set[frozenset[int]] = set()
+    for _, members in sorted(buckets.items()):
+        if len(members) < c["ring_min_vessels"]:
+            continue
+        r = _ring(members, c)
+        if r is None:  # background traffic in the neighbourhood: look for a circle inside it
+            inl = _circle_inliers({m: proj[m] for m in members}, c)
+            if len(inl) >= c["ring_min_vessels"]:
+                r = _ring({m: members[m] for m in inl}, c)
+        if r is not None:
+            ids = frozenset(o.mmsi for o in r["fixes"])
+            if ids not in used:
+                used.add(ids)
+                found.append(r)
+    return found
+
+
 def _cov(
     cell_mmsis: dict[str, set[int]], cell: str, fixes: Sequence[VesselObs], c: dict[str, Any]
 ) -> tuple[Coverage, list[str]]:
@@ -362,8 +440,9 @@ def detect(
                 RuleResult(
                     rule="A1_jump",
                     description=(
-                        f"Implied speed > {c['teleport_kn']} kn and > {c['jump_min_km']} km, "
-                        f"persisting >= {c['persist_pairs']} pairs (glitches removed)"
+                        f"Position jumps faster than {c['teleport_kn']} kn and farther than "
+                        f"{c['jump_min_km']} km, for at least {c['persist_pairs']} consecutive "
+                        "reports (one-off glitches removed)"
                     ),
                     value=j["persisted"],
                     threshold=float(c["persist_pairs"]),
@@ -371,7 +450,7 @@ def detect(
                 ),
                 RuleResult(
                     rule="A1_speed",
-                    description="Peak implied speed across the jump (kn)",
+                    description="Fastest speed implied by the jump (kn)",
                     value=round(j["vmax"], 1),
                     threshold=float(c["teleport_kn"]),
                     op=">",
@@ -406,7 +485,7 @@ def detect(
             rules = [
                 RuleResult(
                     rule="A4_circle_fit",
-                    description="Circle-fit relative RMSE",
+                    description="How far the track strays from a perfect circle (share of radius)",
                     value=round(cr["rel_rmse"], 4),
                     threshold=float(c["circle_rel_rmse_max"]),
                     op="<=",
@@ -414,7 +493,7 @@ def detect(
                 ),
                 RuleResult(
                     rule="A4_turn",
-                    description="Net cumulative turn (deg)",
+                    description="Total turn in one direction (degrees)",
                     value=round(cr["turn_deg"], 1),
                     threshold=float(c["circle_min_turn_deg"]),
                     passed=True,
@@ -443,8 +522,8 @@ def detect(
                     "laps": round(cr["turn_deg"] / 360, 2),
                 },
                 cr["anomalous"],
-                f"Would not fire on a single lap (< {c['circle_min_turn_deg']} deg), e.g. a "
-                "purse-seine set, or a track that does not fit a circle.",
+                f"Would not fire on a single lap (under {c['circle_min_turn_deg']} degrees), e.g. a "
+                "fishing net set, or a track that does not fit a circle.",
                 [mmsi],
                 None,
                 True,
@@ -475,7 +554,7 @@ def detect(
                 RuleResult(
                     rule="A2_identical",
                     description=(
-                        f"Distinct MMSIs at one position ({ndec} decimals) within {bin_s} s"
+                        f"Different vessel IDs reporting the exact same position within {bin_s} s"
                     ),
                     value=float(n),
                     threshold=float(c["identical_min_vessels"]),
@@ -484,8 +563,8 @@ def detect(
             ],
             {"n_vessels": float(n)},
             fx,
-            f"Would not fire with < {c['identical_min_vessels']} MMSIs or positions "
-            "differing at the 5th decimal (rafted ships).",
+            f"Would not fire with fewer than {c['identical_min_vessels']} vessel IDs, or if the "
+            "positions differed by a few metres (ships moored side by side).",
             ms,
         )
 
@@ -496,8 +575,7 @@ def detect(
         ring_bins[int(o.ts.timestamp() // rb)][o.mmsi] = o
     ring_hits: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for _, members in sorted(ring_bins.items()):
-        r = _ring(members, c)
-        if r is not None:
+        for r in _rings_in_bin(members, c):
             ring_hits[h3_cell(r["lat"], r["lon"], res)].append(r)
     for cell, hits in sorted(ring_hits.items()):
         best = max(hits, key=lambda h: len(h["fixes"]))
@@ -513,7 +591,7 @@ def detect(
             [
                 RuleResult(
                     rule="A3_ring_cv",
-                    description="Coefficient of variation of radial distance to centroid",
+                    description="Ships sit at almost the same distance from a common centre",
                     value=round(best["cv"], 4),
                     threshold=float(c["ring_cv_max"]),
                     op="<=",
@@ -521,14 +599,14 @@ def detect(
                 ),
                 RuleResult(
                     rule="A3_ring_bearing",
-                    description="Circular variance of bearings from the centroid",
+                    description="Ships are spread evenly all around that centre",
                     value=round(best["circvar"], 3),
                     threshold=float(c["ring_bearing_circvar_min"]),
                     passed=True,
                 ),
                 RuleResult(
                     rule="A3_ring_vessels",
-                    description="MMSIs on the ring in one bin",
+                    description="Vessel IDs on the ring at the same moment",
                     value=float(len(best["fixes"])),
                     threshold=float(c["ring_min_vessels"]),
                     passed=True,
@@ -542,8 +620,8 @@ def detect(
                 "ring_bins": float(len(hits)),
             },
             fx,
-            "Would not fire for a cluster (bearings concentrated) or non-uniform radii, "
-            f"or with < {c['ring_min_vessels']} MMSIs.",
+            "Would not fire for a tight cluster, ships at uneven distances from a centre, "
+            f"or fewer than {c['ring_min_vessels']} vessel IDs.",
             ms,
         )
     return evs

@@ -42,7 +42,7 @@ from heimdall.geo import (
 from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "orbit"
-VERSION = "orbit-1.0.0"
+VERSION = "orbit-1.0.1"
 METRIC = "orbit_active"
 
 DEFAULTS: dict[str, Any] = {
@@ -153,21 +153,21 @@ def detect(
         )
         r_cv = RuleResult(
             rule="circ_var",
-            description="Circular variance of heading (0 straight, 1 all directions)",
+            description="Spread of headings (0 = one direction, 1 = all directions)",
             value=f["circ_var"],
             threshold=c["circ_var_min"],
             passed=f["circ_var"] >= c["circ_var_min"],
         )
         r_turn = RuleResult(
             rule="cum_turn",
-            description=f"Cumulative |heading change| (deg, deadband {c['turn_deadband_deg']})",
+            description="Total heading change in degrees (small wobbles ignored)",
             value=f["cum_turn_deg"],
             threshold=float(c["cum_turn_min_deg"]),
             passed=f["cum_turn_deg"] >= c["cum_turn_min_deg"],
         )
         r_d = RuleResult(
             rule="displacement",
-            description="Net displacement / path length (1 straight, 0 closed loop)",
+            description="Distance from start to end as a share of path flown (1 = straight, 0 = closed loop)",
             value=f["displacement"],
             threshold=c["displacement_max"],
             op="<=",
@@ -232,10 +232,11 @@ def detect(
             feats["jam_distance_km"] = round(jam_d, 1)
         shape = min(1.0, max(0.0, (f["laps"] - 1.0) / 2.0))
         cf = (
-            f"Would not be an orbit if circular variance < {c['circ_var_min']} "
-            f"(obs {f['circ_var']}), cumulative turn < {c['cum_turn_min_deg']} deg "
-            f"(obs {f['cum_turn_deg']}) or displacement > {c['displacement_max']} "
-            f"(obs {f['displacement']})."
+            "Would not count as an orbit if the aircraft held a steadier heading "
+            f"(spread of headings now {f['circ_var']}, needs {c['circ_var_min']}), turned less "
+            f"than {c['cum_turn_min_deg']} degrees in total (now {f['cum_turn_deg']}), or "
+            f"ended up far from where it started (now {f['displacement']} of its path length, "
+            f"limit {c['displacement_max']})."
         )
         step = max(1, len(fixes) // 60)
         geom = {

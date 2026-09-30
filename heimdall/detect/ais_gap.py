@@ -10,10 +10,15 @@ Assumptions
 * A vessel moored/at anchor (nav_status 1 or 5) and slow (sog < 0.5 kn; unknown sog counts as
   slow) at its last fix switches its transponder off legitimately: skipped.
 * **Coverage test** (a gap in a hole in the receiver network is not a gap): the gap is cut into
-  hourly bins from the last fix; a bin is *covered* if >= `gap_min_neighbors` other MMSIs were
+  hourly bins from the last fix (`ceil(gap_h)` bins, the final one partial); a bin is *covered* if >= `gap_min_neighbors` other MMSIs were
   heard inside it within `gap_neighbor_km` of the last fix. Evidence only when the covered
   fraction >= `gap_covered_frac`; otherwise the gap is reported by `find_gaps` as
   "no reception evidence" and produces nothing ("absence of evidence" is never an alert).
+* **Feed-live test** (open gaps only): >= `gap_min_neighbors` other MMSIs must also be heard
+  near the last fix in the final `gap_live_h` (1 h) before `now`; otherwise the receiver feed
+  itself is down (outage, source toggled off) and nothing fires ("feed not live").
+* Gaps are found on the unfiltered vessel window and assigned to an AOI by the ship's last fix
+  before the gap (`in_region`), so a ship sailing out of the AOI is not an open gap.
 * score = min(1, gap_h / 12) * covered_frac; coverage confidence = min(1, median neighbours per
   covered bin / (2 * gap_min_neighbors)).
 * Per-vessel Evidence (`per_vessel` = 1); `anomaly_first_ts` = last fix before the gap and
@@ -26,7 +31,7 @@ from __future__ import annotations
 import itertools
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -45,7 +50,7 @@ from heimdall.geo import KT_PER_KMH, haversine_km
 from heimdall.schemas import AlertKind, Coverage, Evidence, RecordRef, RuleResult, VesselObs
 
 NAME = "ais_gap"
-VERSION = "ais-gap-1.0.0"
+VERSION = "ais-gap-1.1.0"
 
 DEFAULTS: dict[str, Any] = {
     "h3_res": 4,
@@ -55,6 +60,7 @@ DEFAULTS: dict[str, Any] = {
     "gap_min_neighbors": 3,
     "gap_neighbor_km": 20,
     "gap_covered_frac": 0.5,
+    "gap_live_h": 1.0,
     "closed_report_h": 6,
     "anchored_nav_status": [1, 5],
     "anchored_sog_kn": 0.5,
@@ -98,10 +104,19 @@ def _anchored(o: VesselObs, c: dict[str, Any]) -> bool:
     )
 
 
-def find_gaps(obs: Sequence[VesselObs], cfg: dict[str, Any], now: datetime) -> list[dict[str, Any]]:
+def find_gaps(
+    obs: Sequence[VesselObs],
+    cfg: dict[str, Any],
+    now: datetime,
+    in_region: Callable[[float, float], bool] | None = None,
+) -> list[dict[str, Any]]:
     """All candidate gaps with a decision: `fire` True/False and `reason` (diagnostic, pure).
 
-    Reasons: "ok", "anchored", "no reception evidence".
+    `obs` should be the *unfiltered* vessel window (a ship leaving an AOI keeps reporting outside
+    it; neighbours near the AOI edge count too). `in_region(lat, lon)` assigns a gap to an AOI by
+    the ship's last fix before the gap; gaps starting elsewhere are skipped.
+
+    Reasons: "ok", "anchored", "no reception evidence", "feed not live".
     """
     c = _cfg(cfg)
     _, end = align_window(now, c["window_h"] * 60, c["step_min"])
@@ -122,6 +137,8 @@ def find_gaps(obs: Sequence[VesselObs], cfg: dict[str, Any], now: datetime) -> l
         if end - fx[-1].ts >= min_gap:
             segs.append((fx[-1], None, end))
         for a, b, t_end in segs:
+            if in_region is not None and not in_region(a.lat, a.lon):
+                continue
             gap_h = (t_end - a.ts).total_seconds() / 3600.0
             rec: dict[str, Any] = {
                 "mmsi": mmsi,
@@ -145,7 +162,7 @@ def find_gaps(obs: Sequence[VesselObs], cfg: dict[str, Any], now: datetime) -> l
                 for o in index.near(a.lat, a.lon, c["gap_neighbor_km"])
                 if o.mmsi != mmsi and a.ts < o.ts < t_end
             ]
-            n_bins = max(1, int(gap_h))
+            n_bins = max(1, math.ceil(gap_h - 1e-9))
             per_bin: list[set[int]] = [set() for _ in range(n_bins)]
             for o in near:
                 k = int((o.ts - a.ts).total_seconds() // 3600)
@@ -155,8 +172,13 @@ def find_gaps(obs: Sequence[VesselObs], cfg: dict[str, Any], now: datetime) -> l
             rec["covered_frac"] = len(covered) / n_bins
             rec["neighbors_median"] = median([float(x) for x in covered])
             rec["n_nearby"] = len({o.mmsi for o in near})
+            live_from = t_end - timedelta(hours=c["gap_live_h"])
+            rec["live_neighbors"] = len({o.mmsi for o in near if o.ts > live_from})
             ok = rec["covered_frac"] >= c["gap_covered_frac"]
-            rec.update(fire=ok, reason="ok" if ok else "no reception evidence")
+            reason = "ok" if ok else "no reception evidence"
+            if ok and b is None and rec["live_neighbors"] < c["gap_min_neighbors"]:
+                ok, reason = False, "feed not live"  # outage / source off, not a dark vessel
+            rec.update(fire=ok, reason=reason)
             out.append(rec)
     return out
 
@@ -168,6 +190,7 @@ def detect(
     baseline: Baseline | None = None,
     *,
     aoi: str | None = None,
+    in_region: Callable[[float, float], bool] | None = None,
 ) -> list[Evidence]:
     """Return AIS-gap Evidence for gaps that pass the anchored and coverage tests. Pure."""
     c = _cfg(cfg)
@@ -175,7 +198,7 @@ def detect(
     start = end - timedelta(hours=c["window_h"])
     res = c["h3_res"]
     evs: list[Evidence] = []
-    for g in find_gaps(obs, cfg, now):
+    for g in find_gaps(obs, cfg, now, in_region):
         if not g["fire"]:
             continue
         a: VesselObs = g["last"]
@@ -227,6 +250,22 @@ def detect(
                         value=round(g["covered_frac"], 3),
                         threshold=float(c["gap_covered_frac"]),
                         passed=True,
+                    ),
+                    *(
+                        [
+                            RuleResult(
+                                rule="feed_live",
+                                description=(
+                                    "Other MMSIs heard near the last fix in the final "
+                                    f"{c['gap_live_h']:g} h (the feed is up)"
+                                ),
+                                value=float(g["live_neighbors"]),
+                                threshold=float(c["gap_min_neighbors"]),
+                                passed=True,
+                            )
+                        ]
+                        if g["open"]
+                        else []
                     ),
                     RuleResult(
                         rule="not_anchored",
