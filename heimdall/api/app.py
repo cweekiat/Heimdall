@@ -13,6 +13,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -143,6 +144,7 @@ def create_app(
     app = FastAPI(title="Heimdall API", version="0.1")
     app.state.store = st
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or LOCAL_HOSTS)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)  # 026a
 
     @app.middleware("http")
     async def same_origin_writes(

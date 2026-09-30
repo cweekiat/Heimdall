@@ -145,6 +145,109 @@ def _frag(kind: str, e: Entry) -> str:
     )
 
 
+AIR_STATIC = (
+    "hex",
+    "flight",
+    "registration",
+    "type_code",
+    "mil",
+    "alt_baro",
+    "gs",
+    "track",
+    "on_ground",
+    "provider",
+    "providers",
+    "gps_bad",
+)
+SEA_STATIC = (
+    "mmsi",
+    "name",
+    "ship_type",
+    "ship_class",
+    "sog",
+    "cog",
+    "heading",
+    "destination",
+    "provider",
+)
+
+
+def _static(kind: str, e: Entry) -> dict[str, Any]:
+    o: Any = e.obs
+    if kind == "air":
+        return {
+            "hex": o.hex,
+            "flight": (o.flight or "").strip() or None,
+            "registration": o.registration,
+            "type_code": o.type_code,
+            "mil": o.mil,
+            "alt_baro": o.alt_baro,
+            "gs": o.gs,
+            "track": o.track,
+            "on_ground": o.on_ground,
+            "provider": o.provider,
+            "providers": sorted(e.providers),
+            "gps_bad": e.gps_bad,
+        }
+    return {
+        "mmsi": o.mmsi,
+        "name": o.name,
+        "ship_type": o.ship_type,
+        "ship_class": ship_class(o.ship_type),
+        "sog": o.sog,
+        "cog": o.cog,
+        "heading": o.heading,
+        "destination": o.destination,
+        "provider": o.provider,
+    }
+
+
+def _emit_compact_fast(
+    kind: str,
+    ents: Sequence[Entry],
+    t: datetime,
+    hot_fn: Callable[[], set[str]],
+    cap: int,
+    extra: dict[str, Any],
+) -> Response:
+    """Columnar response; per-entry static values are cached and transposed with zip."""
+    total, hot = len(ents), hot_fn()
+    picked = ents[:cap]
+    names = AIR_STATIC if kind == "air" else SEA_STATIC
+    rows: list[tuple[Any, ...]] = []
+    for e in picked:
+        r = e.row
+        if r is None:
+            d = _static(kind, e)
+            r = e.row = tuple(d[k] for k in names)
+        rows.append(r)
+    tt = t.timestamp()
+    cols: dict[str, Any] = (
+        dict(zip(names, zip(*rows, strict=True), strict=True)) if rows else {k: () for k in names}
+    )
+    cols["lon"] = [e.lon for e in picked]
+    cols["lat"] = [e.lat for e in picked]
+    cols["age_s"] = [max(0.0, round(tt - e.ts.timestamp(), 1)) for e in picked]
+    if kind == "air":
+        cols["in_alert"] = [e.key.lower() in hot for e in picked]
+    else:
+        cols["in_alert"] = [str(e.key) in hot for e in picked]
+    return _json(
+        {
+            "type": "compact",
+            "kind": kind,
+            "n": len(picked),
+            "truncated": total > cap,
+            "total": total,
+            "now": t.isoformat(),
+            **extra,
+            "lat": [e.lat for e in picked],
+            "lon": [e.lon for e in picked],
+            "cols": cols,
+        }
+    )
+
+
 def _emit_fast(
     kind: str,
     ents: Sequence[Entry],
@@ -221,6 +324,8 @@ def _emit(
             "age_s": age,
             "in_alert": [str(v.mmsi) in hot for v in os],
         }
+    cols["lon"] = [o.lon for o in os]
+    cols["lat"] = [o.lat for o in os]
     if fmt == "compact":
         return _json(
             {
@@ -320,14 +425,15 @@ def traffic_router(
         extra["delta"] = False
         return layer.query(bb, t, max_age_s, want, limit=cap), extra
 
+    dcache: dict[tuple[int, int, int], str] = {}  # serialised world density per version
+
     def _density_resp(
         layer: Layer,
-        ents: list[Entry],
+        ents_fn: Callable[[], list[Entry]],
         bb: BBox,
         zoom: float,
         want: set[str] | None,
         max_age_s: int,
-        since: int | None,
     ) -> Any:
         res = 3 if zoom < 3 else 4
         w, s, e, n = bb
@@ -339,10 +445,18 @@ def traffic_router(
             and want is None
             and max_age_s >= layer.max_age_s
         ):
-            cells = layer.density_world(res)
-            total = layer.total()
+            ck = (id(layer), layer.version, res)
+            body = dcache.get(ck)
+            if body is None:
+                cells = layer.density_world(res)
+                head = {"type": "density", "res": res, "total": layer.total(), "cells": cells}
+                body = json.dumps({**head, "version": layer.version, "delta": False})
+                dcache.clear()
+                dcache[ck] = body
+            return Response(body, media_type="application/json")
         else:
             counts: dict[str, list[int]] = {}
+            ents = ents_fn()
             for x in ents:
                 c = counts.setdefault(x.r3 if res == 3 else x.r4, [0, 0])
                 c[0] += 1
@@ -373,16 +487,19 @@ def traffic_router(
         cap = ZOOM_CAP if zoom is not None else CAP
         if index is not None:
             dens = zoom is not None and zoom < DENSITY_BELOW_ZOOM
-            ents, extra = _index_rows(
-                index.air, cap, bb, t, max_age_s, want, None if dens else since
-            )
             if dens and zoom is not None:
-                return _density_resp(index.air, ents, bb, zoom, want, max_age_s, since)
+                return _density_resp(
+                    index.air,
+                    lambda: _index_rows(index.air, cap, bb, t, max_age_s, want, None)[0],
+                    bb,
+                    zoom,
+                    want,
+                    max_age_s,
+                )
+            ents, extra = _index_rows(index.air, cap, bb, t, max_age_s, want, since)
             if fmt == "geojson":
                 return _emit_fast("air", ents, t, in_alert_entities, cap, extra)
-            return _emit(
-                "air", [(e.obs, e.providers) for e in ents], t, in_alert_entities, fmt, cap, extra
-            )
+            return _emit_compact_fast("air", ents, t, in_alert_entities, cap, extra)
         rows = store.aircraft_window(t - timedelta(seconds=max_age_s), t + _FUTURE, bbox=bb)
         latest: dict[str, AircraftObs] = {}
         provs: dict[str, set[str]] = {}
@@ -423,12 +540,19 @@ def traffic_router(
         cap = ZOOM_CAP if zoom is not None else CAP
         if index is not None:
             dens = zoom is not None and zoom < DENSITY_BELOW_ZOOM
-            ents, extra = _index_rows(
-                index.sea, cap, bb, t, max_age_s, want, None if dens else since
-            )
             if dens and zoom is not None:
-                return _density_resp(index.sea, ents, bb, zoom, want, max_age_s, since)
-            return _emit("sea", [(e.obs, ()) for e in ents], t, in_alert_entities, fmt, cap, extra)
+                return _density_resp(
+                    index.sea,
+                    lambda: _index_rows(index.sea, cap, bb, t, max_age_s, want, None)[0],
+                    bb,
+                    zoom,
+                    want,
+                    max_age_s,
+                )
+            ents, extra = _index_rows(index.sea, cap, bb, t, max_age_s, want, since)
+            if fmt == "geojson":
+                return _emit_fast("sea", ents, t, in_alert_entities, cap, extra)
+            return _emit_compact_fast("sea", ents, t, in_alert_entities, cap, extra)
         rows = store.vessels_window(t - timedelta(seconds=max_age_s), t + _FUTURE, bbox=bb)
         latest: dict[int, VesselObs] = {}
         for v in sorted(rows, key=lambda x: x.ts):

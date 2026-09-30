@@ -51,6 +51,7 @@ class Entry:
         "providers",
         "r3",
         "r4",
+        "row",
         "seen",
         "ts",
         "ver",
@@ -76,6 +77,7 @@ class Entry:
         self.is_global = obs.is_global
         self.seen = seen
         self.ver = ver
+        self.row: tuple[Any, ...] | None = None  # API-owned cache (compact format)
         self.frag: str | None = None  # API-owned cache of the serialised static properties
         self.r4 = obs.h3_r4 or h3_cell(obs.lat, obs.lon, 4)
         self.r3 = h3_parent(self.r4, 3)
