@@ -45,6 +45,7 @@ from heimdall.schemas import (
     AlertKind,
     AlertSource,
     AlertStatus,
+    Band,
     Corroboration,
     Evidence,
     Footprint,
@@ -298,6 +299,13 @@ _TITLES = {
 }
 
 
+def _union_bands(group: Sequence[Evidence]) -> list[Band]:
+    """Ordered union of the Evidence bands; a real band supersedes NONE (context)."""
+    out: list[Band] = list(dict.fromkeys(b for e in group for b in e.bands))
+    real: list[Band] = [b for b in out if b != Band.NONE]
+    return real or out
+
+
 def _composites(
     gated: Sequence[Evidence], c: Mapping[str, Any]
 ) -> list[tuple[Evidence, list[Evidence]]]:
@@ -449,6 +457,7 @@ def fuse(
             summary += f" Confidence x{cf:.2f}: " + "; ".join(n.note for n in cnotes) + "."
         if control:
             summary += " [control AOI: calibration only, severity capped at info]"
+        bands = _union_bands(group)
         title = f"{_TITLES.get(kind, str(kind))}" + (f" — {aoi}" if aoi else "")
         if prev is not None:
             ids = list(dict.fromkeys([*prev.evidence_ids, *ev_ids]))[-c["max_evidence_ids"] :]
@@ -464,6 +473,7 @@ def fuse(
                     "gaps": cgaps,
                     "sources": sources,
                     "footprint": footprint,
+                    "bands": list(dict.fromkeys([*prev.bands, *bands])),
                     "last_seen": max(prev.last_seen, last),
                     "lat": lead.lat,
                     "lon": lead.lon,
@@ -488,6 +498,7 @@ def fuse(
                 gaps=cgaps,
                 sources=sources,
                 footprint=footprint,
+                bands=bands,
                 recommended_actions=actions_for(kind, playbook),
                 status=AlertStatus.NEW,
                 first_seen=first,

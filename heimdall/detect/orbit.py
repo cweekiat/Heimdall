@@ -39,7 +39,7 @@ from heimdall.geo import (
     haversine_km,
     initial_bearing,
 )
-from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
+from heimdall.schemas import AircraftObs, AlertKind, Band, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "orbit"
 VERSION = "orbit-1.0.1"
@@ -248,6 +248,7 @@ def detect(
                 id=evidence_id(AlertKind.MIL_ORBIT.value, cell, h, start, aoi),
                 kind=AlertKind.MIL_ORBIT,
                 detector=NAME,
+                bands=[Band.NONE],
                 detector_version=VERSION,
                 aoi=aoi,
                 window_start=start,

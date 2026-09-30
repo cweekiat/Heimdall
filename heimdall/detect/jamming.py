@@ -33,7 +33,7 @@ from heimdall.detect.common import (
     record_id,
     robust_z,
 )
-from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
+from heimdall.schemas import AircraftObs, AlertKind, Band, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "jamming"
 VERSION = "jamming-1.1.1"
@@ -297,6 +297,7 @@ def detect(
                 id=evidence_id(AlertKind.GNSS_JAMMING.value, cell, "", start, aoi),
                 kind=AlertKind.GNSS_JAMMING,
                 detector=NAME,
+                bands=[Band.L1_GNSS],
                 detector_version=VERSION,
                 aoi=aoi,
                 window_start=start,

@@ -49,7 +49,7 @@ from heimdall.detect.common import (
     vessel_record_id,
 )
 from heimdall.geo import KT_PER_KMH, haversine_km
-from heimdall.schemas import AlertKind, Coverage, Evidence, RecordRef, RuleResult, VesselObs
+from heimdall.schemas import AlertKind, Band, Coverage, Evidence, RecordRef, RuleResult, VesselObs
 
 NAME = "ais_gap"
 VERSION = "ais-gap-1.3.0"
@@ -276,6 +276,7 @@ def evidence_from_gaps(
                 ),
                 kind=AlertKind.AIS_GAP,
                 detector=NAME,
+                bands=[Band.VHF_MARINE],
                 detector_version=VERSION,
                 aoi=aoi,
                 window_start=start,

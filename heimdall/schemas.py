@@ -32,6 +32,23 @@ class SourceReliability(StrEnum):
     F = "F"
 
 
+class Band(StrEnum):
+    """RF band an alert concerns: the AFFECTED band, not the observing one (ADR-008 s.3).
+
+    HF 3-30 MHz; VHF_MARINE 156-162 MHz (AIS/marine VHF); L_1090 1090 MHz (ADS-B);
+    L1_GNSS 1559-1610 MHz (GPS L1/Galileo E1/GLONASS G1/BeiDou B1); L_1400 1400-1427 MHz
+    (radiometer protected band); C_SAR ~5.4 GHz (C-band SAR); NONE = context, no RF band.
+    """
+
+    HF = "hf"
+    VHF_MARINE = "vhf_marine"
+    L_1090 = "l_1090"
+    L1_GNSS = "l1_gnss"
+    L_1400 = "l_1400"
+    C_SAR = "c_sar"
+    NONE = "none"
+
+
 class Severity(StrEnum):
     INFO = "info"
     LOW = "low"
@@ -174,6 +191,21 @@ class Coverage(BaseModel):
     confidence: float = 0.0  # 0..1 coverage-derived confidence
 
 
+class RfEffect(BaseModel):
+    """One measured effect on a victim receiver population in a band (ADR-008)."""
+
+    band: Band
+    sensor: Literal["aircraft", "ship", "hf_station", "radiometer", "gnss_r", "sar", "notice"]
+    quantity: str  # e.g. nic_loss_ratio, snr_db, noise_floor_db, rfi_flag_frac
+    value: float
+    baseline: float | None = None
+    n_receivers: int = 0
+    coverage: float = Field(default=0.0, ge=0.0, le=1.0)
+    lat: float | None = None
+    lon: float | None = None
+    h3_cell: str | None = None
+
+
 class Evidence(BaseModel):
     id: str
     kind: AlertKind
@@ -197,6 +229,8 @@ class Evidence(BaseModel):
     gaps: list[str] = Field(default_factory=list)  # known blind spots (clouds, latency, ...)
     persistence: int = 1  # consecutive windows this anomaly has held
     created_at: datetime
+    bands: list[Band] = Field(default_factory=list)  # affected RF band(s); [] on pre-028 rows
+    rf_effects: list[RfEffect] | None = None
 
 
 class Corroboration(BaseModel):
@@ -257,6 +291,7 @@ class Alert(BaseModel):
     status: AlertStatus = AlertStatus.NEW
     first_seen: datetime
     last_seen: datetime
+    bands: list[Band] = Field(default_factory=list)  # union of its Evidence bands
 
 
 class Feedback(BaseModel):
