@@ -62,6 +62,7 @@ from heimdall.geo import (
 )
 from heimdall.schemas import (
     AlertKind,
+    Band,
     Coverage,
     Evidence,
     RecordRef,
@@ -480,6 +481,7 @@ def detect(
                 ),
                 kind=AlertKind.AIS_SPOOFING,
                 detector=NAME,
+                bands=[Band.L1_GNSS],
                 detector_version=VERSION,
                 aoi=aoi,
                 window_start=start,

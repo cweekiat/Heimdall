@@ -26,6 +26,7 @@ from heimdall.detect.common import align_window, cfg_get, evidence_id
 from heimdall.geo import KM_PER_NM, h3_cell, h3_center, haversine_km
 from heimdall.schemas import (
     AlertKind,
+    Band,
     Coverage,
     Evidence,
     GeoEvent,
@@ -56,6 +57,17 @@ class AoiLike(Protocol):
 
 def _cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     return {k: cfg_get(cfg, k, v) for k, v in DEFAULTS.items()}
+
+
+_GNSS_RE = re.compile(
+    r"(?<![A-Za-z])(?:GNSS|GPS|NAVSTAR|GLONASS|BEIDOU|GALILEO)(?![A-Za-z])", re.IGNORECASE
+)
+
+
+def notice_bands(e: GeoEvent) -> list[Band]:
+    """L1_GNSS when the notice names GNSS/GPS (regex only; text is untrusted), else NONE."""
+    hay = " ".join(str(x) for x in (e.attrs.get("category"), e.title, e.text) if x)
+    return [Band.L1_GNSS] if _GNSS_RE.search(hay) else [Band.NONE]
 
 
 def safe_ref(e: GeoEvent) -> str:
@@ -131,6 +143,7 @@ def detect(
                 id=evidence_id(AlertKind.WARNING_AREA.value, cell, e.id, start, aoi.name),
                 kind=AlertKind.WARNING_AREA,
                 detector=NAME,
+                bands=notice_bands(e),
                 detector_version=VERSION,
                 aoi=aoi.name,
                 window_start=start,

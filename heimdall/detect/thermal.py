@@ -25,7 +25,7 @@ from typing import Any, Protocol
 
 from heimdall.detect.common import align_window, cfg_get, evidence_id
 from heimdall.geo import KM_PER_NM, h3_cell, haversine_km
-from heimdall.schemas import AlertKind, Coverage, Evidence, GeoEvent, RecordRef, RuleResult
+from heimdall.schemas import AlertKind, Band, Coverage, Evidence, GeoEvent, RecordRef, RuleResult
 
 NAME = "thermal"
 VERSION = "thermal-1.0.0"
@@ -179,6 +179,7 @@ def detect(
                 id=evidence_id(AlertKind.THERMAL.value, r6, "", start, aoi.name),
                 kind=AlertKind.THERMAL,
                 detector=NAME,
+                bands=[Band.NONE],
                 detector_version=VERSION,
                 aoi=aoi.name,
                 window_start=start,

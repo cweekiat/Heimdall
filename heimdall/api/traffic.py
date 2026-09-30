@@ -20,9 +20,10 @@ from heimdall import config
 from heimdall.geo import BBox, h3_cell, haversine_km, in_bbox
 from heimdall.live import Entry, Layer, LivePositions
 from heimdall.ports import Store
-from heimdall.schemas import AircraftObs, AlertStatus, VesselObs
+from heimdall.schemas import AircraftObs, AlertStatus, Band, VesselObs
 
 CAP = 5000
+COVERAGE_WINDOW_S = 3600
 ZOOM_CAP = 20000  # positions returned when the client sends `zoom`
 DENSITY_BELOW_ZOOM = 5.0  # below this the API returns H3 density cells, not positions
 NOTICE_KINDS = ["nav_warning", "notam"]
@@ -473,6 +474,31 @@ def traffic_router(
                 "delta": False,
             }
         )
+
+    @r.get("/api/coverage")
+    def coverage(band: Band, bbox: str = "-180,-90,180,90") -> dict[str, Any]:
+        """Receivers per H3 r4 cell over the last hour for `band` (ADR-008): aircraft reporting
+        NIC/NACp for GNSS L1 / 1090 MHz, AIS ships for marine VHF. Live index only."""
+        bb, t = parse_bbox(bbox), clock()
+        out: dict[str, Any] = {"band": band.value, "window_s": COVERAGE_WINDOW_S, "cells": []}
+        layer = None
+        if index is not None:
+            if band in (Band.L1_GNSS, Band.L_1090):
+                layer = index.air
+            elif band == Band.VHF_MARINE:
+                layer = index.sea
+        if layer is None:
+            return {**out, "source": "none"}
+        counts: dict[str, int] = {}
+        for e in layer.query(bb, t, COVERAGE_WINDOW_S):
+            if e.is_global:
+                continue
+            o = e.obs
+            if isinstance(o, AircraftObs) and o.nic is None and o.nac_p is None:
+                continue
+            counts[e.r4] = counts.get(e.r4, 0) + 1
+        out["cells"] = [{"h3": k, "receivers": v} for k, v in sorted(counts.items())]
+        return {**out, "source": "live"}
 
     @r.get("/api/traffic/air")
     def air(

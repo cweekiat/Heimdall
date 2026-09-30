@@ -9,6 +9,13 @@ for cell-level jamming); detectors take a keyword `aoi`. Every Evidence also car
 anomaly, used for persistence. Every threshold below is a key in `config/config.yaml`; defaults are in
 each module's `DEFAULTS`. Shared helpers: `heimdall/detect/common.py`, `heimdall/geo.py`.
 
+## Bands (task 028, ADR-008)
+
+Every Evidence carries `bands` (the AFFECTED RF band, not the observing one); fusion unions them into `Alert.bands`
+(a real band supersedes `none`). jamming, spoofing, ais_spoofing: `l1_gnss`; ais_gap: `vhf_marine`; orbit, thermal:
+`none`; warning_area: `l1_gnss` when category/title/text names GNSS/GPS (regex only, text is untrusted), else `none`.
+Old rows without `bands` load as `[]`. `GET /api/coverage?band=&bbox=` gives receivers per H3 r4 cell (last hour).
+
 ## GNSS jamming (detect/jamming.py, `jamming-1.1.1`)
 Scope: airborne (`on_ground=false`) **true ADS-B** reports (`src_type ∈ {adsb_icao, adsb_icao_nt}`).
 Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `coverage.n_observed`.

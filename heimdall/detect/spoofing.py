@@ -35,7 +35,7 @@ from heimdall.detect.common import (
     record_id,
 )
 from heimdall.geo import KM_PER_NM, circular_variance, haversine_km, implied_speed_kt
-from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
+from heimdall.schemas import AircraftObs, AlertKind, Band, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "spoofing"
 VERSION = "spoofing-1.1.0"
@@ -530,6 +530,7 @@ def detect(
                 id=evidence_id(AlertKind.GNSS_SPOOFING.value, cell, h, start, aoi),
                 kind=AlertKind.GNSS_SPOOFING,
                 detector=NAME,
+                bands=[Band.L1_GNSS],
                 detector_version=VERSION,
                 aoi=aoi,
                 window_start=start,
