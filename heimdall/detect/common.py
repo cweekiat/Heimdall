@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from heimdall.geo import EARTH_RADIUS_KM, h3_cell
-from heimdall.schemas import AircraftObs
+from heimdall.schemas import AircraftObs, VesselObs
 
 #: baseline(key, metric) -> historical values (oldest first). Supplied by the pipeline.
 Baseline = Callable[[str, str], list[float]]
@@ -125,3 +125,38 @@ def ellipse_2sigma(
 
 def record_id(o: AircraftObs) -> str:
     return f"{o.hex}@{o.ts.isoformat()}"
+
+
+# --------------------------------------------------------------------------- vessels (AIS)
+
+
+def valid_vessel_fix(v: VesselObs) -> bool:
+    """False for out-of-range coordinates and the (0, 0) "null island" default."""
+    if not (-90.0 <= v.lat <= 90.0 and -180.0 <= v.lon <= 180.0):
+        return False
+    return not (v.lat == 0.0 and v.lon == 0.0)
+
+
+def vessel_in_window(obs: Iterable[VesselObs], start: datetime, end: datetime) -> list[VesselObs]:
+    """Valid fixes with start <= ts < end (invalid positions are dropped here)."""
+    return [o for o in obs if start <= o.ts < end and valid_vessel_fix(o)]
+
+
+def vessel_cell_of(o: VesselObs, res: int) -> str:
+    if res == 4 and o.h3_r4:
+        return o.h3_r4
+    if res == 6 and o.h3_r6:
+        return o.h3_r6
+    return h3_cell(o.lat, o.lon, res)
+
+
+def vessel_record_id(o: VesselObs) -> str:
+    return f"{o.mmsi}@{o.ts.isoformat()}"
+
+
+def dedupe_vessel_fixes(fixes: Iterable[VesselObs]) -> list[VesselObs]:
+    """One fix per (mmsi, ts) (several receivers hear the same message); ties by provider."""
+    out: dict[tuple[int, datetime], VesselObs] = {}
+    for o in sorted(fixes, key=lambda o: (o.mmsi, o.ts, o.provider)):
+        out.setdefault((o.mmsi, o.ts), o)
+    return sorted(out.values(), key=lambda o: (o.mmsi, o.ts))
