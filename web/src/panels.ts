@@ -1,5 +1,5 @@
 // Shared UI helpers, alert queue and data-health view.
-import type { Alert, SourceHealth } from "./api";
+import type { Alert } from "./api";
 import { ago, fmtTime, h } from "./dom";
 import { alertTitle, aoiName, confidenceLabel, CORROBORATION_LABEL, kindLabel, PRIORITY_WORD, SOURCE_LABEL, T, truthLabel } from "./labels";
 import { patch, selectAlert, state, triage } from "./store";
@@ -247,34 +247,4 @@ function renderQueueList(list: HTMLElement): void {
     }
   }
   list.replaceChildren(...nodes);
-}
-
-// ------------------------------------------------------------------ data health
-
-export function renderHealth(root: HTMLElement, sources: SourceHealth[]): void {
-  const grade = (s: SourceHealth): string => {
-    const stale = s.last_ok ? (Date.now() - new Date(s.last_ok).getTime()) / 1000 > s.expected_latency_s * 5 : true;
-    return stale || s.error_rate > 0.25 ? "fail" : s.error_rate > 0.05 ? "warn" : "pass";
-  };
-  const label: Record<string, string> = { pass: "OK", warn: "Slow", fail: "Down" };
-  root.replaceChildren(
-    h("h2", {}, T.sources),
-    h("p", { class: "note" }, "Old data lowers alert confidence. A quiet source is a gap in what we can see, not a quiet region."),
-    table(
-      ["Source", "Type", "Reliability", "Last update", "Records per hour", "Errors", "Last error", "Status"],
-      sources.map((s) => {
-        const g = grade(s);
-        return [
-          s.source,
-          s.domain,
-          h("span", { class: "badge grade" }, s.reliability),
-          ago(s.last_ok),
-          h("span", { class: "num" }, String(s.records_last_hour)),
-          h("span", { class: "num" }, `${(s.error_rate * 100).toFixed(1)}%`),
-          s.last_error ? `${s.last_error} (${ago(s.last_error_at)})` : "-",
-          h("span", { class: g === "warn" ? "" : g, style: g === "warn" ? "color:var(--warn);font-weight:700" : "" }, label[g] ?? g),
-        ];
-      }),
-    ),
-  );
 }

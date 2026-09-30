@@ -149,6 +149,7 @@ export class Traffic {
   private sel: Selected | null = null;
   private follow = false;
   private busy = { air: false, sea: false };
+  private again = { air: false, sea: false };
   private timers: number[] = [];
   private moveTimer = 0;
   private tip: HTMLElement;
@@ -208,7 +209,11 @@ export class Traffic {
   }
 
   private async pollAir(): Promise<void> {
-    if (document.visibilityState === "hidden" || this.busy.air) return;
+    if (document.visibilityState === "hidden") return;
+    if (this.busy.air) {
+      this.again.air = true;
+      return;
+    }
     if (!filters.air) {
       if (this.air.length) {
         this.air = [];
@@ -227,10 +232,18 @@ export class Traffic {
       this.busy.air = false;
     }
     this.afterPoll();
+    if (this.again.air) {
+      this.again.air = false;
+      void this.pollAir();
+    }
   }
 
   private async pollSea(): Promise<void> {
-    if (document.visibilityState === "hidden" || this.busy.sea) return;
+    if (document.visibilityState === "hidden") return;
+    if (this.busy.sea) {
+      this.again.sea = true;
+      return;
+    }
     if (!filters.sea) {
       if (this.sea.length) {
         this.sea = [];
@@ -249,6 +262,10 @@ export class Traffic {
       this.busy.sea = false;
     }
     this.afterPoll();
+    if (this.again.sea) {
+      this.again.sea = false;
+      void this.pollSea();
+    }
   }
 
   private recount(): void {
