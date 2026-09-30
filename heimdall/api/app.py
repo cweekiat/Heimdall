@@ -25,10 +25,12 @@ from heimdall.aoi_ctl import AoiService
 from heimdall.api import triage
 from heimdall.api.aois import aois_router
 from heimdall.api.basemap import basemap_router
+from heimdall.api.gnss import gnss_router
 from heimdall.api.keys import keys_router
 from heimdall.api.layers import layers_router
 from heimdall.api.traffic import traffic_router
 from heimdall.fuse.fusion import ACTIVE
+from heimdall.gnss_service import GnssService, StoreGnssService
 from heimdall.live import LivePositions
 from heimdall.ports import SecretStore, SourceControl, Store
 from heimdall.schemas import (
@@ -137,6 +139,7 @@ def create_app(
     aoi_service: AoiService | None = None,
     ui_extra: dict[str, Any] | None = None,
     live: LivePositions | None = None,
+    gnss: GnssService | None = None,
 ) -> FastAPI:
     st: Store = store
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
@@ -512,6 +515,7 @@ def create_app(
         return sorted(out, key=lambda a: a["ts"], reverse=True)
 
     app.include_router(traffic_router(st, index=live))
+    app.include_router(gnss_router(gnss or StoreGnssService(st, config.settings().detectors)))
     app.include_router(layers_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(

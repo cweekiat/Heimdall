@@ -476,8 +476,15 @@ Math is added here when each ships. Thresholds start as priors in `config/config
   UNAVBL, RAIM UNAVBL, spoofing, jamming, signals degraded, FAA 'GPS (INCLUDING WAAS'); bare 'GPS' never matches.
   Such notices carry band L1_GNSS and corroborate overlapping jamming/spoofing with the note 'official notice
   declares GNSS interference in this area: <kind> <ref> (<source>)'.
-- **GNSS interference map** (031, descriptive, not a detector): GPSJam-style daily and last-24 h H3 r4 map sharing the
-  jamming detector's per-aircraft classification; `% bad = 100·(bad − 1)/total`.
+- **GNSS interference map** (031, done; descriptive, not a detector; `heimdall/gnss_map.py`): per UTC day and rolling
+  24 h, per H3 r4 cell. Aircraft (true ADS-B, airborne, >= 1 NIC/NACp report) counted once per cell; bad when
+  >= `dwell_frac` of its reports there are degraded (`detect.jamming.degraded`, same thresholds). `pct = 100·max(0,
+  bad − 1)/total`; green < 2, yellow 2–10, red > 10; empty cells absent. Degraded military aircraft are left out of
+  bad and total (`exclude_military`). Live: computed from the Parquet lake by DuckDB (`adapters/gnss_lake.py`, ~2 s
+  per day), last-24 h every 15 min, finished days written once to `lake/gnss_daily/date=D/cells.parquet`, `incomplete`
+  when < 22 hourly partitions. Demo/replay: from the Store. API `GET /api/gnss/day?date=|last24h&bbox=`,
+  `GET /api/gnss/days`. Validation vs GPSJam CSV: `scripts/gnss_validate.py` (031c). First real day (2026-09-30,
+  16 h): 1,616 cells; top red cells Kaliningrad/Baltic (23 of 24 aircraft) and Naypyidaw (7 of 7).
 - **CYGNSS L1 noise floor** (P5): per-cell robust z of noise floor vs baseline; space-weather explain-away.
 - **SMAP 1.4 GHz RFI** (P5): RFI-flag fraction per cell, persistent-emitter map and change detection.
 - **Sentinel-1 RFI** (P5): product interference annotations per scene footprint (pixel streaks need user approval).

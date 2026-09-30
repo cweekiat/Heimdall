@@ -162,6 +162,12 @@ detectors:
     static_days: 10         # r8 cell hot on >= N of baseline_days -> static heat source. Prior, not backtested — calibrate on FIRMS archive, see 016
     ratio_min: 3            # r4 window count / (baseline mean per day + 1). Prior, not backtested — calibrate on FIRMS archive, see 016
     expected_passes: 4      # VIIRS passes per 24 h at SE Asia latitudes (S-NPP, NOAA-20, NOAA-21, x2 day/night). Prior, not backtested — calibrate on FIRMS archive, see 016
+  gnss_map:                 # task 031: GPSJam-style daily map (descriptive, never alerts). NIC/NACp thresholds come from detectors.jamming
+    dwell_frac: 0.5         # aircraft bad in a cell if >= 50 % of its known reports there are degraded (= jamming.bad_dwell_frac)
+    exclude_military: true  # GPSJam FAQ: military trainers block their own antennas in hard manoeuvres
+    refresh_min: 15         # rolling last-24 h recompute (~2 s per day of lake data, measured 2026-10-01)
+    min_hours_complete: 22  # fewer hourly lake partitions -> day flagged incomplete
+    backfill_days: 7
   fusion:
     persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2}  # CLAUDE.md: >= 2 windows; ais_*, thermal prior, not backtested
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior

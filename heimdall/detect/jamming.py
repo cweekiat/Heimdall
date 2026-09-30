@@ -116,7 +116,10 @@ def _cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     return {k: cfg_get(cfg, k, v) for k, v in DEFAULTS.items()}
 
 
-def _degraded(o: AircraftObs, nic_below: int, nacp_below: int) -> bool | None:
+def degraded(o: AircraftObs, nic_below: int, nacp_below: int) -> bool | None:
+    """GNSS-degraded report (NIC < nic_below or NACp < nacp_below); None if neither is known.
+
+    Shared with the GNSS interference map (heimdall/gnss_map.py, task 031)."""
     if o.nic is None and o.nac_p is None:
         return None
     return (o.nic is not None and o.nic < nic_below) or (
@@ -140,7 +143,7 @@ def cell_stats(
         seen[cell].add(o.hex)
         if not o.is_true_adsb:
             continue
-        d = _degraded(o, c["nic_bad_below"], c["nacp_bad_below"])
+        d = degraded(o, c["nic_bad_below"], c["nacp_bad_below"])
         if d is None:
             continue
         providers[cell].add(o.provider)
@@ -204,7 +207,7 @@ def _loc_pool(
     for o in sorted(in_window(obs, start, end), key=lambda o: (o.ts, o.hex, o.provider)):
         if o.on_ground or not o.is_true_adsb:
             continue
-        d = _degraded(o, c["nic_bad_below"], c["nacp_bad_below"])
+        d = degraded(o, c["nic_bad_below"], c["nacp_bad_below"])
         if d is None:
             continue
         alt = o.alt_geom if o.alt_geom is not None else o.alt_baro
