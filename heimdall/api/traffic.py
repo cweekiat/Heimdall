@@ -6,16 +6,19 @@ Only Store-port calls are used; free text (notice bodies) is passed through as d
 
 from __future__ import annotations
 
+import json
 import math
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi.responses import JSONResponse, Response
 
 from heimdall import config
 from heimdall.geo import BBox, h3_cell, haversine_km, in_bbox
+from heimdall.live import Entry, Layer, LivePositions
 from heimdall.ports import Store
 from heimdall.schemas import AircraftObs, AlertStatus, VesselObs
 
@@ -90,7 +93,149 @@ def gps_bad(o: AircraftObs) -> bool:
 
 
 def _fc(features: list[dict[str, Any]], total: int, cap: int = CAP) -> dict[str, Any]:
-    return {"type": "FeatureCollection", "features": features, "truncated": total > cap}
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "truncated": total > cap,
+        "total": total,
+    }
+
+
+def _json(body: dict[str, Any]) -> JSONResponse:
+    """Serialise directly: skips FastAPI's per-element jsonable_encoder (slow for 20k points)."""
+    return JSONResponse(body)
+
+
+_Rows = Sequence[tuple[Any, Iterable[str]]]  # (AircraftObs | VesselObs, providers)
+
+
+def _frag(kind: str, e: Entry) -> str:
+    """Serialised feature up to (excluding) the per-request fields; cached on the entry."""
+    o: Any = e.obs
+    if kind == "air":
+        props: dict[str, Any] = {
+            "hex": o.hex,
+            "flight": (o.flight or "").strip() or None,
+            "registration": o.registration,
+            "type_code": o.type_code,
+            "mil": o.mil,
+            "alt_baro": o.alt_baro,
+            "gs": o.gs,
+            "track": o.track,
+            "on_ground": o.on_ground,
+            "provider": o.provider,
+            "providers": sorted(e.providers),
+            "gps_bad": e.gps_bad,
+        }
+    else:
+        props = {
+            "mmsi": o.mmsi,
+            "name": o.name,
+            "ship_type": o.ship_type,
+            "ship_class": ship_class(o.ship_type),
+            "sog": o.sog,
+            "cog": o.cog,
+            "heading": o.heading,
+            "destination": o.destination,
+            "provider": o.provider,
+        }
+    return (
+        '{"type":"Feature","geometry":{"type":"Point","coordinates":'
+        f'[{o.lon!r},{o.lat!r}]}},"properties":{json.dumps(props)[:-1]}'
+    )
+
+
+def _emit_fast(
+    kind: str,
+    ents: Sequence[Entry],
+    t: datetime,
+    hot_fn: Callable[[], set[str]],
+    cap: int,
+    extra: dict[str, Any],
+) -> Response:
+    """GeoJSON from cached per-entry fragments: only age_s / in_alert are formatted per request."""
+    total, hot = len(ents), hot_fn()
+    tt = t.timestamp()
+    feats: list[str] = []
+    for e in ents[:cap]:
+        frag = e.frag
+        if frag is None:
+            frag = e.frag = _frag(kind, e)
+        alert = (e.key.lower() in hot) if kind == "air" else (str(e.key) in hot)
+        age = max(0.0, round(tt - e.ts.timestamp(), 1))
+        feats.append(f'{frag},"age_s":{age},"in_alert":{"true" if alert else "false"}}}}}')
+    head = json.dumps({"truncated": total > cap, "total": total, "now": t.isoformat(), **extra})
+    body = '{"type":"FeatureCollection","features":[' + ",".join(feats) + "]," + head[1:]
+    return Response(body, media_type="application/json")
+
+
+def _emit(
+    kind: str,
+    rows: _Rows,
+    t: datetime,
+    hot_fn: Callable[[], set[str]],
+    fmt: str,
+    cap: int,
+    extra: dict[str, Any],
+) -> JSONResponse:
+    """GeoJSON or columnar ("compact") response for `air` / `sea` rows, newest first."""
+    total, hot = len(rows), hot_fn()
+    picked = rows[:cap]
+    age = [max(0.0, round((t - o.ts).total_seconds(), 1)) for o, _ in picked]
+    head: dict[str, Any] = {
+        "truncated": total > cap,
+        "total": total,
+        "now": t.isoformat(),
+        **extra,
+    }
+    if kind == "air":
+        os = [o for o, _ in picked]
+        cols: dict[str, list[Any]] = {
+            "hex": [o.hex for o in os],
+            "flight": [(o.flight or "").strip() or None for o in os],
+            "registration": [o.registration for o in os],
+            "type_code": [o.type_code for o in os],
+            "mil": [o.mil for o in os],
+            "alt_baro": [o.alt_baro for o in os],
+            "gs": [o.gs for o in os],
+            "track": [o.track for o in os],
+            "on_ground": [o.on_ground for o in os],
+            "provider": [o.provider for o in os],
+            "providers": [sorted(p) for _, p in picked],
+            "age_s": age,
+            "gps_bad": [gps_bad(o) for o in os],
+            "in_alert": [o.hex.lower() in hot for o in os],
+        }
+    else:
+        os = [o for o, _ in picked]
+        cols = {
+            "mmsi": [v.mmsi for v in os],
+            "name": [v.name for v in os],
+            "ship_type": [v.ship_type for v in os],
+            "ship_class": [ship_class(v.ship_type) for v in os],
+            "sog": [v.sog for v in os],
+            "cog": [v.cog for v in os],
+            "heading": [v.heading for v in os],
+            "destination": [v.destination for v in os],
+            "provider": [v.provider for v in os],
+            "age_s": age,
+            "in_alert": [str(v.mmsi) in hot for v in os],
+        }
+    if fmt == "compact":
+        return _json(
+            {
+                "type": "compact",
+                "kind": kind,
+                "n": len(os),
+                **head,
+                "lat": [o.lat for o in os],
+                "lon": [o.lon for o in os],
+                "cols": cols,
+            }
+        )
+    names = list(cols)
+    feats = [_point(o.lat, o.lon, {k: cols[k][i] for k in names}) for i, o in enumerate(os)]
+    return _json({"type": "FeatureCollection", "features": feats, **head})
 
 
 def density(points: Iterable[tuple[float, float, bool]], zoom: float) -> dict[str, Any]:
@@ -134,7 +279,11 @@ def _coords(c: Any) -> Iterable[tuple[float, float]]:
             yield from _coords(x)
 
 
-def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> APIRouter:
+def traffic_router(
+    store: Store,
+    now: Callable[[], datetime] | None = None,
+    index: LivePositions | None = None,
+) -> APIRouter:
     r = APIRouter()
     clock = now or (lambda: datetime.now(UTC))
 
@@ -152,14 +301,88 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
             cache["key"] = key
         return cache["ids"]
 
+    def _index_rows(
+        layer: Layer,
+        cap: int,
+        bb: BBox,
+        t: datetime,
+        max_age_s: int,
+        want: set[str] | None,
+        since: int | None,
+    ) -> tuple[list[Entry], dict[str, Any]]:
+        """Entries from the live index plus the version/delta envelope fields."""
+        extra: dict[str, Any] = {"version": layer.version}
+        delta = since is not None and since <= layer.version
+        removed = layer.removed_since(since) if delta and since is not None else None
+        if delta and removed is not None and since is not None:
+            extra.update({"delta": True, "since": since, "removed": removed})
+            return layer.query(bb, t, max_age_s, want, since=since, limit=cap), extra
+        extra["delta"] = False
+        return layer.query(bb, t, max_age_s, want, limit=cap), extra
+
+    def _density_resp(
+        layer: Layer,
+        ents: list[Entry],
+        bb: BBox,
+        zoom: float,
+        want: set[str] | None,
+        max_age_s: int,
+        since: int | None,
+    ) -> Any:
+        res = 3 if zoom < 3 else 4
+        w, s, e, n = bb
+        if (
+            w <= -179.9
+            and e >= 179.9
+            and s <= -85
+            and n >= 85
+            and want is None
+            and max_age_s >= layer.max_age_s
+        ):
+            cells = layer.density_world(res)
+            total = layer.total()
+        else:
+            counts: dict[str, list[int]] = {}
+            for x in ents:
+                c = counts.setdefault(x.r3 if res == 3 else x.r4, [0, 0])
+                c[0] += 1
+                c[1] += int(x.mil)
+            cells = [{"h3": k, "count": v[0], "mil": v[1]} for k, v in counts.items()]
+            total = len(ents)
+        return _json(
+            {
+                "type": "density",
+                "res": res,
+                "total": total,
+                "cells": cells,
+                "version": layer.version,
+                "delta": False,
+            }
+        )
+
     @r.get("/api/traffic/air")
     def air(
         bbox: str,
         max_age_s: int = Query(60, ge=1, le=86400),
         sources: str | None = None,
         zoom: float | None = Query(None, ge=0, le=24),
-    ) -> dict[str, Any]:
+        since: int | None = Query(None, ge=0),
+        fmt: str = Query("geojson", pattern="^(geojson|compact)$"),
+    ) -> Any:
         bb, want, t = parse_bbox(bbox), _source_filter(sources), clock()
+        cap = ZOOM_CAP if zoom is not None else CAP
+        if index is not None:
+            dens = zoom is not None and zoom < DENSITY_BELOW_ZOOM
+            ents, extra = _index_rows(
+                index.air, cap, bb, t, max_age_s, want, None if dens else since
+            )
+            if dens and zoom is not None:
+                return _density_resp(index.air, ents, bb, zoom, want, max_age_s, since)
+            if fmt == "geojson":
+                return _emit_fast("air", ents, t, in_alert_entities, cap, extra)
+            return _emit(
+                "air", [(e.obs, e.providers) for e in ents], t, in_alert_entities, fmt, cap, extra
+            )
         rows = store.aircraft_window(t - timedelta(seconds=max_age_s), t + _FUTURE, bbox=bb)
         latest: dict[str, AircraftObs] = {}
         provs: dict[str, set[str]] = {}
@@ -178,39 +401,14 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
                 want,
             )
             latest = {k: v for k, v in latest.items() if newest[k] == v.ts}
-        hot = in_alert_entities()
         picked = sorted(
             (o for o in latest.values() if in_bbox(o.lat, o.lon, bb)),
             key=lambda x: x.ts,
             reverse=True,
         )
         if zoom is not None and zoom < DENSITY_BELOW_ZOOM:
-            return density(((o.lat, o.lon, o.mil) for o in picked), zoom)
-        cap = ZOOM_CAP if zoom is not None else CAP
-        feats = [
-            _point(
-                o.lat,
-                o.lon,
-                {
-                    "hex": o.hex,
-                    "flight": (o.flight or "").strip() or None,
-                    "registration": o.registration,
-                    "type_code": o.type_code,
-                    "mil": o.mil,
-                    "alt_baro": o.alt_baro,
-                    "gs": o.gs,
-                    "track": o.track,
-                    "on_ground": o.on_ground,
-                    "provider": o.provider,
-                    "providers": sorted(provs[o.hex]),
-                    "age_s": max(0.0, round((t - o.ts).total_seconds(), 1)),
-                    "gps_bad": gps_bad(o),
-                    "in_alert": o.hex.lower() in hot,
-                },
-            )
-            for o in picked[:cap]
-        ]
-        return _fc(feats, len(picked), cap)
+            return _json(density(((o.lat, o.lon, o.mil) for o in picked), zoom))
+        return _emit("air", [(o, provs[o.hex]) for o in picked], t, in_alert_entities, fmt, cap, {})
 
     @r.get("/api/traffic/sea")
     def sea(
@@ -218,8 +416,19 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
         max_age_s: int = Query(900, ge=1, le=86400),
         sources: str | None = None,
         zoom: float | None = Query(None, ge=0, le=24),
-    ) -> dict[str, Any]:
+        since: int | None = Query(None, ge=0),
+        fmt: str = Query("geojson", pattern="^(geojson|compact)$"),
+    ) -> Any:
         bb, want, t = parse_bbox(bbox), _source_filter(sources), clock()
+        cap = ZOOM_CAP if zoom is not None else CAP
+        if index is not None:
+            dens = zoom is not None and zoom < DENSITY_BELOW_ZOOM
+            ents, extra = _index_rows(
+                index.sea, cap, bb, t, max_age_s, want, None if dens else since
+            )
+            if dens and zoom is not None:
+                return _density_resp(index.sea, ents, bb, zoom, want, max_age_s, since)
+            return _emit("sea", [(e.obs, ()) for e in ents], t, in_alert_entities, fmt, cap, extra)
         rows = store.vessels_window(t - timedelta(seconds=max_age_s), t + _FUTURE, bbox=bb)
         latest: dict[int, VesselObs] = {}
         for v in sorted(rows, key=lambda x: x.ts):
@@ -234,38 +443,18 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
                 want,
             )
             latest = {k: v for k, v in latest.items() if newest[k] == v.ts}
-        hot = in_alert_entities()
         picked = sorted(
             (v for v in latest.values() if in_bbox(v.lat, v.lon, bb)),
             key=lambda x: x.ts,
             reverse=True,
         )
         if zoom is not None and zoom < DENSITY_BELOW_ZOOM:
-            return density(
-                ((v.lat, v.lon, ship_class(v.ship_type) == "military") for v in picked), zoom
+            return _json(
+                density(
+                    ((v.lat, v.lon, ship_class(v.ship_type) == "military") for v in picked), zoom
+                )
             )
-        cap = ZOOM_CAP if zoom is not None else CAP
-        feats = [
-            _point(
-                v.lat,
-                v.lon,
-                {
-                    "mmsi": v.mmsi,
-                    "name": v.name,
-                    "ship_type": v.ship_type,
-                    "ship_class": ship_class(v.ship_type),
-                    "sog": v.sog,
-                    "cog": v.cog,
-                    "heading": v.heading,
-                    "destination": v.destination,
-                    "provider": v.provider,
-                    "age_s": max(0.0, round((t - v.ts).total_seconds(), 1)),
-                    "in_alert": str(v.mmsi) in hot,
-                },
-            )
-            for v in picked[:cap]
-        ]
-        return _fc(feats, len(picked), cap)
+        return _emit("sea", [(v, ()) for v in picked], t, in_alert_entities, fmt, cap, {})
 
     def _trail(coords: list[list[float]], props: dict[str, Any]) -> dict[str, Any]:
         if not coords:

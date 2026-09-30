@@ -39,6 +39,7 @@ class Entry:
     """Latest fix of one entity plus the flags the API filters/aggregates on."""
 
     __slots__ = (
+        "frag",
         "gps_bad",
         "is_global",
         "key",
@@ -75,6 +76,7 @@ class Entry:
         self.is_global = obs.is_global
         self.seen = seen
         self.ver = ver
+        self.frag: str | None = None  # API-owned cache of the serialised static properties
         self.r4 = obs.h3_r4 or h3_cell(obs.lat, obs.lon, 4)
         self.r3 = h3_parent(self.r4, 3)
 
@@ -139,7 +141,7 @@ class Layer:
         items: Iterable[tuple[Any, AircraftObs | VesselObs, bool, bool, frozenset[str]]],
         now: datetime,
     ) -> int:
-        """Apply `(key, obs, mil, gps_bad, providers)` tuples; returns how many changed the index."""
+        """Apply `(key, obs, mil, gps_bad, providers)` tuples; returns the number applied."""
         n = 0
         with self._lock:
             ver = self.version + 1
@@ -186,27 +188,31 @@ class Layer:
     # ------------------------------------------------------------------ reads
     def _candidates(self, bb: BBox) -> list[Entry]:
         w, s, e, n = bb
-        i0, i1 = self._cell(s, 0)[0], self._cell(n, 0)[0]
         ranges = [(w, e)] if w <= e else [(w, 180.0), (-180.0, e)]
+        i0, i1 = self._cell(s, 0)[0], self._cell(n, 0)[0]
         out: list[Entry] = []
-        spans = [(i0, i1, self._cell(0, a)[1], self._cell(0, b)[1]) for a, b in ranges]
-        n_cells = sum((a1 - a0 + 1) * (b1 - b0 + 1) for a0, a1, b0, b1 in spans)
-        if n_cells > len(self._grid):  # wide box: walk the occupied buckets instead
-            for (bi, bj), bucket in self._grid.items():
-                if any(a0 <= bi <= a1 and b0 <= bj <= b1 for a0, a1, b0, b1 in spans):
+        for a, b in ranges:
+            j0, j1 = self._cell(0, a)[1], self._cell(0, b)[1]
+            if (i1 - i0 + 1) * (j1 - j0 + 1) > len(self._grid):  # wide: walk occupied buckets
+                keys: Iterable[tuple[int, int]] = [
+                    k for k in self._grid if i0 <= k[0] <= i1 and j0 <= k[1] <= j1
+                ]
+            else:
+                keys = ((bi, bj) for bi in range(i0, i1 + 1) for bj in range(j0, j1 + 1))
+            for bi, bj in keys:
+                bucket = self._grid.get((bi, bj))
+                if not bucket:
+                    continue
+                if (
+                    s <= bi * GRID_DEG
+                    and (bi + 1) * GRID_DEG <= n
+                    and a <= bj * GRID_DEG
+                    and (bj + 1) * GRID_DEG <= b
+                ):  # bucket wholly inside the box: no per-entry test
                     out.extend(bucket.values())
-        else:
-            for a0, a1, b0, b1 in spans:
-                for bi in range(a0, a1 + 1):
-                    for bj in range(b0, b1 + 1):
-                        b = self._grid.get((bi, bj))
-                        if b:
-                            out.extend(b.values())
-        return [
-            x
-            for x in out
-            if s <= x.lat <= n and any(a <= x.lon <= b for a, b in ranges)  # exact box
-        ]
+                else:
+                    out.extend(x for x in bucket.values() if s <= x.lat <= n and a <= x.lon <= b)
+        return out
 
     def query(
         self,
@@ -216,19 +222,23 @@ class Layer:
         want: set[str] | None = None,
         since: int | None = None,
         future: timedelta = timedelta(minutes=5),
+        limit: int | None = None,
     ) -> list[Entry]:
-        """Fresh entries in `bb`, newest first; `since` keeps only those changed after it."""
+        """Fresh entries in `bb`; `since` keeps only those changed after it.
+
+        Sorted newest first only when more than `limit` match (so the cap keeps the newest);
+        otherwise in arbitrary order.
+        """
         lo, hi = now - timedelta(seconds=max_age_s), now + future
         with self._lock:
             cand = self._candidates(bb)
-        out = [
-            e
-            for e in cand
-            if lo <= e.ts <= hi
-            and (since is None or e.ver > since)
-            and (want is None or matches_sources(e, want))
-        ]
-        out.sort(key=lambda e: e.ts, reverse=True)
+        out = [e for e in cand if lo <= e.ts <= hi]
+        if since is not None:
+            out = [e for e in out if e.ver > since]
+        if want is not None:
+            out = [e for e in out if matches_sources(e, want)]
+        if limit is not None and len(out) > limit:
+            out.sort(key=lambda e: e.ts, reverse=True)
         return out
 
     def removed_since(self, since: int) -> list[Any] | None:
@@ -288,4 +298,3 @@ class LivePositions:
     @property
     def version(self) -> tuple[int, int]:
         return self.air.version, self.sea.version
-

@@ -106,9 +106,11 @@ def main() -> None:
         "air world density z3": f"/api/traffic/air?bbox={world}&zoom=3",
         "sea busy bbox z8 (20k)": f"/api/traffic/sea?bbox={busy}&zoom=8",
         "air busy bbox z8": f"/api/traffic/air?bbox={busy}&zoom=8",
+        "sea busy compact": f"/api/traffic/sea?bbox={busy}&zoom=8&fmt=compact",
     }
     print(f"{'endpoint':28s} {'p50 ms':>9s} {'p95 ms':>9s} {'bytes':>9s}")
     for name, url in cases.items():
+        c.get(url)  # warm-up: builds per-entry fragments
         ts: list[float] = []
         size = 0
         for _ in range(a.reps):
