@@ -9,15 +9,19 @@ Pure functions. Choices (documented in docs/detectors.md):
   so a finding is as reliable as the most reliable source that independently shows it; adding a
   weaker mirror must not downgrade it (worst-case would punish extra coverage). Unknown sources
   grade F; no sources -> F.
-* **Credibility** from the number of *independent domains* that support the alert:
-  1 = analyst-confirmed or >= 3 domains; 2 = 2 domains; 3 = single domain, strong
-  (lead score >= strong_score) AND persistent (persistence >= required windows);
-  4 = single domain otherwise; 5 = contradicted by another domain; 6 = no evidence (cannot judge).
+* **Credibility** from the number of *independent source families* that support the alert
+  (ADR-005 section C; `fusion.source_family`: adsb, ais, gfw, sar, notice). Jamming and a tanker
+  orbit are both `air` but one ADS-B feed, so domains would overcount; a NOTAM is an independent
+  publisher. 1 = analyst-confirmed or >= 3 families; 2 = 2 families; 3 = one family, strong
+  (lead score >= strong_score) AND persistent (persistence >= required windows), OR one family
+  with same-family support (e.g. a tanker orbit near jamming); 4 = one family otherwise;
+  5 = contradicted; 6 = no evidence (cannot judge). When `families` is not given (legacy callers)
+  the count is over *domains* as before.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 
 from heimdall.schemas import (
     Admiralty,
@@ -74,8 +78,9 @@ def reliability(providers: Iterable[str], grades: Mapping[str, str]) -> SourceRe
 
 
 def credibility(
-    domains: set[Domain],
+    domains: Collection[object],
     *,
+    same_family_support: bool = False,
     has_evidence: bool = True,
     strong: bool = False,
     persistent: bool = False,
@@ -92,7 +97,7 @@ def credibility(
         return 1
     if len(domains) == 2:
         return 2
-    return 3 if (strong and persistent) else 4
+    return 3 if ((strong and persistent) or same_family_support) else 4
 
 
 def grade(
@@ -103,8 +108,15 @@ def grade(
     required_persistence: int,
     strong_score: float,
     analyst_confirmed: bool = False,
+    families: Collection[str] | None = None,
+    same_family_support: bool = False,
 ) -> Admiralty:
-    """Admiralty grade for an alert built from `evidence` (+ cross-domain corroborations)."""
+    """Admiralty grade for an alert built from `evidence` (+ corroborations).
+
+    `families`: independent source families supporting the alert (own + supporting); when None the
+    legacy domain count is used. `same_family_support`: a supporting claim came from a family
+    already counted (credibility 3 instead of 4).
+    """
     # only providers whose own reports show the anomaly: detectors emit one RecordRef per such
     # provider; coverage.providers (everyone who saw the area) is NOT used for reliability
     providers = {r.source for e in evidence for r in e.records}
@@ -115,7 +127,8 @@ def grade(
     return Admiralty(
         reliability=reliability(providers, grades),
         credibility=credibility(
-            domains,
+            domains if families is None else set(families),
+            same_family_support=same_family_support,
             has_evidence=lead is not None,
             strong=lead is not None and lead.score >= strong_score,
             persistent=lead is not None and lead.persistence >= required_persistence,
