@@ -91,6 +91,37 @@ async def test_dead_pump_is_reported_and_restarted(tmp_path: Path) -> None:
     await m.stop()
 
 
+async def test_orphaned_connectors_are_closed(tmp_path: Path) -> None:
+    runs = {"n": 0}
+    closed: list[str] = []
+
+    class Tracked(Conn):
+        async def aclose(self) -> None:
+            closed.append(self.name)
+            raise RuntimeError("close failed")  # must be logged, not raised
+
+    async def pump(c: Connector) -> None:
+        runs["n"] += 1
+        if runs["n"] == 1:
+            raise RuntimeError("pump died")
+        await asyncio.sleep(3600)
+
+    built: list[Tracked] = []
+
+    def build(key: str) -> Connector:
+        c = Tracked(f"{key}{len(built)}")
+        built.append(c)
+        return c
+
+    m = SourceManager({"alpha": {"domain": "air"}}, build, pump, tmp_path / "s.json")
+    await m.start()
+    await asyncio.sleep(0.05)
+    await m.set_enabled("alpha", True)  # restart -> the dead connector is closed
+    assert closed == ["alpha0"]
+    await m.stop()
+    assert closed == ["alpha0", "alpha1"]
+
+
 async def test_aclose_failure_still_persists(tmp_path: Path) -> None:
     async def pump(c: Connector) -> None:
         await asyncio.sleep(3600)
