@@ -20,6 +20,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from heimdall import config
 from heimdall.api import triage
+from heimdall.api.basemap import basemap_router
 from heimdall.api.traffic import traffic_router
 from heimdall.ports import SourceControl, Store
 from heimdall.schemas import (
@@ -468,6 +469,7 @@ def create_app(
         return sorted(out, key=lambda a: a["ts"], reverse=True)
 
     app.include_router(traffic_router(st))
+    app.include_router(basemap_router())
 
     @app.get("/api/ui-config")
     def ui_config() -> dict[str, Any]:
