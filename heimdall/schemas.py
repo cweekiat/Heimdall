@@ -328,6 +328,7 @@ KEY_CONNECTORS: dict[str, str] = dict(
         ("OPENSKY_CLIENT_ID", "opensky_global"),
         ("OPENSKY_CLIENT_SECRET", "opensky_global"),
         ("FIRMS_MAP_KEY", "firms"),
+        ("CLOUDFLARE_RADAR_TOKEN", "cloudflare_radar"),
     ]
 )
 

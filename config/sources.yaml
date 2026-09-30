@@ -19,8 +19,8 @@ sources:
   swpc:            {domain: space,  reliability: A, latency_s: 3600,  base: "https://services.swpc.noaa.gov",   auth: none, poll_s: 1800, phase: 3, verified: false}  # prior; rate/latency from 016
   celestrak:       {domain: space,  reliability: A, latency_s: 86400, base: "https://celestrak.org",            auth: none,                      phase: 3, verified: false}
   earth_search:    {domain: space,  reliability: A, latency_s: 86400, base: "https://earth-search.aws.element84.com/v1", auth: none,          phase: 3, verified: false}
-  ioda:            {domain: cyber,  reliability: B, latency_s: 600,   base: "https://api.ioda.inetintel.cc.gatech.edu/v2", auth: none,       phase: 3, verified: false}
-  cloudflare_radar: {domain: cyber,  reliability: B, latency_s: 900,   base: "https://api.cloudflare.com/client/v4/radar", auth: CLOUDFLARE_TOKEN, phase: 3, verified: false}
+  ioda:            {domain: cyber,  reliability: B, latency_s: 600,   base: "https://api.ioda.inetintel.cc.gatech.edu/v2", auth: none, poll_s: 600, datasources: [bgp, ping-slash24, merit-nt], baseline_h: 168, emit_h: 24, phase: 3, verified: false}  # prior; limits from 016
+  cloudflare_radar: {domain: cyber,  reliability: B, latency_s: 900,   base: "https://api.cloudflare.com/client/v4/radar", auth: CLOUDFLARE_RADAR_TOKEN, poll_s: 900, phase: 3, verified: false}  # prior; limits from 016
   gdelt:           {domain: events, reliability: C, latency_s: 900,   base: "https://api.gdeltproject.org/api/v2", auth: none,                 phase: 4, verified: false}
   taiwan_mnd:      {domain: events, reliability: B, latency_s: 86400, base: "https://www.mnd.gov.tw",           auth: none,                      phase: 4, verified: false}
   japan_jso:       {domain: events, reliability: B, latency_s: 86400, base: "https://www.mod.go.jp/js",         auth: none,                      phase: 4, verified: false}
