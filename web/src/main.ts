@@ -17,6 +17,14 @@ import { showHelp, showShift } from "./overlays";
 import { showAbout } from "./about";
 import { maybeAutoStartTour } from "./tour/overlay";
 import { PRIORITY, renderQueue, visibleAlerts } from "./panels";
+
+/** Alerts drawn on the map: not expired or dismissed, unless the queue filter asks for a closed status. */
+const OPEN_ON_MAP = ["new", "acknowledged", "under_review", "shelved", "confirmed"];
+function mapAlerts(): ReturnType<typeof visibleAlerts> {
+  const xs = visibleAlerts();
+  const f = state.filters.status;
+  return f && f !== "open" ? xs : xs.filter((a) => OPEN_ON_MAP.includes(a.status));
+}
 import { patch, refreshAll, refreshHealth, selectAlert, state, subscribe, triage, upsertAlert } from "./store";
 import { renderTimeline } from "./timeline";
 import { mountToolbar, setAlertBadge } from "./toolbar";
@@ -303,7 +311,7 @@ function draw(changed: Set<string>): void {
   if (has("alerts", "window", "playing", "filters")) renderTimeline($("timeline"));
   if (ops && has("alerts", "cells", "aois", "selected", "detail", "tracks", "filters", "window")) {
     Object.assign(ops.state, {
-      alerts: filters.alerts ? visibleAlerts() : [],
+      alerts: filters.alerts ? mapAlerts() : [],
       cells: state.cells,
       aois: state.aois,
       aoAreas: areasWin.display(),
@@ -383,7 +391,7 @@ async function boot(): Promise<void> {
       refreshFilters();
     };
     onFilters(() => {
-      if (ops) ops.state.alerts = filters.alerts ? visibleAlerts() : [];
+      if (ops) ops.state.alerts = filters.alerts ? mapAlerts() : [];
       ops?.render();
     });
     getBody("layers")!.replaceChildren(

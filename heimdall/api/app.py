@@ -28,6 +28,7 @@ from heimdall.api.basemap import basemap_router
 from heimdall.api.keys import keys_router
 from heimdall.api.layers import layers_router
 from heimdall.api.traffic import traffic_router
+from heimdall.fuse.fusion import ACTIVE
 from heimdall.live import LivePositions
 from heimdall.ports import SecretStore, SourceControl, Store
 from heimdall.schemas import (
@@ -354,7 +355,8 @@ def create_app(
     def cells(res: int = 4, since: str | None = None) -> list[dict[str, Any]]:
         start = _since(since, 24)
         latest: dict[str, Any] = {}
-        for al in st.list_alerts(since=start, limit=1000):
+        # only open alerts paint the map: cleared/expired/dismissed ones must disappear
+        for al in st.list_alerts(since=start, status=list(ACTIVE), limit=1000):
             for ev in st.get_evidence(al.evidence_ids):
                 if ev.h3_cell and (ev.h3_res in (None, res)):
                     cur = latest.get(ev.h3_cell)
