@@ -41,6 +41,10 @@ class StorageCfg(BaseModel):
     duckdb_path: str = "data/heimdall.duckdb"
     lake_dir: str = "data/lake"
     global_retention_days: int = 7  # 024g: worldwide display data (lake/global/...), not AOI data
+    # 026a: DuckDB is a hot cache; the lake keeps everything. Aircraft/vessels only need the
+    # detector lookbacks (minutes) plus trails (<=24 h); events serve day-scale layers/notices.
+    hot_retention_h: float = 6
+    hot_retention_events_h: float = 720
     bus: str = "memory"
     store: str = "duckdb"
 

@@ -6,6 +6,7 @@ expose the STAC item link (`url`) as data only: no asset/thumbnail hrefs, ever.
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -52,6 +53,7 @@ ATTRS: dict[str, tuple[str, ...]] = {
 }
 _SCALAR = (str, int, float, bool, type(None))
 NEXT_H = 48
+CACHE_S = 5.0  # per-tick response cache (layers change on pipeline ticks, minutes apart)
 MAX_OVERPASSES = 3
 AID = Path(pattern=r"^[A-Za-z0-9_.:|-]{1,80}$")
 
@@ -125,36 +127,60 @@ def _feature(e: GeoEvent, layer: str) -> dict[str, Any] | None:
 
 def layers_router(st: Store) -> APIRouter:
     r = APIRouter()
+    cache: dict[tuple[str, int, str], tuple[float, dict[str, Any]]] = {}
 
     @r.get("/api/layers/{layer}")
     def get_layer(
         layer: str,
         aoi: str = Query(max_length=60),
         hours: int | None = Query(default=None),
-    ) -> dict[str, Any]:
+    ) -> Any:
         if layer not in LAYER_KINDS:
             raise HTTPException(404, "unknown layer")
         cfg = config.settings().api.layers
         h = hours if hours is not None else (168 if layer == "night_lights" else 24)
         if not 1 <= h <= cfg.max_hours:
             raise HTTPException(422, f"hours must be 1..{cfg.max_hours}")
-        area = _aoi_or_404(aoi)
+        every = aoi == "all"  # 026a: one request for all AOIs; features carry properties.aoi
+        area = None if every else _aoi_or_404(aoi)
         now = datetime.now(UTC)
+        ck = (layer, h, aoi)
+        hit = cache.get(ck)
+        if hit is not None and time.monotonic() - hit[0] < CACHE_S:
+            return hit[1]
         if layer == "overpass":  # forward-looking
             start, end = now, now + timedelta(hours=h)
         else:
             start, end = now - timedelta(hours=h), now + timedelta(minutes=5)
-        rows = [e for e in st.events_window(start, end, LAYER_KINDS[layer]) if _in_aoi(e, area)]
-        rows.sort(key=lambda e: e.ts, reverse=(layer != "overpass"))
-        feats = [f for e in rows if (f := _feature(e, layer)) is not None]
-        return {
+        events = st.events_window(start, end, LAYER_KINDS[layer])
+        areas = config.settings().aois
+        rows: list[tuple[GeoEvent, str]] = []
+        for e in events:
+            if area is not None:
+                if _in_aoi(e, area):
+                    rows.append((e, aoi))
+            else:
+                hit_aoi = next((a.name for a in areas if _in_aoi(e, a)), None)
+                if hit_aoi is not None:
+                    rows.append((e, hit_aoi))
+        rows.sort(key=lambda r: r[0].ts, reverse=(layer != "overpass"))
+        feats = []
+        for e, name in rows:
+            f = _feature(e, layer)
+            if f is not None:
+                f["properties"]["aoi"] = name
+                feats.append(f)
+        out = {
             "type": "FeatureCollection",
             "features": feats[: cfg.max_features],
             "truncated": len(feats) > cfg.max_features,
             "layer": layer,
             "aoi": aoi,
             "hours": h,
+            "total": len(feats),
         }
+        cache[ck] = (time.monotonic(), out)
+        return out
 
     @r.get("/api/alerts/{alert_id}/context")
     def alert_context(alert_id: str = AID) -> dict[str, Any]:

@@ -13,6 +13,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -27,6 +28,7 @@ from heimdall.api.basemap import basemap_router
 from heimdall.api.keys import keys_router
 from heimdall.api.layers import layers_router
 from heimdall.api.traffic import traffic_router
+from heimdall.live import LivePositions
 from heimdall.ports import SecretStore, SourceControl, Store
 from heimdall.schemas import (
     ActionRequest,
@@ -133,6 +135,7 @@ def create_app(
     secrets: SecretStore | None = None,
     aoi_service: AoiService | None = None,
     ui_extra: dict[str, Any] | None = None,
+    live: LivePositions | None = None,
 ) -> FastAPI:
     st: Store = store
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
@@ -141,6 +144,7 @@ def create_app(
     app = FastAPI(title="Heimdall API", version="0.1")
     app.state.store = st
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or LOCAL_HOSTS)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)  # 026a
 
     @app.middleware("http")
     async def same_origin_writes(
@@ -505,7 +509,7 @@ def create_app(
                 )
         return sorted(out, key=lambda a: a["ts"], reverse=True)
 
-    app.include_router(traffic_router(st))
+    app.include_router(traffic_router(st, index=live))
     app.include_router(layers_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(

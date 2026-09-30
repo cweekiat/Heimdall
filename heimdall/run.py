@@ -29,6 +29,7 @@ from heimdall.config import sources as load_sources
 from heimdall.geo import haversine_km
 from heimdall.ingest.adsb import merge_providers
 from heimdall.ingest.registry import build_connectors
+from heimdall.live import LivePositions
 from heimdall.logging import configure_logging, get_logger, start_metrics_server
 from heimdall.ports import Bus, Connector, Lake, SourceControl, Store
 from heimdall.schemas import AircraftObs, GeoEvent, VesselObs
@@ -103,8 +104,16 @@ class Writer:
     guarded by `_lock`; Lake/Store writes happen outside the lock.
     """
 
-    def __init__(self, bus: Bus, lake: Lake, store: Store, ttl_s: float = DEDUPE_TTL_S) -> None:
+    def __init__(
+        self,
+        bus: Bus,
+        lake: Lake,
+        store: Store,
+        ttl_s: float = DEDUPE_TTL_S,
+        live: LivePositions | None = None,
+    ) -> None:
         self.bus, self.lake, self.store = bus, lake, store
+        self.live = live  # 026a: latest-fix index the API serves traffic from
         self.ttl = timedelta(seconds=ttl_s)
         self.buf: list[AircraftObs] = []
         self.sea_buf: list[VesselObs] = []
@@ -176,6 +185,10 @@ class Writer:
                 del self._recent[hex_]
             for r in self._recent.values():
                 r.kept = [k for k in r.kept if now - k[3] <= self.ttl]
+            provs = {o.hex: set(self._recent[o.hex].providers) for o in fresh}
+        if self.live is not None:
+            self.live.update_air(fresh, now, provs)
+            self.live.expire(now)
         self._flush_sea(now)
         self._flush_events()
         self._flush_global_air(glob, now)
@@ -197,6 +210,8 @@ class Writer:
                 self._glob_seen[(o.hex, o.ts)] = now
                 fresh.append(o)
         if fresh:
+            if self.live is not None:
+                self.live.update_air(fresh, now)
             self.lake.append(GLOBAL_AIR, fresh)
             self.n_global += self.store.insert_aircraft(fresh)
 
@@ -212,6 +227,8 @@ class Writer:
                 self._sea_seen[key] = now
                 fresh.append(v)
         if fresh:
+            if self.live is not None:
+                self.live.update_sea(fresh, now)
             local = [v for v in fresh if not v.is_global]
             if local:
                 self.lake.append("vessels", local)
@@ -235,7 +252,13 @@ class Writer:
             self.flush()
 
 
-async def janitor_loop(lake: Lake, store: Store, retention_days: int) -> None:
+async def janitor_loop(
+    lake: Lake,
+    store: Store,
+    retention_days: int,
+    hot_h: float | None = None,
+    hot_events_h: float | None = None,
+) -> None:
     """024g: drop display-only global data older than `retention_days`; AOI data is untouched."""
     while True:
         try:
@@ -246,6 +269,13 @@ async def janitor_loop(lake: Lake, store: Store, retention_days: int) -> None:
             n_rows = await asyncio.to_thread(fn, cutoff) if fn else 0
             if n_files or n_rows:
                 log.info("janitor_global", lake_dirs=n_files, store_rows=n_rows)
+            hot = getattr(store, "purge_hot", None)
+            if hot is not None and hot_h is not None:  # 026a: bound the hot store
+                now = datetime.now(UTC)
+                ev = now - timedelta(hours=hot_events_h) if hot_events_h else None
+                n_hot = await asyncio.to_thread(hot, now - timedelta(hours=hot_h), ev)
+                if n_hot:
+                    log.info("janitor_hot", store_rows=n_hot)
         except Exception as e:  # housekeeping must never take the runtime down
             log.warning("janitor_failed", error=f"{type(e).__name__}: {e}")
         await asyncio.sleep(JANITOR_S)
@@ -279,6 +309,7 @@ def start_api(
     cfg: Settings,
     sources: SourceControl | None = None,
     aoi_service: AoiService | None = None,
+    live: LivePositions | None = None,
 ) -> Any:
     """Build the in-process API server (ADR-002) if heimdall.api.app is available."""
     try:
@@ -297,7 +328,9 @@ def start_api(
             yield
 
     config = uvicorn.Config(
-        create_app(store, sources=sources, secrets=default_store(), aoi_service=aoi_service),
+        create_app(
+            store, sources=sources, secrets=default_store(), aoi_service=aoi_service, live=live
+        ),
         host=cfg.api.host,
         port=cfg.api.port,
         log_config=None,
@@ -346,7 +379,8 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         manager,
         all_src,
     )
-    writer = Writer(bus, lake, store)
+    live = LivePositions()
+    writer = Writer(bus, lake, store, live=live)
     step_min = int(cfg.detectors.get("jamming", {}).get("step_min", 5))
 
     stop = asyncio.Event()
@@ -358,12 +392,20 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     tasks = [
         asyncio.create_task(writer.consume()),
         asyncio.create_task(writer.flush_loop()),
-        asyncio.create_task(janitor_loop(lake, store, cfg.storage.global_retention_days)),
+        asyncio.create_task(
+            janitor_loop(
+                lake,
+                store,
+                cfg.storage.global_retention_days,
+                cfg.storage.hot_retention_h,
+                cfg.storage.hot_retention_events_h,
+            )
+        ),
         asyncio.create_task(health_loop(lambda: manager.connectors, store)),
         asyncio.create_task(tick_loop(store, cfg, step_min)),
     ]
     await manager.start()
-    server = start_api(store, cfg, manager, aoi_svc)
+    server = start_api(store, cfg, manager, aoi_svc, live)
     if server is not None:
         tasks.append(asyncio.create_task(server.serve()))
     log.info("started", connectors=[c.name for c in manager.connectors], step_min=step_min)

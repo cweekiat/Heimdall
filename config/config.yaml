@@ -4,6 +4,8 @@ storage:
   duckdb_path: data/heimdall.duckdb
   lake_dir: data/lake
   global_retention_days: 7   # 024g: lake/global/* + is_global store rows; AOI data is kept
+  hot_retention_h: 6         # 026a: aircraft/vessels kept in DuckDB this long (lake keeps all)
+  hot_retention_events_h: 720  # 026a: events (notices 30 d, thermal/night-lights days); deviates from 6 h in spec
   bus: memory          # memory | redis (scale-out)
   store: duckdb        # duckdb | clickhouse (scale-out)
 
