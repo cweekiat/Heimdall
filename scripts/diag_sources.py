@@ -2,9 +2,9 @@
 
     uv run python scripts/diag_sources.py [seconds] [source ...]
 
-Per source, it waits up to N seconds (default 45) for the first batch, then prints the row count or
-the exception, with its traceback's last frame. Key values are never printed. Network goes only to the
-hosts in config/sources.yaml.
+Per source, it waits up to N seconds (default 45) for the first batch, then prints the row count
+or the exception with its last traceback frame. Key values are never printed. Network goes only
+to the hosts in config/sources.yaml.
 """
 
 from __future__ import annotations
@@ -30,7 +30,8 @@ async def probe(conn: object, seconds: float) -> str:
         res = f"no batch within {seconds:.0f}s"
     except Exception as e:  # report, don't raise
         tb = traceback.extract_tb(e.__traceback__)[-1]
-        res = f"CRASH {type(e).__name__}: {str(e)[:300]} @ {tb.filename.split('heimdall/')[-1]}:{tb.lineno}"
+        where = f"{tb.filename.split('heimdall/')[-1]}:{tb.lineno}"
+        res = f"CRASH {type(e).__name__}: {str(e)[:300]} @ {where}"
     try:
         h = conn.health()  # type: ignore[attr-defined]
         res += f" | health={h.status} detail={h.detail!r} last_error={str(h.last_error)[:200]!r}"
