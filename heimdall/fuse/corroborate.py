@@ -142,12 +142,12 @@ def _notice_corr(
 ) -> Corroboration:
     cat = str(n.attrs.get("category") or "other")
     kind = "NOTAM" if n.kind == "notam" else "navigational warning"
-    return Corroboration(
-        domain=n.domain,
-        evidence_id=n.id,
-        relation=relation,
-        note=f"active {kind} {safe_ref(n)} ({n.source}, {cat}) covers the area",
+    note = (
+        f"official notice declares GNSS interference in this area: {kind} {safe_ref(n)} ({n.source})"
+        if cat == "gnss_interference"
+        else f"active {kind} {safe_ref(n)} ({n.source}, {cat}) covers the area"
     )
+    return Corroboration(domain=n.domain, evidence_id=n.id, relation=relation, note=note)
 
 
 def _p3_supports(

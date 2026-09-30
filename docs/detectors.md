@@ -471,8 +471,11 @@ Math is added here when each ships. Thresholds start as priors in `config/config
   around a common centre.
 - **Ship-to-ship transfer** (029c, `detect/sts.py`): pair < 500 m, both < 2 kn, ≥ 2 h, outside anchorages, a tanker
   involved; boosts from prior gaps and identity changes.
-- **Interference notices** (029d, extends warning_area): GNSS interference/testing NOTAMs and NAVAREA warnings
-  classified by regex (text untrusted).
+- **Interference notices** (029d, done, `warning-area-1.1.0`): NOTAM/NAVAREA text matched (casefolded substring,
+  first 8k chars, text untrusted) against `config/warnings.yaml` `gnss_interference` phrases (GPS/GNSS unreliable,
+  UNAVBL, RAIM UNAVBL, spoofing, jamming, signals degraded, FAA 'GPS (INCLUDING WAAS'); bare 'GPS' never matches.
+  Such notices carry band L1_GNSS and corroborate overlapping jamming/spoofing with the note 'official notice
+  declares GNSS interference in this area: <kind> <ref> (<source>)'.
 - **GNSS interference map** (031, descriptive, not a detector): GPSJam-style daily and last-24 h H3 r4 map sharing the
   jamming detector's per-aircraft classification; `% bad = 100·(bad − 1)/total`.
 - **CYGNSS L1 noise floor** (P5): per-cell robust z of noise floor vs baseline; space-weather explain-away.

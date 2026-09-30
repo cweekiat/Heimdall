@@ -23,7 +23,7 @@ def test_only_active_configured_notices_in_aoi() -> None:
     evs = detect(events(), {}, NOW, aoi=SCS)
     assert {e.records[0].id for e in evs} == {"nga-exercise-1", "faa-gnss-1"}
     for e in evs:
-        assert e.kind == AlertKind.WARNING_AREA and e.detector_version == "warning-area-1.0.0"
+        assert e.kind == AlertKind.WARNING_AREA and e.detector_version == "warning-area-1.1.0"
         assert e.aoi == "south_china_sea" and e.counterfactual and e.h3_cell
         assert all(r.passed for r in e.rules)
 
