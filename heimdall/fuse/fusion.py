@@ -12,18 +12,25 @@ Steps (see docs/detectors.md "Fusion v0"):
    other-kind Evidence = context). Credibility counts independent source *families*. Admiralty
    grade, template summary (no LLM, no notice text), recommended_actions from playbook `applies_to`.
    WARNING_AREA Evidence is context-only: it never opens an alert.
-6. Open alerts not refreshed for expire_after_min -> EXPIRED.
+6. Context (ADR-007 s.4-5, task 022b): `confounders.assess` on the lead Evidence multiplies the
+   alert confidence by a factor in [min_factor, 1] (weather, Kp, scintillation); the notes are
+   appended as `Corroboration(relation="context", factor=...)` and the gaps go to `Alert.gaps`.
+   `observability.observability` appends footprint/overpass context notes. Severity is computed
+   before and never touched by this; Admiralty and the corroboration status never count context.
+7. Open alerts not refreshed for expire_after_min -> EXPIRED.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from heimdall.fuse.admiralty import grade, source_key
+from heimdall.fuse import confounders, observability
+from heimdall.fuse.admiralty import grade, independent_families, source_key
 from heimdall.fuse.corroborate import (
     DEFAULT_CORROBORATION,
     DEFAULT_SOURCE_FAMILY,
@@ -64,6 +71,8 @@ DEFAULTS: dict[str, Any] = {
     "critical_min_tankers": 2,
     "source_family": DEFAULT_SOURCE_FAMILY,
     "corroboration": DEFAULT_CORROBORATION,
+    "confounders": {},  # confounders.DEFAULTS apply per missing key
+    "observability": {},  # observability.DEFAULTS apply per missing key
 }
 
 _SEV_ORDER = [Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
@@ -82,6 +91,7 @@ EVIDENCE_FIELDS = (
     "evidence_ids",
     "corroborations",
     "corroboration_status",
+    "gaps",
     "last_seen",
     "lat",
     "lon",
@@ -202,6 +212,19 @@ def _f(e: Evidence, k: str, default: float = 0.0) -> float:
     return e.features.get(k, default)
 
 
+def _g(x: float) -> str:
+    """Compact number: 12 -> '12', 1.0 -> '1', 0.35 -> '0.3'."""
+    return f"{x:.1f}".rstrip("0").rstrip(".") if x < 10 else f"{x:.0f}"
+
+
+_SAFE_ENTITY = re.compile(r"[^A-Za-z0-9_:.-]")
+
+
+def _entity(e: str) -> str:
+    """An entity label restricted to a safe alphabet (it may originate from a scraped feed)."""
+    return _SAFE_ENTITY.sub("", e)[:24]
+
+
 def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: str | None) -> str:
     prov = ", ".join(lead.coverage.providers) or "no providers"
     cov = f"coverage {lead.coverage.confidence:.0%} ({prov})"
@@ -252,6 +275,33 @@ def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: s
             f"{_f(lead, 'covered_frac'):.0%} of hourly bins had good reception nearby; "
             f"{pers}; {cov}."
         )
+    if kind == AlertKind.THERMAL:
+        n = _f(lead, "n_detections")
+        return (
+            f"{n:.0f} fire detections in a normally quiet area (usual "
+            f"\u2248{_g(_f(lead, 'baseline_mean_per_day'))}/day) in H3 {cell}; total heat output "
+            f"{_f(lead, 'sum_frp_mw'):.0f} MW over {_f(lead, 'n_passes'):.0f} satellite passes; "
+            f"{pers}; {cov}."
+        )
+    if kind == AlertKind.OUTAGE and lead.detector == "night_lights":
+        return (
+            f"Night-time lights in H3 {cell} fell to {_f(lead, 'worst_ratio'):.0%} of normal "
+            f"for {_f(lead, 'n_dropped_nights'):.0f} clear nights (satellite data "
+            f"{_f(lead, 'imagery_lag_days'):.0f} days old); {pers}; {cov}."
+        )
+    if kind == AlertKind.OUTAGE:
+        who = ", ".join(_entity(x) for x in sorted({x for e in group for x in e.entities})[:3])
+        ann = " and a Cloudflare Radar report" if _f(lead, "annotation_active") else ""
+        low = (
+            f", lowest {_f(lead, 'min_ratio'):.0%} of normal"
+            if "min_ratio" in lead.features
+            else ""
+        )
+        return (
+            f"Internet outage{f' ({who})' if who else ''} near H3 {cell}: "
+            f"{_f(lead, 'n_datasources'):.0f} independent measurements down for "
+            f"{_f(lead, 'duration_h'):.1f} h{low}{ann}; {pers}; {cov}."
+        )
     return f"{kind} in H3 {cell}: {len(group)} evidence items; {pers}; {cov}."
 
 
@@ -262,6 +312,8 @@ _TITLES = {
     AlertKind.COMPOSITE: "Tanker orbits near GNSS jamming",
     AlertKind.AIS_SPOOFING: "AIS spoofing",
     AlertKind.AIS_GAP: "AIS dark gap",
+    AlertKind.THERMAL: "Unusual fire activity",
+    AlertKind.OUTAGE: "Connectivity or power outage",
 }
 
 
@@ -298,13 +350,17 @@ def fuse(
     aoi: str | None = None,
     control: bool = False,
     notices: Sequence[GeoEvent] | None = None,
+    context_events: Sequence[GeoEvent] | None = None,
 ) -> list[Alert]:
     """Return new/updated/expired alerts (caller upserts them).
 
     `notices`: active area notices and GFW/SAR events (ADR-005) used only for corroboration.
+    `context_events`: weather, space_weather, imagery_footprint and overpass events (ADR-007); they
+    only lower confidence and add context notes, never corroborate.
     """
     c = _cfg(cfg)
     grades = source_grades or {}
+    ctx_events = list(context_events or [])
     gated = [
         e
         for e in evidence
@@ -377,7 +433,7 @@ def fuse(
         for x in corr:
             if x.relation == "supports":
                 fam_sup |= fam_idx.get(x.evidence_id, set())
-        families = fam_own | fam_sup
+        families = independent_families(fam_own | fam_sup)
         status_c: CorrStatus = (
             "contradicted"
             if any(x.relation == "contradicts" for x in corr)
@@ -393,6 +449,13 @@ def fuse(
             families=families,
             same_family_support=bool(fam_sup & fam_own),
         )
+        cf, cnotes, cgaps = confounders.assess(lead, ctx_events, c["confounders"])
+        conf *= cf
+        corr = [
+            *corr,
+            *cnotes,
+            *observability.observability(lead, ctx_events, now, c["observability"]),
+        ]
         sources = _alert_sources(group, corr, conn_idx, adm, grades, c["source_family"])
         footprint = _footprint(kind, group, cell)
         ev_ids = [e.id for e in sorted(group, key=lambda e: e.id)]
@@ -401,6 +464,8 @@ def fuse(
         summary = _summary(kind, group, lead, cell) + f" Admiralty {adm}."
         if len(families) > 1:
             summary += f" Independent source families: {', '.join(sorted(families))}."
+        if cf < 1.0:
+            summary += f" Confidence x{cf:.2f}: " + "; ".join(n.note for n in cnotes) + "."
         if control:
             summary += " [control AOI: calibration only, severity capped at info]"
         title = f"{_TITLES.get(kind, str(kind))}" + (f" — {aoi}" if aoi else "")
@@ -415,6 +480,7 @@ def fuse(
                     "evidence_ids": ids,
                     "corroborations": corr,
                     "corroboration_status": status_c,
+                    "gaps": cgaps,
                     "sources": sources,
                     "footprint": footprint,
                     "last_seen": max(prev.last_seen, last),
@@ -438,6 +504,7 @@ def fuse(
                 evidence_ids=ev_ids,
                 corroborations=corr,
                 corroboration_status=status_c,
+                gaps=cgaps,
                 sources=sources,
                 footprint=footprint,
                 recommended_actions=actions_for(kind, playbook),

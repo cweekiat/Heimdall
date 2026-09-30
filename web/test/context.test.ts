@@ -42,6 +42,9 @@ test("not loaded yet says not checked, never false", () => {
 
 test("helpers", () => {
   assert.equal(effect({ note: "", factor: null }), "confidence lowered");
+  assert.equal(effect({ note: "", factor: 0.85 }), "confidence lowered ×0.85");
+  assert.equal(effect({ note: "", factor: 0.5 }), "confidence lowered ×0.5");
+  assert.equal(parseContext({ confounders: [{ note: "x", factor: 1.7 }, { note: "y", factor: "0.5" }, { note: "z", factor: 0.5 }] }).confounders.map((c) => c.factor).join(), ",,0.5");
   assert.equal(gloss("Kp 5"), "geomagnetic storm (Kp 5)");
   assert.equal(gloss("geomagnetic storm (Kp 6)"), "geomagnetic storm (Kp 6)");
   assert.equal(parseContext("garbage").confounders.length, 0);

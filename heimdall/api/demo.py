@@ -398,15 +398,19 @@ def _seed_p3(store: Store, now: datetime) -> None:
         )
     )
     store.insert_events(out)
-    for aid, note in (
-        ("alert-0", "Cloud cover 85% over the cell; confidence lowered x0.8"),
-        ("alert-2", "Geomagnetic storm (Kp 6); confidence lowered x0.85"),
+    for aid, note, factor in (
+        ("alert-0", "Cloud cover 85% over the cell; confidence lowered x0.8", 0.8),
+        ("alert-2", "Geomagnetic storm (Kp 6); confidence lowered x0.85", 0.85),
     ):
         al = store.get_alert(aid)
         if al is not None:
             al.corroborations.append(
                 Corroboration(
-                    domain=Domain.EVENTS, evidence_id=f"ctx|{aid}", relation="context", note=note
+                    domain=Domain.EVENTS,
+                    evidence_id=f"ctx|{aid}",
+                    relation="context",
+                    note=note,
+                    factor=factor,
                 )
             )
             store.upsert_alert(al)

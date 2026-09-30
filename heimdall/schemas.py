@@ -204,6 +204,9 @@ class Corroboration(BaseModel):
     evidence_id: str
     relation: Literal["supports", "contradicts", "context"]
     note: str
+    # Confidence multiplier this note applies (ADR-007 s.4), in [0, 1]; None for notes that do not
+    # change confidence. Machine-readable so clients never parse `note` text.
+    factor: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class Admiralty(BaseModel):
@@ -249,6 +252,7 @@ class Alert(BaseModel):
     corroboration_status: Literal["corroborated", "uncorroborated", "contradicted"] = (
         "uncorroborated"
     )
+    gaps: list[str] = Field(default_factory=list)  # missing context (e.g. weather lag), from fusion
     recommended_actions: list[str] = Field(default_factory=list)  # playbook action ids
     status: AlertStatus = AlertStatus.NEW
     first_seen: datetime
