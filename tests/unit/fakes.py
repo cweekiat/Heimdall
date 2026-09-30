@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
 
-from heimdall.geo import BBox, obs_match
+from heimdall.geo import BBox, Ident, obs_match
 from heimdall.schemas import (
     ActionRequest,
     AircraftObs,
@@ -61,7 +61,7 @@ class FakeStore:
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[AircraftObs]:
         return [
             o
@@ -78,7 +78,7 @@ class FakeStore:
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[VesselObs]:
         return [
             v for v in self.vessels if start <= v.ts < end and obs_match(v, bbox, ident, "mmsi")

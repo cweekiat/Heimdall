@@ -13,7 +13,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
-from heimdall.geo import BBox
+from heimdall.geo import BBox, Ident
 from heimdall.schemas import (
     ActionRequest,
     AircraftObs,
@@ -69,7 +69,7 @@ class Store(Protocol):
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[AircraftObs]: ...
     def vessels_window(
         self,
@@ -78,7 +78,7 @@ class Store(Protocol):
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[VesselObs]: ...
     def events_window(
         self, start: datetime, end: datetime, kinds: Sequence[str] | None = None

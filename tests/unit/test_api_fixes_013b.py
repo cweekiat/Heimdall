@@ -157,9 +157,27 @@ def test_traffic_uses_store_filters_and_caches_evidence_lookup() -> None:
         fc = c.get("/api/traffic/air?bbox=0,0,10,10").json()
     assert [f["properties"]["hex"] for f in fc["features"]] == ["aabbcc"]
     assert calls["ev"] <= 1
-    assert calls["win"][-1]["bbox"] == (0.0, 0.0, 10.0, 10.0)
+    assert calls["win"][0]["bbox"] == (0.0, 0.0, 10.0, 10.0)
     assert c.get("/api/traffic/air/aabbcc/trail").status_code == 200
     assert calls["win"][-1]["ident"] == "aabbcc"
+
+
+def test_no_ghost_when_newest_fix_left_the_bbox(tmp_path: Path) -> None:
+    for s in (MemoryStore(), DuckDBStore(str(tmp_path / "g.duckdb"))):
+        s.insert_aircraft(
+            [_ac("aabbcc", 5, 5, dt=30), _ac("aabbcc", 50, 50, dt=5), _ac("dddddd", 6, 6, dt=5)]
+        )
+        s.insert_vessels(
+            [
+                VesselObs(ts=NOW - timedelta(seconds=30), mmsi=7, provider="gfw", lat=5, lon=5),
+                VesselObs(ts=NOW - timedelta(seconds=5), mmsi=7, provider="gfw", lat=50, lon=50),
+            ]
+        )
+        c = TestClient(create_app(s, playbook=PB, allowed_hosts=HOSTS))
+        air = c.get("/api/traffic/air?bbox=0,0,10,10&max_age_s=120").json()
+        assert [f["properties"]["hex"] for f in air["features"]] == ["dddddd"]
+        sea = c.get("/api/traffic/sea?bbox=0,0,10,10&max_age_s=120").json()
+        assert sea["features"] == []
 
 
 # ------------------------------------------------------------------ validation / headers / csrf
