@@ -38,7 +38,7 @@ from heimdall.geo import KM_PER_NM, circular_variance, haversine_km, implied_spe
 from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "spoofing"
-VERSION = "spoofing-1.0.2"
+VERSION = "spoofing-1.1.0"
 
 DEFAULTS: dict[str, Any] = {
     "h3_res": 4,
@@ -48,6 +48,13 @@ DEFAULTS: dict[str, Any] = {
     "speed_pair_max_s": 30,
     "teleport_kt": 1323,
     "speed_diff_kt": 150,
+    # Aggregator timestamps (now - seen_pos) wobble by a few seconds where feeders are sparse and
+    # forward with delay (measured around Singapore 2026-09-30: 1,201 of 2,611 pairs < 5 s apart
+    # jumped > 0.3 km). The speed test tolerates that much timing error.
+    "timing_jitter_s": 6.0,
+    # S5 (healthy NIC) is the normal state of an airliner: it only counts as the second signal
+    # next to a true teleport (> teleport_kt) or an MLAT gap, not next to a speed mismatch alone.
+    "s5_counts_as_signal": False,
     "persist_pairs": 2,
     "s1_span_cap_s": 300,
     "alt_divergence_ft": 1000,
@@ -95,6 +102,11 @@ class AircraftSignals:
     def n_signals(self) -> int:
         return sum(self.fired.values())
 
+    def n_independent(self, s5_counts: bool) -> int:
+        """Signals counted towards `min_signals`; S5 needs a strong partner unless configured."""
+        strong = self.features.get("s1_teleport", 0.0) > 0 or self.fired.get("S3", False)
+        return sum(v for k, v in self.fired.items() if k != "S5" or s5_counts or strong)
+
 
 def _cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     return {k: cfg_get(cfg, k, v) for k, v in DEFAULTS.items()}
@@ -123,7 +135,8 @@ def _pair(a: AircraftObs, b: AircraftObs, c: dict[str, Any]) -> tuple[bool, floa
         return True, v
     if (t2 - t1) <= c["speed_pair_max_s"] and a.gs is not None and b.gs is not None:
         gs = (a.gs + b.gs) / 2
-        if abs(v - gs) > c["speed_diff_kt"]:
+        tol = max(c["speed_diff_kt"], gs * c["timing_jitter_s"] / max(t2 - t1, 1e-6))
+        if abs(v - gs) > tol:
             return True, v
     return False, v
 
@@ -187,6 +200,8 @@ def _s1(fixes: list[AircraftObs], c: dict[str, Any], sig: AircraftSignals) -> No
     sig.features["n_glitches"] = float(len(glitch))
     sig.features["n_flagged_pairs"] = float(len(flagged))
     sig.features["max_v_calc_kt"] = round(max((p[3] for p in pairs), default=0.0), 1)
+    # 1 when a flagged pair is a true teleport (> teleport_kt), not only a speed mismatch
+    sig.features["s1_teleport"] = float(any(pairs[k][3] > c["teleport_kt"] for k in flagged))
     if not flagged:
         return
     k0 = flagged[0]
@@ -409,7 +424,7 @@ def detect(
             cell_q[cl].add(o.hex)
     evs: list[Evidence] = []
     for h, s in sorted(sigs.items()):
-        n = s.n_signals
+        n = s.n_independent(bool(c["s5_counts_as_signal"]))
         if not (n >= c["min_signals"] or s.fired["S3"]) or s.anchor is None:
             continue
         a = s.anchor

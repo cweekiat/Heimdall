@@ -124,3 +124,30 @@ def test_ids_deterministic() -> None:
     a = spoofing.detect(teleport_spoof(), {}, NOW)[0]
     b = spoofing.detect(teleport_spoof(), {}, NOW + timedelta(minutes=3))[0]
     assert a.id == b.id
+
+
+def test_timestamp_jitter_on_a_normal_airliner_is_not_spoofing() -> None:
+    """Sparse-feeder aggregators stamp fixes up to a few seconds late (Malacca capture 2026-09-30).
+    A straight 470 kt flight with +/-5 s timestamp error must not trip S1, and healthy NIC (S5)
+    must not stand in for a second signal."""
+    clean = straight_flight("a0j001", speed_kt=470.0, dt_s=7.0)
+    jitter = [5.0, -5.0, 4.0, -4.0, 0.0, 5.0, -3.0]
+    obs = [
+        o.model_copy(update={"ts": o.ts + timedelta(seconds=jitter[i % 7])})
+        for i, o in enumerate(clean)
+    ]
+    assert "S1" not in _fired(obs, "a0j001")
+    assert spoofing.detect(obs, {}, NOW) == []
+
+
+def test_speed_mismatch_with_healthy_nic_alone_does_not_alert() -> None:
+    """Old behaviour (no jitter tolerance, S5 always counts) alerted on this jittered airliner."""
+    clean = straight_flight("a0j002", speed_kt=470.0, dt_s=7.0)
+    jitter = [5.0, -5.0, 4.0, -4.0, 0.0, 5.0, -3.0]
+    obs = [
+        o.model_copy(update={"ts": o.ts + timedelta(seconds=jitter[i % 7])})
+        for i, o in enumerate(clean)
+    ]
+    old = {"timing_jitter_s": 0.0, "s5_counts_as_signal": True}
+    assert spoofing.detect(obs, old, NOW)  # the false positive we fixed
+    assert spoofing.detect(obs, {"timing_jitter_s": 0.0}, NOW) == []  # S5 rule alone suffices

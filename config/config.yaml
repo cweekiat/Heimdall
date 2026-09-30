@@ -62,6 +62,8 @@ detectors:
     min_dt_s: 5
     teleport_kt: 1323         # Mach 2 @ ISA SL
     speed_diff_kt: 150
+    timing_jitter_s: 6        # speed test tolerates this timestamp error: real adsb.fi capture, Malacca 2026-09-30 (5 min, 78 aircraft): 0/4/6 s -> 6/3/0 false evidences
+    s5_counts_as_signal: false  # healthy NIC is normal; counts only beside a true teleport or MLAT gap (same capture)
     alt_divergence_ft: 1000   # |alt_geom - alt_baro| beyond regional norm
     mlat_gap_km: 5
     min_signals: 2
