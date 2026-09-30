@@ -37,7 +37,7 @@ log = get_logger("heimdall.run")
 TOPIC_AIR = "obs.air"
 TOPIC_SEA = "obs.sea"
 TOPIC_EVENTS = "events"
-FLUSH_S = 5.0
+FLUSH_S = 2.0  # live latency: obs reach the Store (and the map) within ~2 s of fetch
 HEALTH_S = 60.0
 
 

@@ -344,8 +344,9 @@ def create_app(
     @app.get("/api/tracks/{hex_id}")
     def tracks(hex_id: str, since: str | None = None) -> list[dict[str, Any]]:
         start = _since(since, 24) or _now()
-        rows = st.aircraft_window(start, _now() + timedelta(minutes=1))
         h = hex_id.lower()
+        # filter by hex in the store (indexed), not by scanning 24 h of all aircraft
+        rows = st.aircraft_window(start, _now() + timedelta(minutes=1), ident=h)
         pts = sorted((r for r in rows if r.hex == h), key=lambda r: r.ts)
         return [
             {"ts": r.ts.isoformat(), "lat": r.lat, "lon": r.lon, "alt": r.alt_baro, "gs": r.gs}

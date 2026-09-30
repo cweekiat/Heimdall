@@ -149,10 +149,13 @@ class AdsbAggregatorConnector:
 
     async def stream(self) -> AsyncIterator[Sequence[BaseModel]]:
         while not self._stop:
+            n_err = self.n_err
             obs = await self.poll_once()
             if obs:
                 yield obs
-            else:
+            elif self.n_err > n_err:
+                # back off only on errors; an empty AOI goes straight to the next one
+                # (the client's rate limiter already paces requests at `rps`)
                 await asyncio.sleep(self.idle_sleep_s)
 
     async def aclose(self) -> None:

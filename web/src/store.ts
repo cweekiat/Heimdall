@@ -88,11 +88,13 @@ export const isOpen = (s: AlertStatus): boolean => s === "new" || s === "acknowl
 export async function loadDetail(id: string): Promise<void> {
   const d = await api.alert(id);
   if (state.selected !== id) return;
-  const hexes = [...new Set(d.evidence.flatMap((e) => e.entities))];
+  // show the details at once; tracks (one request per aircraft) follow when ready
+  patch({ detail: d });
+  const hexes = [...new Set(d.evidence.flatMap((e) => e.entities))].slice(0, 12);
   const tracks = (
     await Promise.all(hexes.map(async (hex) => ({ hex, path: await api.track(hex).catch(() => [] as TrackPt[]) })))
   ).filter((t) => t.path.length > 1);
-  if (state.selected === id) patch({ detail: d, tracks });
+  if (state.selected === id) patch({ tracks });
 }
 
 export async function selectAlert(id: string | null, fly = true): Promise<void> {
@@ -101,9 +103,9 @@ export async function selectAlert(id: string | null, fly = true): Promise<void> 
     return;
   }
   patch({ selected: id, selectedEntity: null });
-  await loadDetail(id);
   const a = state.alerts.find((x) => x.id === id);
   if (fly && a && a.lat !== null && a.lon !== null) patch({ fly: { lat: a.lat, lon: a.lon, n: Date.now() } });
+  await loadDetail(id);
 }
 
 export function selectAoi(name: string | null): void {

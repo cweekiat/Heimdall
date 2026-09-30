@@ -19,7 +19,7 @@ type Air = AirProps & Pt;
 type Sea = SeaProps & Pt;
 export type Selected = { kind: "air"; id: string } | { kind: "sea"; id: number };
 
-const AIR_MS = 5000;
+const AIR_MS = 2000; // match the ~2 s writer flush; server-side query is bbox-limited
 const SEA_MS = 30000;
 const DECLUTTER_ZOOM = 5;
 
