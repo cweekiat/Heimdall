@@ -82,7 +82,9 @@ def test_air_latest_bbox_age_and_flags(client: TestClient) -> None:
     assert feats["abc001"]["geometry"]["coordinates"] == [2, 2]
     assert p["abc001"]["gps_bad"] is False
     assert p["abc002"]["gps_bad"] is True and p["abc003"]["gps_bad"] is True
-    assert 4 <= p["abc001"]["age_s"] <= 8
+    # NOW is fixed at import; allow for the time the suite takes to reach this test
+    slack = (datetime.now(UTC) - NOW).total_seconds()
+    assert 4 <= p["abc001"]["age_s"] <= 8 + slack
     ages = [f["properties"]["age_s"] for f in r.json()["features"]]
     assert ages == sorted(ages)  # newest first
     assert "abc006" in _props(client.get(f"/api/traffic/air?bbox={BB}&max_age_s=600"))
