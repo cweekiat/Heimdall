@@ -34,6 +34,7 @@ import { Areas } from "./areas";
 import { Traffic } from "./traffic";
 import { Notices } from "./notices";
 import { P3Layers } from "./p3layers";
+import { SpectrumLayers } from "./spectrum";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
 import { ctxHooks } from "./context";
 import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, hasSavedGeometry, isOpen, openWindow, placeWindow, toggleWindow, winRect } from "./wm";
@@ -381,17 +382,31 @@ async function boot(): Promise<void> {
     const p3 = new P3Layers(ops, $("mapwrap"));
     p3.aois = () => state.aois.map((a) => a.name);
     ctxHooks.onFootprint = (id) => p3.focus(id, () => setFilter({ p3: [...filters.p3, "imagery"] }));
-    ops.extraLayers = (tool, zoom) => [...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom)];
+    const spec = new SpectrumLayers(ops, $("mapwrap")); // task 030: band ladder + spectrum layers
+    ops.extraLayers = (tool, zoom) => [...spec.layers(tool), ...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom)];
     const filterBox = h("div", { class: "filters" });
-    const refreshFilters = mountFilters(filterBox, { counts: traffic.getCounts, sources: () => sourcesWin.list, extra: () => p3.chipList() });
+    const refreshFilters = mountFilters(filterBox, {
+      counts: traffic.getCounts,
+      sources: () => sourcesWin.list,
+      extra: () => p3.chipList(),
+      live: () => spec.live(),
+      daily: () => spec.daily(),
+    });
     traffic.onCounts = refreshFilters;
     sourcesWin.onChange = () => {
       traffic.setSources(sourcesWin.list);
+      spec.update(state.alerts, sourcesWin.list);
       refreshFilters();
     };
+    subscribe(() => spec.update(state.alerts, sourcesWin.list));
+    let lastBand = filters.band;
     onFilters(() => {
       if (ops) ops.state.alerts = filters.alerts ? mapAlerts() : [];
       ops?.render();
+      if (filters.band !== lastBand) {
+        lastBand = filters.band;
+        patch({ filters: { ...state.filters } }); // redraw the alert queue with the band filter
+      }
     });
     getBody("layers")!.replaceChildren(
       filterBox,
@@ -409,6 +424,7 @@ async function boot(): Promise<void> {
       traffic.start();
       void notices.refresh();
       p3.start();
+      spec.start();
     });
     setInterval(() => void notices.refresh(), 300_000);
     setInterval(() => void sourcesWin.refresh(), 60_000);

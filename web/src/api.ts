@@ -75,6 +75,8 @@ export interface Alert {
   status: AlertStatus;
   first_seen: string;
   last_seen: string;
+  /** RF bands the alert concerns (task 028); absent on older alerts. */
+  bands?: string[];
 }
 export interface Rule {
   rule: string;
@@ -351,6 +353,11 @@ export const api = {
   /** P3 layer for one area (GeoJSON, see docs/tasks/023a). Parsed by p3model.parseLayer. */
   layer: (layer: string, aoi: string, hours?: number, signal?: AbortSignal) =>
     req<unknown>(`/api/layers/${encodeURIComponent(layer)}?aoi=${encodeURIComponent(aoi)}${hours ? `&hours=${hours}` : ""}`, { signal }),
+  /** GNSS interference day map (task 031): date = YYYY-MM-DD or last24h. Parsed by spectrummodel.parseGnssDay. */
+  gnssDay: (date: string, signal?: AbortSignal) => req<unknown>(`/api/gnss/day?date=${encodeURIComponent(date)}`, { signal }),
+  gnssDays: () => req<{ days: string[]; last24h: boolean }>("/api/gnss/days"),
+  /** Receiver coverage per band (task 028): H3 r4 cells with receiver counts over the last hour. */
+  coverage: (band: string, bbox?: string) => req<unknown>(`/api/coverage?band=${encodeURIComponent(band)}${bbox ? `&bbox=${bbox}` : ""}`),
   board: (sinceH = 72) => req<BoardAction[]>(`/api/actions?since_h=${sinceH}`),
   reject: (actionKey: string) => post<ActionRec>(`/api/actions/${encodeURIComponent(actionKey)}/reject`),
 };

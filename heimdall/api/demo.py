@@ -22,7 +22,7 @@ from heimdall import config
 from heimdall.adapters.memory_store import MemoryStore
 from heimdall.backtest.replay import ReplayStore
 from heimdall.backtest.replay_io import read_bundle, read_obs_parquet
-from heimdall.geo import BBox, Ident, in_bbox
+from heimdall.geo import BBox, Ident, h3_cell, h3_center, in_bbox
 from heimdall.ports import Store
 from heimdall.schemas import (
     ActionRequest,
@@ -31,6 +31,7 @@ from heimdall.schemas import (
     Alert,
     AlertKind,
     AlertSource,
+    Band,
     Corroboration,
     Coverage,
     Domain,
@@ -204,6 +205,7 @@ def seed(store: Store, seed_value: int = 7) -> Store:
                 corroborations=corr if i % 2 == 0 else [],
                 corroboration_status="corroborated" if i % 2 == 0 else "uncorroborated",
                 recommended_actions=["watch_cell", "export_brief"],
+                bands=[Band.L1_GNSS] if is_jam else [Band.NONE],  # task 028
                 sources=[
                     AlertSource(
                         connector=c,
@@ -268,6 +270,7 @@ def seed(store: Store, seed_value: int = 7) -> Store:
         )
     _seed_notices(store, now)
     _seed_p3(store, now)
+    _seed_spectrum(store, now)
     _seed_actions(store, now)
     return store
 
@@ -277,6 +280,99 @@ _P3_AOIS = {
     "south_china_sea": (12.5, 113.5),
     "taiwan_luzon": (22.5, 120.5),
 }
+
+
+def _seed_spectrum(store: Store, now: datetime) -> None:
+    """Synthetic ADR-008 spectrum events (HF, SatNOGS, S1 / SMAP interference). Demo only."""
+    rnd = random.Random(31)
+    out: list[GeoEvent] = []
+    for k in range(40):  # HF path midpoints on a 2-degree grid over the Indo-Pacific
+        glat, glon = rnd.randrange(-10, 40, 2), rnd.randrange(90, 150, 2)
+        t = now - timedelta(minutes=10 * rnd.randint(0, 5))
+        n = rnd.randint(1, 40)
+        out.append(
+            GeoEvent(
+                id=f"demo-wspr|{k}",
+                ts=t,
+                source="wspr_live",
+                domain=Domain.SPECTRUM,
+                kind="hf_spots",
+                lat=glat,
+                lon=glon,
+                value=n,
+                attrs={
+                    "band_mhz": rnd.choice([7, 10, 14, 21]),
+                    "mode": "WSPR",
+                    "n": n,
+                    "paths": max(1, n // 2),
+                    "snr_med": rnd.randint(-25, 0),
+                },
+            )
+        )
+    for k, (lat, lon, status) in enumerate(
+        [
+            (1.35, 103.8, "good"),
+            (14.6, 121.0, "bad"),
+            (25.0, 121.5, "failed"),
+            (13.7, 100.5, "good"),
+        ]
+    ):
+        out.append(
+            GeoEvent(
+                id=f"demo-satnogs|{k}",
+                ts=now - timedelta(hours=1),
+                source="satnogs",
+                domain=Domain.SPECTRUM,
+                kind="sat_observation",
+                lat=lat,
+                lon=lon,
+                value={"good": 1.0, "bad": 0.0, "failed": -1.0}[status],
+                attrs={
+                    "status": status,
+                    "sat_name": "DEMOSAT",
+                    "rf_band": "UHF",
+                    "norad_cat_id": 99999,
+                },
+            )
+        )
+    ring = [[97.5, 23.6], [100.0, 23.9], [99.6, 25.6], [97.1, 25.3], [97.5, 23.6]]
+    out.append(
+        GeoEvent(
+            id="demo-s1rfi|myanmar",
+            ts=now - timedelta(hours=20),
+            source="sentinel1_rfi",
+            domain=Domain.SPECTRUM,
+            kind="sar_rfi",
+            lat=24.5,
+            lon=98.5,
+            geometry={"type": "Polygon", "coordinates": [ring]},
+            value=0.3,
+            attrs={"platform": "sentinel-1d", "rfi_detected": True, "max_power_ratio": 18.7},
+        )
+    )
+    for k, (clat, clon) in enumerate([(19.8, 96.1), (21.9, 96.0), (22.3, 95.6)]):
+        cell = h3_cell(clat, clon, 4)
+        lat, lon = h3_center(cell)
+        out.append(
+            GeoEvent(
+                id=f"demo-smap|{cell}",
+                ts=now - timedelta(hours=5),
+                source="smap_rfi",
+                domain=Domain.SPECTRUM,
+                kind="l_band_rfi",
+                lat=lat,
+                lon=lon,
+                value=0.2 * (k + 1),
+                attrs={
+                    "h3": cell,
+                    "n_footprints": 10,
+                    "n_rfi_h": 2 * (k + 1),
+                    "n_rfi_v": 0,
+                    "rfi_frac": 0.2 * (k + 1),
+                },
+            )
+        )
+    store.insert_events(out)
 
 
 def _seed_p3(store: Store, now: datetime) -> None:

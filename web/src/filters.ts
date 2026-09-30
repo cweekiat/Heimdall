@@ -7,6 +7,8 @@ import { COVERAGE_NOTE } from "./trafficdata";
 import { T } from "./labels";
 import { P3_DEFAULT_ON, P3_LABEL, P3_LAYERS } from "./p3model";
 import type { P3Layer } from "./p3model";
+import { SPECTRUM_DEFAULT_ON } from "./spectrummodel";
+import type { SpectrumLayer } from "./spectrummodel";
 
 export const SHIP_CLASSES = ["cargo", "tanker", "passenger", "fishing", "military", "other"] as const;
 export const ALT_MAX = 45000;
@@ -27,6 +29,12 @@ export interface Filters {
   hiddenSources: string[];
   /** P3 satellite layers switched on (heat spots by default). */
   p3: P3Layer[];
+  /** Spectrum layers switched on (task 030; GNSS daily map by default). */
+  spectrum: SpectrumLayer[];
+  /** GNSS map date: "last24h" or YYYY-MM-DD. */
+  gnssDate: string;
+  /** Band filter from the band ladder ("" = all bands). */
+  band: string;
 }
 
 const KEY = "hm.filters.v1";
@@ -43,6 +51,9 @@ const DEFAULTS: Filters = {
   search: "",
   hiddenSources: [],
   p3: [...P3_DEFAULT_ON],
+  spectrum: [...SPECTRUM_DEFAULT_ON],
+  gnssDate: "last24h",
+  band: "",
 };
 
 function load(): Filters {
@@ -103,6 +114,9 @@ export interface PanelCtx {
   sources: () => SourceState[];
   /** Optional extra block under the satellite toggles (next-pass chips). */
   extra?: () => HTMLElement;
+  /** Spectrum toggles for the Live and Daily sweep groups (task 030). */
+  live?: () => HTMLElement;
+  daily?: () => HTMLElement;
 }
 
 type ToggleKey = "air" | "sea" | "alerts" | "notices" | "milOnly" | "onlyAlerts";
@@ -182,8 +196,26 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
     return h("label", { class: "chk" }, i, P3_LABEL[l]);
   };
   root.replaceChildren(
-    h("fieldset", {}, h("legend", {}, T.dataOnMap), chk(T.aircraft, "air", "plane"), chk(T.ships, "sea", "ship"), chk(T.alertMarkers, "alerts", "alerts"), chk(T.noticesLayer, "notices", "notice"), h("p", { class: "note coverage-note" }, COVERAGE_NOTE)),
-    h("fieldset", {}, h("legend", {}, "Satellite data"), ...P3_LAYERS.map(p3chk), ctx.extra?.() ?? null),
+    h(
+      "fieldset",
+      {},
+      h("legend", {}, "Live"),
+      chk(T.aircraft, "air", "plane"),
+      chk(T.ships, "sea", "ship"),
+      chk(T.alertMarkers, "alerts", "alerts"),
+      chk(T.noticesLayer, "notices", "notice"),
+      ctx.live?.() ?? null,
+      h("p", { class: "note coverage-note" }, COVERAGE_NOTE),
+    ),
+    h(
+      "fieldset",
+      {},
+      h("legend", {}, "Daily sweep"),
+      h("p", { class: "note" }, "Hours to a day old. Each layer shows the date of its data."),
+      ctx.daily?.() ?? null,
+      ...P3_LAYERS.map(p3chk),
+      ctx.extra?.() ?? null,
+    ),
     h("fieldset", {}, h("legend", {}, T.sourcesToShow), srcBox),
     h(
       "fieldset",

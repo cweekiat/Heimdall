@@ -135,3 +135,21 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
   type, valid times (Z), altitude band and the original text in an "unverified" box.
 - **Actions** (`actionsboard.ts`): Proposed, Approved, Done, Rejected columns from `/api/actions`.
   Approve and reject appear on proposed cards only; high-risk items ask for a second confirmation.
+
+## RF band ladder and spectrum layers (task 030, ADR-008)
+- **Band ladder** (left edge of the map; a dropdown under 600 px): HF · VHF marine · L 1090 · L1 GNSS · L 1.4 GHz · C SAR,
+  in frequency order. Each row: open-alert count for that band (from `Alert.bands`), and a status dot from the
+  sources that feed it (grey = no source yet, amber = unhealthy or needs a key, green = receiving). Click filters the
+  alert queue and the map's alert markers to that band; click again clears. Deep link `#band=l1_gnss`. Hover shows the
+  feeding sources and, for L1 GNSS / L 1090 / VHF marine, receivers in view over the last hour (`/api/coverage`).
+- **Layers panel** is split by tempo: **Live** (aircraft, ships, alerts, notices, HF spots, SatNOGS passes) and
+  **Daily sweep** (GNSS interference map, Sentinel-1 C-band RFI, SMAP L-band RFI, heat spots, image footprints, passes).
+  Event layers show the time of their newest data, so day-old data never looks live.
+- **GNSS interference (daily, GPSJam method)**, on by default: H3 r4 hexes coloured with GPSJam's legend (green < 2 %,
+  yellow 2–10 %, red > 10 % of aircraft degraded, after the −1 de-noise); cells without aircraft are not drawn. Date
+  picker (Last 24 h or a finished UTC day) with ‹ › buttons, deep link `#gnss=YYYY-MM-DD`, "incomplete" when the day
+  has < 22 h of data. Hover: "GNSS: 23 of 24 aircraft degraded · 91.67% …". Descriptive only: never an alert.
+- **HF propagation spots**: circles at path midpoints (WSPR + PSK Reporter, last hour), size by spot count.
+  **Satellite passes**: SatNOGS ground stations, red when the pass was bad/failed. **C-band interference**:
+  Sentinel-1 footprints, red outline when ESA's RFI annotation flags interference. **L-band interference**: SMAP
+  cells shaded by the share of flagged footprints.
