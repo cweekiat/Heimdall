@@ -7,7 +7,6 @@ Spoofing scenarios lie in [T0, T0 + 60 min) (detect at NOW = T0 + 60 min); gap s
 
 from __future__ import annotations
 
-import math
 import random
 from datetime import datetime, timedelta
 from typing import Any
@@ -239,7 +238,3 @@ def anchored_gap() -> list[VesselObs]:
 
 def short_gap() -> list[VesselObs]:
     return gap_target(silent_h=1.5) + background_traffic(LAT0, LON0)
-
-
-def bearing_deg(x: float) -> float:  # pragma: no cover - tiny helper for readability in tests
-    return math.degrees(x) % 360.0
