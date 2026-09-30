@@ -4,6 +4,7 @@ import type { Alert } from "./api";
 import { ActionsBoard } from "./actionsboard";
 import { renderBoard } from "./board";
 import { ago, h } from "./dom";
+import { view } from "./map3d";
 import { icon, iconButton } from "./icons";
 import { renderEntity, renderInspector } from "./inspector";
 import { fmtLatLon, toMgrs } from "./geoutil";
@@ -120,12 +121,24 @@ function setTool(t: "none" | "measure" | "ring"): void {
   ops?.setTool(t);
   document.querySelectorAll<HTMLButtonElement>("#mapctl [data-tool]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tool === t)));
 }
+const view3dBtn = iconButton(
+  "cube",
+  T.view3d,
+  () => {
+    const next = ops?.viewMode() === "3d" ? "2d" : "3d";
+    ops?.setView(next);
+    view3dBtn.setAttribute("aria-pressed", String(next === "3d"));
+  },
+  { pressed: false },
+);
 $("mapctl").replaceChildren(
   iconButton("zoomIn", T.zoomIn, () => ops?.zoomBy(1)),
   iconButton("zoomOut", T.zoomOut, () => ops?.zoomBy(-1)),
   toolBtn("measure", T.measure, "measure"),
   toolBtn("ring", T.ring, "ring"),
   iconButton("layers", `${T.layers} (l)`, winToggles.l!),
+  view3dBtn,
+  iconButton("compass", T.compass, () => ops?.resetNorth()),
 );
 const hover = h("div", { class: "hovercard", hidden: true });
 $("mapwrap").append(hover);
@@ -337,6 +350,13 @@ async function boot(): Promise<void> {
     getBody("layers")!.replaceChildren(
       filterBox,
       h("fieldset", {}, h("legend", {}, T.mapExtras), h("label", { for: "cov", class: "chk" }, cov, T.coverageLayer), h("label", { class: "chk" }, "Look back ", slider, sliderLbl)),
+      h(
+        "fieldset",
+        {},
+        h("legend", {}, "3D view"),
+        h("label", { class: "chk" }, "Height exaggeration ", h("input", { type: "range", min: "1", max: "10", value: String(view.exaggeration), oninput: (e: Event) => { view.exaggeration = Number((e.target as HTMLInputElement).value); ops?.render(); } })),
+        h("label", { class: "chk" }, h("input", { type: "checkbox", onchange: (e: Event) => { view.drop = (e.target as HTMLInputElement).checked; ops?.render(); } }), "Lines from aircraft down to the ground (3D only)"),
+      ),
       ops.layers.panel(),
     );
     void sourcesWin.refresh().then(() => {

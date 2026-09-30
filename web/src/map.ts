@@ -3,7 +3,10 @@ import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import { Protocol } from "pmtiles";
 import { BaseLayers } from "./basemap";
+import { Throttle, probeBasemap, setViewMode, unavailableHint, view } from "./map3d";
+import type { ViewMode } from "./map3d";
 import type { Provider } from "./basemap";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
@@ -72,10 +75,15 @@ export function cluster(alerts: Alert[], zoom: number): Cluster[] {
 // maplibre-gl v6 ships its worker as separate ES modules that Vite does not emit by itself;
 // bundle it (with its shared chunk) and point MapLibre at it.
 maplibregl.setWorkerUrl(workerUrl);
+// Offline basemap: pmtiles:// URLs are served by HTTP range requests to /basemap/world.pmtiles.
+maplibregl.addProtocol("pmtiles", new Protocol().tile);
 
 export class OpsMap {
   private map: maplibregl.Map;
   readonly layers: BaseLayers;
+  private container!: HTMLElement;
+  private hintEl: HTMLElement | null = null;
+  private soon = new Throttle(() => this.render(), 2);
   private overlay = new MapboxOverlay({ interleaved: false, layers: [] });
   state: MapState = {
     alerts: [],
@@ -127,8 +135,43 @@ export class OpsMap {
     });
     this.map.addControl(this.overlay as unknown as maplibregl.IControl);
     this.layers = new BaseLayers(this.map, provider, overlays, theme);
-    this.map.setStyle(this.layers.initialStyle(), { diff: false });
+    this.layers.onBaseChange = (id) => void this.checkOffline(id === "offline");
+    this.layers.applyInitial();
+    this.map.dragRotate.disable();
+    this.map.touchZoomRotate.disableRotation();
+    this.map.setMaxPitch(85);
+    this.container = container;
     new ResizeObserver(() => this.map.resize()).observe(container);
+  }
+
+  /** Throttled render (max 2 Hz, coalesced on animation frames) for traffic updates. */
+  renderSoon(): void {
+    this.soon.poke();
+  }
+
+  viewMode(): ViewMode {
+    return view.mode;
+  }
+
+  setView(mode: ViewMode): void {
+    view.mode = mode;
+    setViewMode(this.map as never, mode);
+    this.render();
+  }
+
+  resetNorth(): void {
+    this.map.easeTo({ bearing: 0, pitch: view.mode === "3d" ? 60 : 0, duration: 300 });
+  }
+
+  /** Non-blocking hint when the offline map files are missing; the background stays plain. */
+  private async checkOffline(offline: boolean): Promise<void> {
+    this.hintEl?.remove();
+    this.hintEl = null;
+    if (!offline) return;
+    const st = await probeBasemap((u) => fetch(u));
+    if (st.available) return;
+    this.hintEl = unavailableHint(st.hint, document) as unknown as HTMLElement;
+    this.container.append(this.hintEl);
   }
 
   setTool(t: MapState["tool"]): void {

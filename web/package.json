@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "lint": "tsc --noEmit && node scripts/check-words.mjs",
     "check:words": "node scripts/check-words.mjs",
-    "test": "node --test test/palette.test.ts test/explain.test.ts",
+    "test": "node --test test/palette.test.ts test/explain.test.ts test/map3d.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -18,7 +18,8 @@
     "@deck.gl/mapbox": "^9.4.0",
     "h3-js": "^4.5.0",
     "lucide": "^1.49.0",
-    "maplibre-gl": "^6.11.2"
+    "maplibre-gl": "^6.11.2",
+    "pmtiles": "^4.5.0"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
