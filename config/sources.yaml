@@ -11,7 +11,7 @@ sources:
   aisstream:       {domain: sea,    reliability: B, latency_s: 5,     base: "wss://stream.aisstream.io/v0/stream", auth: AISSTREAM_KEY,          phase: 2, verified: false}
   gfw:             {domain: sea,    reliability: B, latency_s: 86400, base: "https://gateway.api.globalfishingwatch.org/v3", auth: GFW_TOKEN,   phase: 2, verified: false}
   nga_msi:         {domain: sea,    reliability: A, latency_s: 3600,  base: "https://msi.nga.mil/api",          auth: none,                      phase: 2, verified: false}
-  china_msa:       {domain: sea,    reliability: B, latency_s: 3600,  base: "https://www.msa.gov.cn",           auth: none,                      phase: 2, verified: false}
+  china_msa:       {domain: sea,    reliability: B, latency_s: 3600,  base: "https://www.msa.gov.cn",           auth: none,                      phase: 2, verified: false, enabled: false}  # task 009: geo-blocked (403) outside China; parser ships tested
   firms:           {domain: space,  reliability: A, latency_s: 10800, base: "https://firms.modaps.eosdis.nasa.gov/api", auth: FIRMS_MAP_KEY,  phase: 3, verified: false}
   open_meteo:      {domain: space,  reliability: A, latency_s: 3600,  base: "https://api.open-meteo.com/v1",    auth: none,                      phase: 3, verified: false}
   celestrak:       {domain: space,  reliability: A, latency_s: 86400, base: "https://celestrak.org",            auth: none,                      phase: 3, verified: false}

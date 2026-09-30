@@ -1,0 +1,75 @@
+# Navigational warning / NOTAM ingest config (task 009). Data only.
+# Provenance: keywords are hand-picked from public NGA HYDROPAC / NAVAREA XI, China MSA (航行警告) and
+# ICAO NOTAM phrasing; NOT yet calibrated against a backtest (see task 006). Order matters: the first
+# category with a matching keyword wins, so the most specific categories come first.
+categories:
+  gnss_interference:
+    - "gps unreliable"
+    - "gnss unreliable"
+    - "gnss interference"
+    - "gps interference"
+    - "gps jamming"
+    - "gnss jamming"
+    - "gps信号"
+    - "卫星导航干扰"
+  missile_rocket:
+    - "missile"
+    - "rocket"
+    - "space debris"
+    - "launch vehicle"
+    - "导弹"
+    - "火箭"
+    - "航天器残骸"
+  live_firing:
+    - "live fire"
+    - "live firing"
+    - "gunnery"
+    - "firing exercise"
+    - "firing practice"
+    - "实弹射击"
+    - "实弹"
+    - "射击"
+  military_exercise:
+    - "military exercise"
+    - "naval exercise"
+    - "exercises"
+    - "exercise"
+    - "军事演习"
+    - "军事演练"
+    - "演习"
+    - "演训"
+    - "军事活动"
+  hazard:
+    - "hazard"
+    - "unlit"
+    - "drifting"
+    - "wreck"
+    - "cable"
+    - "危险"
+    - "碍航"
+
+nga_msi:
+  # NAVAREA / HYDRO area codes for the areas of interest -> display name used in `ref`.
+  navareas:
+    "P": "HYDROPAC"   # Pacific: South China Sea, Taiwan/Luzon Straits
+    "11": "NAVAREA XI"  # China-issued (Far East) rebroadcast
+  max_per_area: 200
+
+china_msa:
+  # Channel ids (info_warn.do?channelId=...) per regional MSA office. The Sansha id is the one recorded in
+  # docs/sources.md (task 005); others are placeholders to be filled once a non-geo-blocked route exists.
+  channels:
+    sansha: "9C219298-B27F-460E-995A-99401B3FF6AF"
+  list_path: "/msacncms_wap/pages/info_warn.do"
+  max_details_per_poll: 20
+
+faa_nms:
+  # FIRs by AOI. Baltic FIRs are the calibration control. Endpoints are unverified (FAA approval needed).
+  token_path: "/v1/auth/token"
+  notam_path: "/nmsapi/v1/notams"
+  firs:
+    myanmar: ["VYYF"]
+    south_china_sea: ["ZJSA", "RPHI", "WMFC", "VVHM"]
+    taiwan_luzon: ["RCAA", "RPHI"]
+    malacca_singapore: ["WMFC", "WSJC", "WIIF"]
+    baltic: ["EPWW", "EYVL", "EVRR", "EETT", "ESAA"]

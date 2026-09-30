@@ -1,0 +1,35 @@
+{
+  "broadcast-warn": [
+    {
+      "msgYear": 2026, "msgNumber": 1234, "navArea": "P", "subregion": "SOUTH CHINA SEA",
+      "status": "A", "issueDate": "300400Z SEP 2026", "authority": "CHINA MSA HAINAN",
+      "cancelDate": null,
+      "text": "SOUTH CHINA SEA.\n1. MILITARY EXERCISES 300800Z SEP TO 021200Z OCT IN AREA BOUNDED BY 18-10.00N 109-30.00E, 18-10.00N 110-30.00E, 17-20.00N 110-30.00E, 17-20.00N 109-30.00E.\n2. NAVIGATION PROHIBITED."
+    },
+    {
+      "msgYear": 2026, "msgNumber": 1240, "navArea": "P", "subregion": "SOUTH CHINA SEA",
+      "status": "A", "issueDate": "290600Z SEP 2026", "authority": "PHILIPPINE COAST GUARD",
+      "cancelDate": null,
+      "text": "LIVE FIRING GUNNERY EXERCISES WITHIN 10 NM OF 12-34.56N 113-45.67E 290800Z SEP TO 301000Z SEP."
+    },
+    {
+      "msgYear": 2026, "msgNumber": 1199, "navArea": "P", "subregion": "TAIWAN STRAIT",
+      "status": "C", "issueDate": "250000Z SEP 2026", "authority": "NGA",
+      "cancelDate": "281200Z SEP 2026",
+      "text": "DERELICT HAZARD DRIFTING NEAR 24-30.0N 119-45.0E. CANCEL THIS MSG 281200Z SEP 26."
+    },
+    {
+      "msgYear": 2026, "msgNumber": 1250, "navArea": "P", "subregion": "LUZON STRAIT",
+      "status": "A", "issueDate": "300900Z SEP 2026", "authority": "NGA",
+      "cancelDate": null,
+      "text": "GPS UNRELIABLE WITHIN 200 NM OF 21-00N 121-00E 300900Z SEP TO 071200Z OCT."
+    },
+    {
+      "msgYear": 2026, "msgNumber": 1251, "navArea": "P", "subregion": "SULU SEA",
+      "status": "A", "issueDate": "300930Z SEP 2026", "authority": "NGA",
+      "cancelDate": null,
+      "text": "GENERAL ADVISORY. MARINERS EXERCISE CAUTION. NO POSITION GIVEN."
+    },
+    {"navArea": "P", "text": "row without msgNumber/msgYear is dropped", "issueDate": "300000Z SEP 2026"}
+  ]
+}
