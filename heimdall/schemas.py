@@ -278,3 +278,19 @@ class SourceHealth(BaseModel):
     # ADR-004: "needs_key" = env key absent (no requests made); detail names env vars, never values
     status: Literal["ok", "degraded", "down", "needs_key", "disabled"] = "ok"
     detail: str | None = None
+
+
+class SourceState(BaseModel):
+    """Runtime view of one configured source for the Data sources window (012a)."""
+
+    key: str
+    label: str
+    domain: Domain
+    enabled: bool
+    status: Literal["ok", "degraded", "down", "needs_key", "disabled", "off"] = "off"
+    detail: str | None = None
+    last_ok: datetime | None = None
+    records_last_hour: int = 0
+    error_rate: float = 0.0
+    reliability: SourceReliability = SourceReliability.F
+    needs_key: bool = False

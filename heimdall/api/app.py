@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Path, Request, Response
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -20,7 +20,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from heimdall import config
 from heimdall.api import triage
-from heimdall.ports import Store
+from heimdall.api.traffic import traffic_router
+from heimdall.ports import SourceControl, Store
 from heimdall.schemas import (
     ActionRequest,
     Alert,
@@ -46,6 +47,10 @@ class StatusIn(BaseModel):
 
 class NoteIn(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
+
+
+class SourceIn(BaseModel):
+    enabled: bool
 
 
 class ActionIn(BaseModel):
@@ -79,6 +84,7 @@ def create_app(
     stream_interval_s: float = 2.0,
     allowed_hosts: list[str] | None = None,
     basemap: str | None = None,
+    sources: SourceControl | None = None,
 ) -> FastAPI:
     st: Store = store
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
@@ -363,6 +369,49 @@ def create_app(
             "time": _now().isoformat(),
             "sources": [h.model_dump(mode="json") for h in st.list_health()],
         }
+
+    # ------------------------------------------------------------------ sources
+    @app.get("/api/sources")
+    def list_sources() -> list[dict[str, Any]]:
+        return [x.model_dump(mode="json") for x in sources.list()] if sources else []
+
+    @app.post("/api/sources/{key}")
+    async def set_source(
+        body: SourceIn, key: str = Path(pattern=r"^[a-z0-9_]{1,40}$")
+    ) -> dict[str, Any]:
+        if sources is None:
+            raise HTTPException(404, "source control unavailable")
+        try:
+            return (await sources.set_enabled(key, body.enabled)).model_dump(mode="json")
+        except KeyError as e:
+            raise HTTPException(404, "unknown source") from e
+
+    # ------------------------------------------------------------------ actions board
+    @app.get("/api/actions")
+    def actions_board(status: str | None = None, since_h: float = 72) -> list[dict[str, Any]]:
+        want = set(status.split(",")) if status else None
+        out: list[dict[str, Any]] = []
+        for al in st.list_alerts(since=_now() - timedelta(hours=since_h), limit=1000):
+            for x in st.actions_for(al.id):
+                if want is not None and x.status not in want:
+                    continue
+                meta = pb.get(x.action_id, {})
+                out.append(
+                    {
+                        **_action_json(x),
+                        "alert": {
+                            "id": al.id,
+                            "title": al.title,
+                            "kind": al.kind.value,
+                            "severity": al.severity.value,
+                        },
+                        "label": meta.get("label", x.action_id),
+                        "risk": meta.get("risk", "low"),
+                    }
+                )
+        return sorted(out, key=lambda a: a["ts"], reverse=True)
+
+    app.include_router(traffic_router(st))
 
     @app.get("/api/ui-config")
     def ui_config() -> dict[str, Any]:
