@@ -15,6 +15,7 @@ from typing import Any
 import duckdb
 from pydantic import BaseModel
 
+from heimdall.geo import BBox
 from heimdall.schemas import (
     ActionRequest,
     AircraftObs,
@@ -166,6 +167,29 @@ class DuckDBStore:
         rows = self._exec(sql, [_to_db(start), _to_db(end), *extra_params])
         return [t.from_row(r) for r in rows]
 
+    def _filters(
+        self,
+        h3_r4: Sequence[str] | None,
+        bbox: BBox | None,
+        ident: str | int | None,
+        key: str,
+    ) -> tuple[str | None, list[Any]]:
+        """AND-clauses for the optional window filters; sql None = provably empty."""
+        sql: str = ""
+        p: list[Any] = []
+        if h3_r4 is not None:
+            if not h3_r4:
+                return None, []
+            s1, p1 = self._in("h3_r4", h3_r4)
+            sql, p = sql + " " + s1, p + p1
+        if ident is not None:
+            sql, p = sql + f" AND {key} = ?", [*p, ident]
+        if bbox is not None:
+            w, s, e, n = bbox
+            lon = "lon >= ? AND lon <= ?" if w <= e else "(lon >= ? OR lon <= ?)"
+            sql, p = sql + f" AND lat >= ? AND lat <= ? AND {lon}", [*p, s, n, w, e]
+        return sql, p
+
     @staticmethod
     def _in(col: str, vals: Sequence[Any]) -> tuple[str, list[Any]]:
         return f"AND {col} IN ({', '.join('?' for _ in vals)})", list(vals)
@@ -187,24 +211,32 @@ class DuckDBStore:
         return len(latest)
 
     def aircraft_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[AircraftObs]:
-        if h3_r4 is not None:
-            if not h3_r4:
-                return []
-            sql, p = self._in("h3_r4", h3_r4)
-            return self._window(_AIR, start, end, sql, p)
-        return self._window(_AIR, start, end)
+        sql, p = self._filters(h3_r4, bbox, ident, "hex")
+        if sql is None:
+            return []
+        return self._window(_AIR, start, end, sql, p)
 
     def vessels_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[VesselObs]:
-        if h3_r4 is not None:
-            if not h3_r4:
-                return []
-            sql, p = self._in("h3_r4", h3_r4)
-            return self._window(_SEA, start, end, sql, p)
-        return self._window(_SEA, start, end)
+        sql, p = self._filters(h3_r4, bbox, ident, "mmsi")
+        if sql is None:
+            return []
+        return self._window(_SEA, start, end, sql, p)
 
     def events_window(
         self, start: datetime, end: datetime, kinds: Sequence[str] | None = None

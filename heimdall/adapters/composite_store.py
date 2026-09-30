@@ -15,6 +15,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
+from heimdall.geo import BBox
 from heimdall.ports import Store
 from heimdall.schemas import (
     ActionRequest,
@@ -52,14 +53,26 @@ class CompositeStore:
         return self.read.insert_events(rows)
 
     def aircraft_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[AircraftObs]:
-        return self.read.aircraft_window(start, end, h3_r4)
+        return self.read.aircraft_window(start, end, h3_r4, bbox=bbox, ident=ident)
 
     def vessels_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[VesselObs]:
-        return self.read.vessels_window(start, end, h3_r4)
+        return self.read.vessels_window(start, end, h3_r4, bbox=bbox, ident=ident)
 
     def events_window(
         self, start: datetime, end: datetime, kinds: Sequence[str] | None = None

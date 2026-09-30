@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 
+from heimdall.geo import BBox, obs_match
 from heimdall.schemas import (
     ActionRequest,
     AircraftObs,
@@ -48,17 +49,37 @@ class MemoryStore:
         return len(latest)
 
     def aircraft_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[AircraftObs]:
         return [
-            r for r in self.aircraft if start <= r.ts < end and (h3_r4 is None or r.h3_r4 in h3_r4)
+            r
+            for r in self.aircraft
+            if start <= r.ts < end
+            and (h3_r4 is None or r.h3_r4 in h3_r4)
+            and obs_match(r, bbox, ident, "hex")
         ]
 
     def vessels_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[VesselObs]:
         return [
-            r for r in self.vessels if start <= r.ts < end and (h3_r4 is None or r.h3_r4 in h3_r4)
+            r
+            for r in self.vessels
+            if start <= r.ts < end
+            and (h3_r4 is None or r.h3_r4 in h3_r4)
+            and obs_match(r, bbox, ident, "mmsi")
         ]
 
     def events_window(

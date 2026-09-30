@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
 
+from heimdall.geo import BBox, obs_match
 from heimdall.schemas import (
     ActionRequest,
     AircraftObs,
@@ -54,16 +55,34 @@ class FakeStore:
         return len(rows)
 
     def aircraft_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[AircraftObs]:
         return [
-            o for o in self.aircraft if start <= o.ts < end and (h3_r4 is None or o.h3_r4 in h3_r4)
+            o
+            for o in self.aircraft
+            if start <= o.ts < end
+            and (h3_r4 is None or o.h3_r4 in h3_r4)
+            and obs_match(o, bbox, ident, "hex")
         ]
 
     def vessels_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[VesselObs]:
-        return [v for v in self.vessels if start <= v.ts < end]
+        return [
+            v for v in self.vessels if start <= v.ts < end and obs_match(v, bbox, ident, "mmsi")
+        ]
 
     def events_window(
         self, start: datetime, end: datetime, kinds: Sequence[str] | None = None

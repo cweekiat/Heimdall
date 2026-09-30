@@ -177,7 +177,8 @@ def test_notices_exclude_cancelled_and_expired() -> None:
 
 def test_actions_board_and_sources_demo() -> None:
     c = TestClient(
-        create_app(seed(MemoryStore()), playbook=PB, allowed_hosts=HOSTS, sources=DemoSources())
+        create_app(seed(MemoryStore()), playbook=PB, allowed_hosts=HOSTS, sources=DemoSources()),
+        headers={"Origin": "http://testserver"},
     )
     d = c.get("/api/actions").json()
     assert {a["status"] for a in d} == {"proposed", "approved", "done", "rejected"}

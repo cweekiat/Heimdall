@@ -12,6 +12,7 @@ import h3
 
 from heimdall import config
 from heimdall.adapters.memory_store import MemoryStore
+from heimdall.geo import BBox
 from heimdall.ports import Store
 from heimdall.schemas import (
     ActionRequest,
@@ -403,9 +404,15 @@ class LiveDemoStore(MemoryStore):
         )
 
     def aircraft_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[AircraftObs]:
-        rows = super().aircraft_window(start, end, h3_r4)
+        rows = super().aircraft_window(start, end, h3_r4, bbox=bbox, ident=ident)
         if h3_r4 is not None:
             return rows
         for ts in _grid(start, end, datetime.now(UTC)):
@@ -426,9 +433,15 @@ class LiveDemoStore(MemoryStore):
         return rows
 
     def vessels_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[VesselObs]:
-        rows = super().vessels_window(start, end, h3_r4)
+        rows = super().vessels_window(start, end, h3_r4, bbox=bbox, ident=ident)
         if h3_r4 is not None:
             return rows
         dark_at = self.boot - timedelta(minutes=3)

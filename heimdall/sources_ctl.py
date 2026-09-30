@@ -46,6 +46,7 @@ class SourceManager:
                 self._enabled[k] = v
         self._conns: dict[str, Connector] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._orphans: builtins.list[Connector] = []
 
     # ------------------------------------------------------------ persistence
     def _load(self) -> dict[str, bool]:
@@ -56,6 +57,9 @@ class SourceManager:
         except (OSError, ValueError) as e:
             log.warning("sources_state_unreadable", error=str(e))
             return {}
+        if not isinstance(raw, dict):
+            log.warning("sources_state_malformed", type=type(raw).__name__)
+            return {}
         return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, bool)}
 
     def _save(self) -> None:
@@ -63,7 +67,10 @@ class SourceManager:
             return
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self._enabled, sort_keys=True))
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(self._enabled, sort_keys=True))
+        os.chmod(tmp, 0o600)
         os.replace(tmp, self._path)
 
     # ------------------------------------------------------------ lifecycle
@@ -76,8 +83,15 @@ class SourceManager:
         return list(self._tasks.values())
 
     def _start(self, key: str) -> None:
-        if key in self._tasks:
-            return
+        task = self._tasks.get(key)
+        if task is not None:
+            if not task.done():
+                return
+            log.warning("source_pump_dead_restart", key=key)
+            self._tasks.pop(key, None)
+            old = self._conns.pop(key, None)
+            if old is not None:
+                self._orphans.append(old)
         conn = self._build(key)
         if conn is None:
             return
@@ -92,7 +106,10 @@ class SourceManager:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
         if conn is not None:
-            await conn.aclose()
+            try:
+                await conn.aclose()
+            except Exception as e:
+                log.error("source_aclose_failed", key=key, error=str(e))
 
     async def start(self) -> None:
         for key, on in self._enabled.items():
@@ -125,6 +142,17 @@ class SourceManager:
                 detail="not installed",
                 reliability=rel,
             )
+        task = self._tasks.get(key)
+        if task is not None and task.done():
+            return SourceState(
+                key=key,
+                label=label,
+                domain=domain,
+                enabled=on,
+                status="down",
+                detail="pump task stopped; toggle to restart",
+                reliability=rel,
+            )
         h = conn.health()
         return SourceState(
             key=key,
@@ -143,10 +171,14 @@ class SourceManager:
     def list(self) -> builtins.list[SourceState]:
         return [self._state(k) for k in self._cfg]
 
+    def _dead(self, key: str) -> bool:
+        t = self._tasks.get(key)
+        return t is None or t.done()
+
     async def set_enabled(self, key: str, enabled: bool) -> SourceState:
         if key not in self._cfg:
             raise KeyError(key)
-        if self._enabled[key] != enabled or (enabled and key not in self._tasks):
+        if self._enabled[key] != enabled or (enabled and self._dead(key)):
             self._enabled[key] = enabled
             if enabled:
                 self._start(key)

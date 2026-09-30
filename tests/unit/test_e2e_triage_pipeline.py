@@ -20,6 +20,7 @@ from tests.synthetic.generators import T0, jammed_cell
 from tests.unit.test_fusion import GRADES, PB, _settings
 
 HOSTS = ["testserver", "127.0.0.1", "localhost"]
+OH = {"Origin": "http://testserver"}
 
 
 @pytest.mark.parametrize(
@@ -41,7 +42,7 @@ def test_triage_survives_pipeline_ticks(tmp_path: Path, status: str, extra: dict
     assert len(jams) == 1
     alert = jams[0]
 
-    client = TestClient(create_app(store, playbook=PB, allowed_hosts=HOSTS))
+    client = TestClient(create_app(store, playbook=PB, allowed_hosts=HOSTS), headers=OH)
     r = client.post(f"/api/alerts/{alert.id}/status", json={"status": status, **extra})
     assert r.status_code == 200, r.text
 

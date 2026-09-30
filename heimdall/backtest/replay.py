@@ -18,7 +18,7 @@ from typing import Any
 from heimdall.adapters.memory_store import MemoryStore
 from heimdall.config import Settings
 from heimdall.detect import jamming
-from heimdall.geo import within_radius_nm
+from heimdall.geo import BBox, obs_match, within_radius_nm
 from heimdall.pipeline import tick
 from heimdall.schemas import AircraftObs, Alert, AlertKind, Evidence
 
@@ -40,11 +40,21 @@ class ReplayStore(MemoryStore):
         return len(rows)
 
     def aircraft_window(
-        self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: str | int | None = None,
     ) -> list[AircraftObs]:
         i, j = bisect.bisect_left(self._ts, start), bisect.bisect_left(self._ts, end)
         rows = self.aircraft[i:j]
-        return rows if h3_r4 is None else [r for r in rows if r.h3_r4 in h3_r4]
+        return [
+            r
+            for r in rows
+            if (h3_r4 is None or r.h3_r4 in h3_r4) and obs_match(r, bbox, ident, "hex")
+        ]
 
     def upsert_evidence(self, ev: Evidence) -> None:
         super().upsert_evidence(ev)
