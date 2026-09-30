@@ -20,7 +20,7 @@ BUILD_HOST="https://build.protomaps.com"
 ASSETS_URL="https://codeload.github.com/protomaps/basemaps-assets/tar.gz/refs/heads/main"
 
 mkdir -p "$OUT/bin" "$OUT/fonts" "$OUT/sprites"
-TMP="$(mktemp -d)"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/basemap.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 # 1. pmtiles CLI (use PATH copy if present)
@@ -37,9 +37,15 @@ else
       *) echo "unsupported platform $(uname -sm); install pmtiles manually" >&2; exit 1 ;;
     esac
     echo "Downloading pmtiles CLI v$PMTILES_VERSION ($A)"
-    curl -fsSL -o "$TMP/pmtiles.tgz" \
-      "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_${A}.tar.gz"
-    tar -xzf "$TMP/pmtiles.tgz" -C "$TMP" pmtiles
+    REL="https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}"
+    case "$A" in
+      Darwin_*)  # macOS assets are zips named with a hyphen
+        curl -fsSL -o "$TMP/pmtiles.zip" "$REL/go-pmtiles-${PMTILES_VERSION}_${A}.zip"
+        unzip -q -o "$TMP/pmtiles.zip" pmtiles -d "$TMP" ;;
+      *)
+        curl -fsSL -o "$TMP/pmtiles.tgz" "$REL/go-pmtiles_${PMTILES_VERSION}_${A}.tar.gz"
+        tar -xzf "$TMP/pmtiles.tgz" -C "$TMP" pmtiles ;;
+    esac
     mv "$TMP/pmtiles" "$PMT"
     chmod +x "$PMT"
   fi
