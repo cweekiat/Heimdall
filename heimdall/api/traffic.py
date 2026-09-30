@@ -443,7 +443,7 @@ def traffic_router(
             and s <= -85
             and n >= 85
             and want is None
-            and max_age_s >= layer.max_age_s
+            and max_age_s >= layer.base_max_age_s
         ):
             ck = (id(layer), layer.version, res)
             body = dcache.get(ck)

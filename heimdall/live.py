@@ -21,6 +21,9 @@ from heimdall.geo import BBox, h3_cell, h3_parent
 from heimdall.schemas import AircraftObs, VesselObs
 
 AIR_MAX_AGE_S = 60.0
+# Global (display-only) rows arrive in slow snapshots: OpenSky polls every ~90-300 s
+# (credit pacing), so a 60 s window drops ~10-30% of them between polls: they get a longer one.
+GLOBAL_AIR_MAX_AGE_S = 360.0
 SEA_MAX_AGE_S = 900.0
 GRID_DEG = 1.0
 EXPIRE_EVERY_S = 5.0
@@ -96,8 +99,10 @@ def matches_sources(e: Entry, want: set[str] | None) -> bool:
 class Layer:
     """One entity kind (air or sea)."""
 
-    def __init__(self, max_age_s: float) -> None:
-        self.max_age_s = max_age_s
+    def __init__(self, max_age_s: float, global_max_age_s: float | None = None) -> None:
+        self.global_max_age_s = max(global_max_age_s or max_age_s, max_age_s)
+        self.max_age_s = max(max_age_s, self.global_max_age_s)  # expiry keeps the longest
+        self.base_max_age_s = max_age_s
         self.version = 0
         self._entries: dict[Any, Entry] = {}
         self._grid: dict[tuple[int, int], dict[Any, Entry]] = {}
@@ -173,8 +178,9 @@ class Layer:
         ):
             return 0
         self._last_expire = now
-        cutoff = now - timedelta(seconds=self.max_age_s)
-        dead = [e for e in self._entries.values() if e.seen < cutoff]
+        cutoff = now - timedelta(seconds=self.base_max_age_s)
+        cutoff_g = now - timedelta(seconds=self.global_max_age_s)
+        dead = [e for e in self._entries.values() if e.seen < (cutoff_g if e.is_global else cutoff)]
         if not dead:
             return 0
         self.version += 1
@@ -232,9 +238,11 @@ class Layer:
         otherwise in arbitrary order.
         """
         lo, hi = now - timedelta(seconds=max_age_s), now + future
+        # global snapshot rows are fresh for at least their own poll-sized window
+        lo_g = min(lo, now - timedelta(seconds=self.global_max_age_s))
         with self._lock:
             cand = self._candidates(bb)
-        out = [e for e in cand if lo <= e.ts <= hi]
+        out = [e for e in cand if (lo_g if e.is_global else lo) <= e.ts <= hi]
         if since is not None:
             out = [e for e in out if e.ver > since]
         if want is not None:
@@ -270,7 +278,7 @@ class LivePositions:
     def __init__(
         self, air_max_age_s: float = AIR_MAX_AGE_S, sea_max_age_s: float = SEA_MAX_AGE_S
     ) -> None:
-        self.air = Layer(air_max_age_s)
+        self.air = Layer(air_max_age_s, GLOBAL_AIR_MAX_AGE_S)
         self.sea = Layer(sea_max_age_s)
 
     def update_air(
