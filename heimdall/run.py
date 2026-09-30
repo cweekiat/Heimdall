@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib
+import os
 import signal
 import sys
 import threading
@@ -342,6 +343,7 @@ def start_api(
         host=cfg.api.host,
         port=cfg.api.port,
         log_config=None,
+        timeout_graceful_shutdown=3,  # open SSE streams must not hold shutdown
     )
     return _Server(config)
 
@@ -396,9 +398,18 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
+
+    def on_signal() -> None:
+        # 1st Ctrl+C: graceful shutdown. 2nd: exit now (a stalled shutdown must never leave a
+        # half-dead process holding the API port).
+        if stop.is_set():
+            log.warning("forced_exit")
+            os._exit(130)
+        stop.set()
+
     for sig in (signal.SIGINT, signal.SIGTERM):
         with contextlib.suppress(NotImplementedError):
-            loop.add_signal_handler(sig, stop.set)
+            loop.add_signal_handler(sig, on_signal)
 
     tasks = [
         asyncio.create_task(writer.consume()),
@@ -418,22 +429,57 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     ]
     await manager.start()
     server = start_api(store, cfg, manager, aoi_svc, live, gnss)
-    if server is not None:
-        tasks.append(asyncio.create_task(server.serve()))
+    server_task = asyncio.create_task(server.serve()) if server is not None else None
     log.info("started", connectors=[c.name for c in manager.connectors], step_min=step_min)
     await stop.wait()
+    await shutdown(manager, server, server_task, tasks, store, writer, bus)
+
+
+SHUTDOWN_DEADLINE_S = 20.0
+
+
+async def shutdown(
+    manager: SourceManager,
+    server: Any,
+    server_task: asyncio.Task[None] | None,
+    tasks: Sequence[asyncio.Task[Any]],
+    store: Store,
+    writer: Writer,
+    bus: Bus,
+    deadline_s: float = SHUTDOWN_DEADLINE_S,
+) -> None:
+    """Stop in the order that ends outside effects first: external polling, then the API port."""
     log.info("shutting_down")
-    if server is not None:
+    # hard deadline: a hung thread or socket must not keep the process (and port 8000) alive
+    watchdog = threading.Timer(deadline_s, lambda: (log.error("shutdown_timeout"), os._exit(1)))
+    watchdog.daemon = True
+    watchdog.start()
+    # 1) no more requests to external sources (all connectors at once)
+    for c in manager.connectors:
+        with contextlib.suppress(Exception):
+            store.upsert_health(c.health())
+    try:
+        await asyncio.wait_for(manager.stop(), timeout=8)
+    except TimeoutError:
+        log.warning("connectors_stop_timeout")
+    # 2) close the API port the uvicorn way (stop accepting, end streams), not by cancellation
+    if server is not None and server_task is not None:
         server.should_exit = True
+        try:
+            await asyncio.wait_for(asyncio.shield(server_task), timeout=5)
+        except TimeoutError:
+            server.force_exit = True
+            server_task.cancel()
+            await asyncio.gather(server_task, return_exceptions=True)
+    # 3) background loops, then flush what the writer holds
     for t in tasks:
         t.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
-    for c in manager.connectors:
-        store.upsert_health(c.health())
-    await manager.stop()
     writer.flush()
     await bus.close()
     store.close()
+    watchdog.cancel()
+    log.info("stopped")
 
 
 def main() -> None:

@@ -54,6 +54,7 @@ class Entry:
         "providers",
         "r3",
         "r4",
+        "r5",
         "row",
         "seen",
         "ts",
@@ -84,6 +85,7 @@ class Entry:
         self.frag: str | None = None  # API-owned cache of the serialised static properties
         self.r4 = obs.h3_r4 or h3_cell(obs.lat, obs.lon, 4)
         self.r3 = h3_parent(self.r4, 3)
+        self.r5 = h3_parent(obs.h3_r6, 5) if obs.h3_r6 else h3_cell(obs.lat, obs.lon, 5)
 
 
 def _pkey(provider: str) -> str:
@@ -106,7 +108,7 @@ class Layer:
         self.version = 0
         self._entries: dict[Any, Entry] = {}
         self._grid: dict[tuple[int, int], dict[Any, Entry]] = {}
-        self._dens: dict[int, dict[str, list[int]]] = {3: {}, 4: {}}
+        self._dens: dict[int, dict[str, list[int]]] = {3: {}, 4: {}, 5: {}}
         self._tomb: deque[tuple[int, Any]] = deque()
         self._floor = 0  # highest version whose tombstones were pruned
         self._last_expire: datetime | None = None
@@ -127,7 +129,7 @@ class Layer:
             b.pop(e.key, None)
             if not b:
                 del self._grid[self._cell(e.lat, e.lon)]
-        for res, cell in ((3, e.r3), (4, e.r4)):
+        for res, cell in ((3, e.r3), (4, e.r4), (5, e.r5)):
             d = self._dens[res]
             c = d.get(cell)
             if c is not None:
@@ -138,7 +140,7 @@ class Layer:
 
     def _add(self, e: Entry) -> None:
         self._grid.setdefault(self._cell(e.lat, e.lon), {})[e.key] = e
-        for res, cell in ((3, e.r3), (4, e.r4)):
+        for res, cell in ((3, e.r3), (4, e.r4), (5, e.r5)):
             c = self._dens[res].setdefault(cell, [0, 0])
             c[0] += 1
             c[1] += int(e.mil)
