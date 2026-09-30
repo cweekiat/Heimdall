@@ -237,6 +237,21 @@ confidence 0.6.
    is < now − expire_after_min and not newer than the snapshot fusion saw (a refresh between
    list and upsert wins); expiry never copies stale evidence fields. Alerts in an analyst
    status never expire automatically.
+10. **Sources and footprint (014c, ADR-006).** `Alert.sources` has one `AlertSource` per connector
+    (source key, e.g. `adsb_lol`) whose own records show the anomaly, plus the connectors behind
+    every *supporting* corroboration (contradicting sources are not listed). `family` is
+    `family_of(connector)`; `admiralty` = (connector reliability from sources.yaml, F if unknown)
+    x (the alert's overall credibility, which is a property of the whole alert). Sorted by
+    reliability then name. `Alert.footprint` is `single_track` (description `Track <id>`) when the
+    kind is one-object (ais_spoofing, ais_gap, mil_orbit) and the group names exactly one entity;
+    otherwise `area_cell` with the H3 cell, its resolution and diameter (2 x mean hexagon edge,
+    ~52 km at r4). `sources` and `footprint` are refreshed with the other evidence fields.
+11. **Alert.ref** `HMD-YYYYMMDD-NNNN` is store-owned, not fusion-owned: the Store assigns it on the
+    first put of an `Alert.id` (day = UTC day of `first_seen`, NNNN = next per-day number) and
+    keeps it on every later put. A well-formed incoming ref on a new id is honoured (lake
+    rebuild) and the day counter is bumped past it. DuckDB keeps a `ref` column and an
+    `alert_ref_day` counter table, so numbering survives restarts; Composite delegates to its
+    primary store; Replay inherits MemoryStore, so replay order fixes the refs.
 
 ## Pipeline (pipeline.py)
 `tick(store, settings, now)`: one `aircraft_window` pull covering the longest window, one
