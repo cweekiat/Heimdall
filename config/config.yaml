@@ -45,6 +45,10 @@ detectors:
     baseline_days: 14
     robust_z: 3.0             # vs median/MAD baseline — alert only on change
     persistence_windows: 2
+    mad_floor: 0.02           # eps in z denominator; quiet cell (MAD=0) needs R' >= 0.06 for z>=3. Prior, not yet backtested
+    baseline_min_samples: 288 # 1 day of 5-min ticks before z is enforced; until then "no baseline" gap. Prior
+    full_coverage_aircraft: 15  # coverage confidence saturates at 15 quality aircraft (docs/detectors.md)
+    single_provider_factor: 0.8 # confidence penalty when only one aggregator sees the cell. Prior
   spoofing:
     min_dt_s: 5
     teleport_kt: 1323         # Mach 2 @ ISA SL
@@ -52,6 +56,19 @@ detectors:
     alt_divergence_ft: 1000   # |alt_geom - alt_baro| beyond regional norm
     mlat_gap_km: 5
     min_signals: 2
+    window_min: 30
+    step_min: 5
+    speed_pair_max_s: 30      # |v_calc-gs| only on pairs <= 30 s (chord error < 10% in a 3 deg/s turn)
+    persist_pairs: 2          # S1 must persist >= 2 pairs; single out-and-back fixes are glitches
+    s1_span_cap_s: 300        # one jump's anomalous span < 1 step (5 min): a lone jump cannot reach persistence 2
+    alt_norm_min_aircraft: 3  # S2 regional norm = median over >= 3 aircraft in the r4 cell
+    mlat_max_dt_s: 10
+    mlat_min_pairs: 2         # one MLAT outlier is not enough
+    cluster_km: 2.0           # S4 (docs/detectors.md)
+    cluster_min_aircraft: 3
+    cluster_circvar_min: 0.3  # tracks must disagree; formations (same track) excluded
+    cluster_min_bins: 2       # S4 in >= 2 one-minute bins
+    nic_trusted_min: 7        # S5: GPSJam NIC convention
   orbit:
     window_min: 75
     min_points: 20
@@ -62,3 +79,13 @@ detectors:
     jam_proximity_km: 100
     critical_min_tankers: 2
     tanker_types: [K35R, K35E, KC46, MRTT, A332, KC10, KC30, Y20U]
+    step_min: 5
+    resample_s: 30            # thin to >= 30 s so heading noise cannot accumulate into 360 deg
+    turn_deadband_deg: 3.0    # ignore sub-3-deg heading jitter in cumulative turn
+    novelty_scale_h: 24       # novelty = exp(-prior orbit hours in cell (14 d) / 24 h). Prior
+    mlat_factor: 0.8          # confidence penalty for MLAT-majority tracks
+  fusion:
+    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2}  # CLAUDE.md: >= 2 windows
+    severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior
+    strong_score: 0.6         # Admiralty credibility 3 (single domain strong & persistent) vs 4
+    expire_after_min: 60      # open alerts with no fresh evidence for 60 min expire
