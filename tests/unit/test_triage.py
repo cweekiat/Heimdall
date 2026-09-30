@@ -87,6 +87,14 @@ def test_pipeline_upsert_does_not_overwrite_analyst_status(
     assert client.get("/api/alerts/alert-0").json()["alert"]["status"] == "acknowledged"
 
 
+def test_pipeline_upsert_does_not_cancel_shelve(store: MemoryStore, client: TestClient) -> None:
+    body = {"status": "shelved", "reason": "known exercise", "shelve_until": _future()}
+    assert client.post("/api/alerts/alert-1/status", json=body).status_code == 200
+    a: Alert = store.alerts["alert-1"]
+    store.upsert_alert(a.model_copy(update={"status": S.NEW, "last_seen": datetime.now(UTC)}))
+    assert client.get("/api/alerts/alert-1").json()["alert"]["status"] == "shelved"
+
+
 def test_composite_overlay_notes_and_shelve_expiry(tmp_path: Path) -> None:
     main_path = tmp_path / "m.duckdb"
     m = DuckDBStore(main_path)
@@ -113,8 +121,6 @@ def test_composite_overlay_notes_and_shelve_expiry(tmp_path: Path) -> None:
     # a pipeline upsert must not cancel the shelve
     a4 = main.get_alert("alert-4")
     assert a4 is not None
-    main.upsert_alert(a4.model_copy(update={"status": S.NEW}))  # pipeline write path
-    assert c.get("/api/alerts/alert-4").json()["alert"]["status"] == "shelved"
     assert comp._shelved_until.get("alert-4") is not None
     later = datetime.now(UTC) + timedelta(hours=2)
     comp._now = lambda: later
