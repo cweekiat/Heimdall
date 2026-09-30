@@ -154,3 +154,8 @@ def obs_match(o: object, bbox: BBox | None, ident: Ident | None, key: str) -> bo
         if v not in ident if isinstance(ident, frozenset) else v != ident:
             return False
     return bbox is None or in_bbox(o.lat, o.lon, bbox)  # type: ignore[attr-defined]
+
+
+def h3_disk(cell: str, k: int) -> list[str]:
+    """All cells within `k` grid rings of `cell` (including it)."""
+    return [str(c) for c in h3.grid_disk(cell, k)]

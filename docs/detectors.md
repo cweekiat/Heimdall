@@ -16,7 +16,7 @@ Every Evidence carries `bands` (the AFFECTED RF band, not the observing one); fu
 `none`; warning_area: `l1_gnss` when category/title/text names GNSS/GPS (regex only, text is untrusted), else `none`.
 Old rows without `bands` load as `[]`. `GET /api/coverage?band=&bbox=` gives receivers per H3 r4 cell (last hour).
 
-## GNSS jamming (detect/jamming.py, `jamming-1.1.1`)
+## GNSS jamming (detect/jamming.py, `jamming-1.2.0`)
 Scope: airborne (`on_ground=false`) **true ADS-B** reports (`src_type ∈ {adsb_icao, adsb_icao_nt}`).
 Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `coverage.n_observed`.
 
@@ -32,9 +32,42 @@ Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `cove
   (z ≥ `robust_z` (3) or baseline has < `baseline_min_samples` (288) values → gap "no baseline").
 * **Hysteresis hold** (cell had jamming Evidence in the previous step, passed in as `active`):
   total ≥ `min_aircraft` ∧ R' ≥ `ratio_clear` (0.06); z not required. Rule `hysteresis_hold`.
-* Emitter estimate: first degraded fix of each bad aircraft → centroid and 2σ covariance ellipse
-  in a local equirectangular frame, with a (5 km)² variance floor per axis (non-degenerate for
-  < 3 aircraft). Features `emitter_lat/lon`, `ellipse_major_km/minor_km/angle_deg`.
+* Emitter estimate, **centroid fallback** (`emitter_method` 0): first degraded fix of each bad
+  aircraft → centroid and 2σ covariance ellipse in a local equirectangular frame, with a (5 km)²
+  variance floor per axis. Features `emitter_lat/lon`, `ellipse_major_km/minor_km/angle_deg`.
+* Emitter estimate, **radio-horizon fit** (1.2.0, `emitter_method` 1; all `loc_*` keys are priors,
+  not backtested). Model: a fixed ground emitter of height h_j (`loc_jammer_height_m`, 10 m)
+  covers an aircraft of height h (m; alt_geom else alt_baro, ft × 0.3048) out to
+  d(h) = 4.12 (√h + √h_j) km (`loc_horizon_km`). LOS is an *upper bound* on real power-limited
+  jamming range, so this is a coarse region, not a survey fix; it assumes a ground emitter.
+  1. Pool (lazily, once per tick, only when a cell fires): airborne true-ADS-B fixes with known
+     quality. *Degraded class*: degraded fixes of aircraft bad in the window in any cell (plus the
+     cell's bad aircraft), within `loc_degraded_radius_km` (200) of the cell's degraded-fix
+     centroid. *Healthy class*: fixes of never-degraded aircraft plus the healthy fixes of bad
+     aircraft (these bracket the boundary); aircraft degraded on < `bad_dwell_frac` are ambiguous
+     and skipped. Healthy fixes kept only if within `loc_alt_band_m` (3000 m) of some degraded
+     fix's altitude and the nearest `loc_max_healthy_ac` (100) aircraft within
+     `loc_healthy_radius_km` (800). Fixes are thinned to `loc_max_fixes_per_ac` (6) per aircraft
+     while always keeping both fixes at every degraded/healthy flip.
+  2. Candidates: H3 r6 (`loc_res`) cell centres within `loc_radius_km` (400) of the centroid; the
+     radius shrinks so the count stays ≤ `loc_max_candidates` (16 000, ~15.8k at 400 km).
+  3. Score per candidate j (great-circle distances via unit vectors, chunked numpy):
+     TPR = Σ w_i·[dist(i,j) ≤ d(h_i)] over degraded fixes, TNR = Σ w_k·[dist(k,j) > d(h_k)] over
+     healthy fixes, weights w = 1/(#aircraft × #fixes of that aircraft) so each aircraft counts
+     once. Score = ½(TPR+TNR) + `loc_soft_weight`·½(soft margins), the small margin term
+     (clip(1 − d/d(h)) for degraded, clip(d/d(h) − 1) for healthy) only breaks plateaus.
+  4. Agreement = ½(TPR+TNR) at the best candidate (`emitter_agreement`, also
+     `emitter_degraded_inside`, `emitter_healthy_outside`). The feasible region = candidates with
+     agreement within `loc_agreement_tol` (0.03) of the best ∪ the top `loc_top_k` (25) by score;
+     `emitter_lat/lon` (and Evidence lat/lon) = its centroid, and `ellipse_*`/geometry = its 2σ
+     ellipse (5 km floor). `emitter_centroid_lat/lon` keep the fallback point.
+  5. Fallback to the centroid (with a gap and a counterfactual sentence) when: < `loc_min_degraded`
+     (3) degraded aircraft with altitude, < `loc_min_healthy` (2) healthy aircraft at similar
+     altitude, agreement < `loc_min_agreement` (0.6; e.g. healthy and degraded traffic colocated at
+     one altitude, where geometry cannot separate them), or `loc_enabled: false`.
+  Other features: `emitter_n_degraded/healthy/candidates`, `emitter_jammer_height_m`.
+  `emitter_method` is numeric (features are floats): 1.0 = horizon_fit, 0.0 = centroid.
+  Cost ≈ 0.05 s per firing cell on synthetic scenes (numpy).
 * Provider agreement = mean over bad aircraft of (#providers whose own reports make it bad /
   #providers that saw it).
 * Coverage confidence = min(`confidence_cap`, min(1, total / 15) × agreement × (0.8 if only one
