@@ -1,0 +1,11 @@
+{"confounders":[
+{"note":"Cloud cover 85% over the cell","factor":0.8},
+{"note":"Kp 6 (G2)","factor":0.85},
+{"note":"Rain in the area","factor":null}],
+"observability":[
+{"note":"Imagery footprint s2","platform":"sentinel-2b","sensor":"sentinel-2-l2a","time":"2026-09-29T04:00:00+00:00","kind":"footprint","id":"stac|s2","cloud_cover":38,"url":"https://stac.example.invalid/items/s2"},
+{"note":"Imagery footprint s1","platform":"sentinel-1a","sensor":"sentinel-1-grd","time":"2026-09-30T00:00:00+00:00","kind":"footprint","id":"stac|s1","cloud_cover":null,"url":null},
+{"note":"Next pass","platform":"SENTINEL-2A","sensor":"MSI","time":"2026-10-01T03:30:00+00:00","kind":"overpass","id":"p1"},
+{"note":"Next pass","platform":"SENTINEL-1A","sensor":"C-SAR","time":"2026-10-01T09:00:00+00:00","kind":"overpass","id":"p2"},
+{"note":"Next pass","platform":"SENTINEL-2B","sensor":"MSI","time":"2026-10-02T03:30:00+00:00","kind":"overpass","id":"p3"}],
+"gaps":["No imagery footprint in the last 48 h"]}

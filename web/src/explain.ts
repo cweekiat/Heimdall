@@ -5,6 +5,9 @@ import type { Alert, Evidence } from "./api.ts";
 import { h } from "./dom.ts";
 import { kindLabel, SOURCE_LABEL, TRUTH_LABEL } from "./labels.ts";
 
+// "Things that could explain this" and "Can this be checked?" (023c) live in context.ts.
+export { renderContext as contextBlock } from "./context.ts";
+
 /** An area cell at the detection resolution is about 52 km across (edge to edge). */
 export const AREA_KM = 52;
 

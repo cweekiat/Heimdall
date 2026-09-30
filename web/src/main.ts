@@ -26,7 +26,8 @@ import { Areas } from "./areas";
 import { Traffic } from "./traffic";
 import { Notices } from "./notices";
 import { P3Layers } from "./p3layers";
-import { filters, mountFilters, onFilters } from "./filters";
+import { filters, mountFilters, onFilters, setFilter } from "./filters";
+import { ctxHooks } from "./context";
 import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, hasSavedGeometry, isOpen, openWindow, placeWindow, toggleWindow, winRect } from "./wm";
 
 const $ = (id: string): HTMLElement => document.getElementById(id) as HTMLElement;
@@ -372,6 +373,7 @@ async function boot(): Promise<void> {
     const p3 = new P3Layers(ops, $("mapwrap"));
     p3.aois = () => state.aois.map((a) => a.name);
     p3.hasOutageAlert = (aoi) => state.alerts.some((a) => a.kind === "outage" && a.aoi === aoi && ["new", "acknowledged", "under_review"].includes(a.status));
+    ctxHooks.onFootprint = (id) => p3.focus(id, () => setFilter({ p3: [...filters.p3, "imagery"] }));
     ops.extraLayers = (tool, zoom) => [...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom)];
     const filterBox = h("div", { class: "filters" });
     const refreshFilters = mountFilters(filterBox, { counts: traffic.getCounts, sources: () => sourcesWin.list, extra: () => p3.chipList() });
