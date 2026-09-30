@@ -43,7 +43,14 @@ class FakeStore:
         return len(rows)
 
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
-        self.events.extend(rows)
+        """Idempotent on GeoEvent.id, last write wins (ADR-004 section 4)."""
+        by_id = {e.id: i for i, e in enumerate(self.events)}
+        for r in rows:
+            if r.id in by_id:
+                self.events[by_id[r.id]] = r
+            else:
+                by_id[r.id] = len(self.events)
+                self.events.append(r)
         return len(rows)
 
     def aircraft_window(
@@ -61,7 +68,9 @@ class FakeStore:
     def events_window(
         self, start: datetime, end: datetime, kinds: Sequence[str] | None = None
     ) -> list[GeoEvent]:
-        return [e for e in self.events if start <= e.ts < end]
+        return [
+            e for e in self.events if start <= e.ts < end and (kinds is None or e.kind in kinds)
+        ]
 
     def upsert_evidence(self, ev: Evidence) -> None:
         self.evidence[ev.id] = ev

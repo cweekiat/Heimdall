@@ -84,9 +84,60 @@ detectors:
     turn_deadband_deg: 3.0    # ignore sub-3-deg heading jitter in cumulative turn
     novelty_scale_h: 24       # novelty = exp(-prior orbit hours in cell (14 d) / 24 h). Prior
     mlat_factor: 0.8          # confidence penalty for MLAT-majority tracks
+  ais_spoofing:             # task 010; every value below is a prior, not backtested
+    h3_res: 4
+    window_min: 60          # prior, not backtested
+    step_min: 5
+    teleport_kn: 60         # no merchant ship exceeds ~40 kn; 60 leaves margin. Prior, not backtested
+    jump_min_km: 5          # ignore short hops with quantised timestamps. Prior, not backtested
+    persist_pairs: 2        # GNSS S1 convention; single out-and-back fixes are glitches. Prior
+    span_cap_s: 300         # one jump's anomalous span < 1 step, so a lone jump cannot reach persistence 2. Prior
+    collision_km: 50        # two clusters this far apart, alternating = shared MMSI, not spoofing. Prior
+    identical_min_vessels: 3   # distinct MMSIs at one position. Prior, not backtested
+    identical_decimals: 5      # ~1 m; rafted ships 20 m apart never match. Prior, not backtested
+    identical_bin_s: 300
+    ring_min_vessels: 5     # Prior, not backtested
+    ring_cv_max: 0.1        # radial-distance CV of a spoofed ring. Prior, not backtested
+    ring_bearing_circvar_min: 0.7
+    ring_radius_km: [0.2, 30]
+    circle_min_fixes: 20
+    circle_rel_rmse_max: 0.05
+    circle_min_turn_deg: 720   # >= 2 laps; a purse-seine set is one lap. Prior, not backtested
+    circle_max_radius_km: 5
+    full_coverage_fixes: 20    # coverage confidence saturates at 20 fixes. Prior
+    single_provider_factor: 0.8   # Prior
+  ais_gap:                  # task 010; every value below is a prior, not backtested
+    h3_res: 4
+    window_h: 24
+    step_min: 5
+    gap_min_h: 2            # Prior, not backtested
+    gap_min_neighbors: 3    # other MMSIs heard near the last fix per hourly bin. Prior, not backtested
+    gap_neighbor_km: 20     # Prior, not backtested
+    gap_covered_frac: 0.5   # gap needs reception evidence in >= half of its hourly bins. Prior
+    closed_report_h: 6      # a closed gap is reported for 6 h after it ended. Prior, not backtested
+  warning_area:             # task 010; ADR-005; every value below is a prior, not backtested
+    categories: [military_exercise, live_firing, missile_rocket, gnss_interference]
+    aoi_margin_km: 25       # one r4 cell radius. Prior
+    notice_lookback_days: 30   # events pulled for notices; filtered to active at evaluation time. Prior
   fusion:
-    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2}  # CLAUDE.md: >= 2 windows
+    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2}  # CLAUDE.md: >= 2 windows; ais_* prior, not backtested
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior
-    strong_score: 0.6         # Admiralty credibility 3 (single domain strong & persistent) vs 4
+    strong_score: 0.6         # Admiralty credibility 3 (single family strong & persistent) vs 4
     expire_after_min: 60      # open alerts with no fresh evidence for 60 min expire
     dismiss_max_episode_h: 12 # a dismissal owns its episode for <= 12 h after first_seen, then a same-severity campaign re-alerts. Prior (review 003)
+    # ADR-005 section C: independent source families (credibility counts families, not domains). Prior, not backtested
+    source_family:
+      adsb_lol: adsb
+      adsb_fi: adsb
+      airplanes_live: adsb
+      adsb_lol_history: adsb
+      opensky: adsb
+      gpsjam: adsb          # derived from ADS-B NIC, not independent of it
+      aisstream: ais
+      gfw: gfw
+      gfw_sar: sar
+      nga_msi: notice
+      china_msa: notice
+      faa_nms_notam: notice
+    # ADR-005 section D cross-source rules. Prior, not backtested
+    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, sar_km: 10, time_slack_h: 2}

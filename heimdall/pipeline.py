@@ -12,13 +12,26 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from heimdall.config import AOI, Settings
-from heimdall.detect import jamming, orbit, spoofing
-from heimdall.detect.common import Baseline, align_window
+from heimdall.detect import ais_gap, ais_spoofing, jamming, orbit, spoofing, warning_area
+from heimdall.detect.common import (
+    Baseline,
+    align_window,
+    vessel_cell_of,
+    vessel_in_window,
+)
 from heimdall.fuse.admiralty import grades_from_sources
 from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
 from heimdall.geo import within_radius_nm
 from heimdall.ports import Store
-from heimdall.schemas import AircraftObs, Alert, AlertKind, AlertStatus, Evidence
+from heimdall.schemas import (
+    AircraftObs,
+    Alert,
+    AlertKind,
+    AlertStatus,
+    Evidence,
+    GeoEvent,
+    VesselObs,
+)
 
 ENTITY_PERSISTENCE = {AlertKind.MIL_ORBIT, AlertKind.AIS_GAP}  # per aircraft/vessel, else per cell
 
@@ -41,6 +54,7 @@ def _baseline(store: Store, now: datetime, days: float, exclude_after: datetime)
     return fn
 
 
+AIS_METRIC = "ais_vessels"  # distinct MMSIs per r4 cell in the AIS spoofing window
 PERSIST_METRIC = "persistence_run_start"  # epoch s of the first anomalous obs of the current run
 PERSIST_TICKS = "persistence_ticks"  # consecutive steps in which the subject triggered
 
@@ -130,11 +144,18 @@ def run_aoi(
     now: datetime,
     playbook: Mapping[str, Any] | None,
     grades: Mapping[str, str],
+    vessels: Sequence[VesselObs] = (),
+    events: Sequence[GeoEvent] = (),
 ) -> TickResult:
+    """One AOI step. `vessels`: AIS window for the AOI; `events`: active notices + GFW/SAR events
+    (context/corroboration only; area notices intersecting the AOI become WARNING_AREA Evidence)."""
     jcfg = dict(detectors.get("jamming", {}))
     scfg = dict(detectors.get("spoofing", {}))
     ocfg = dict(detectors.get("orbit", {}))
     fcfg = dict(detectors.get("fusion", {}))
+    aicfg = dict(detectors.get("ais_spoofing", {}))
+    agcfg = dict(detectors.get("ais_gap", {}))
+    wcfg = dict(detectors.get("warning_area", {}))
     fcfg.setdefault("jam_proximity_km", ocfg.get("jam_proximity_km", 100))
     fcfg.setdefault("critical_min_tankers", ocfg.get("critical_min_tankers", 2))
     days = float(jcfg.get("baseline_days", 14))
@@ -154,7 +175,11 @@ def run_aoi(
         obs, ocfg, now, _baseline(store, now, days, o_start), jam_evidence=jam, aoi=aoi.name
     )
 
-    evs = _assign_persistence(store, aoi.name, [*jam, *spoof, *orb], step)
+    ais_sp = ais_spoofing.detect(vessels, aicfg, now, None, aoi=aoi.name)
+    ais_gp = ais_gap.detect(vessels, agcfg, now, None, aoi=aoi.name)
+    warn = warning_area.detect(events, wcfg, now, aoi=aoi)
+
+    evs = _assign_persistence(store, aoi.name, [*jam, *spoof, *orb, *ais_sp, *ais_gp, *warn], step)
 
     min_ac = int(jcfg.get("min_aircraft", 5))
     for cell, st in stats.items():
@@ -164,6 +189,16 @@ def run_aoi(
     for cell in sorted({e.h3_cell for e in orb if e.h3_cell}):
         store.record_metric(cell, orbit.METRIC, o_end, 1.0)
         res.metrics += 1
+    if vessels:  # ais_vessels: distinct MMSIs per r4 cell in the spoofing window
+        a_start, a_end = align_window(
+            now, ais_spoofing.DEFAULTS["window_min"], step.total_seconds() / 60
+        )
+        per_cell: dict[str, set[int]] = {}
+        for v in vessel_in_window(vessels, a_start, a_end):
+            per_cell.setdefault(vessel_cell_of(v, 4), set()).add(v.mmsi)
+        for cell, mm in sorted(per_cell.items()):
+            store.record_metric(cell, AIS_METRIC, a_end, float(len(mm)))
+            res.metrics += 1
 
     open_alerts = store.list_alerts(status=list(ACTIVE), aoi=aoi.name, limit=10_000)
     # recently dismissed alerts own their continuing episode (no re-alert chattering)
@@ -180,6 +215,7 @@ def run_aoi(
         grades,
         aoi=aoi.name,
         control=aoi.role == "control",
+        notices=events,
     )
     for e in evs:
         store.upsert_evidence(e)
@@ -222,12 +258,29 @@ def tick(
         for k, d in (("jamming", 30), ("spoofing", 30), ("orbit", 75))
     )
     obs_all = store.aircraft_window(now - timedelta(minutes=lookback), now)
+    v_lookback = max(
+        float(d.get("ais_gap", {}).get("window_h", 24)) * 60 + 5
+        for d in [settings.detectors, *dets.values()]
+    )
+    ves_all = store.vessels_window(now - timedelta(minutes=v_lookback), now)
+    notice_days = max(
+        float(d.get("warning_area", {}).get("notice_lookback_days", 30))
+        for d in [settings.detectors, *dets.values()]
+    )
+    events_all = [
+        e
+        for e in store.events_window(now - timedelta(days=notice_days), now)
+        if e.kind not in warning_area.NOTICE_KINDS or warning_area.is_active(e, now)
+    ]
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
         obs = [
             o for o in obs_all if within_radius_nm(o.lat, o.lon, aoi.lat, aoi.lon, aoi.radius_nm)
         ]
-        r = run_aoi(store, aoi, obs, dets[aoi.name], now, playbook, source_grades)
+        ves = [
+            v for v in ves_all if within_radius_nm(v.lat, v.lon, aoi.lat, aoi.lon, aoi.radius_nm)
+        ]
+        r = run_aoi(store, aoi, obs, dets[aoi.name], now, playbook, source_grades, ves, events_all)
         total.evidence += r.evidence
         total.alerts += r.alerts
         total.metrics += r.metrics
