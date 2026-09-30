@@ -108,3 +108,30 @@ see viewed areas".
 Every source sets its `attribution` so MapLibre's attribution control lists all active sources.
 Overlay text layers are skipped on CARTO bases (different glyph fonts). Overlays draw their own
 boundary layers from an OpenFreeMap vector source, so they also work over the satellite base.
+
+## Windows, toolbar and live data (task 012)
+The map fills the screen. Everything else floats above it in windows you can move, resize, minimise
+and close (layout saved in `hm.wm.v1`; below 768 px they become bottom sheets). The left toolbar opens
+them: Alerts `q`, Areas `b`, Layers & filters `l`, Data sources `u`, Actions `x`, Timeline `t`,
+Shift report `h`, Help `?`. The alert details window opens beside the selected alert's marker
+(or beside the alert list) and remembers where you move it.
+
+- **Live traffic** (`web/src/traffic.ts`): aircraft and ships from `/api/traffic/air|sea`, only for
+  the visible box. Air refreshes every 5 s, ships every 30 s; polling pauses in a hidden tab and
+  requests never overlap. Aircraft are silhouettes turned to their track and tinted by altitude
+  (grey on the ground, teal low, violet high). Military aircraft are hollow diamonds. A thin amber ring
+  means a GPS problem; a red halo means the aircraft or ship is part of an alert. Ships are arrows along
+  their course (a dot when stationary), coloured by type. Below zoom 5 one marker per screen cell is shown
+  with a count. Hover for a one-line tooltip; click for a card (details, 30 min / 2 h path, Follow,
+  Show related alert).
+- **Layers & filters** (`filters.ts`): toggles for aircraft, ships, alerts, warnings/NOTAMs;
+  per-source tick boxes with live counts; military only, altitude band, ship type chips,
+  only things in alerts, callsign/name/MMSI search. Saved in `hm.filters.v1`. Also holds the base map,
+  overlays, coverage and look-back controls.
+- **Data sources** (`sources.ts`): status, last update, records per hour and an On/Off switch
+  (`POST /api/sources/{key}`; switching off asks "Stop collecting from X?"). Refreshes every 10 s.
+  Keys are never shown, only "Add X_KEY to .env".
+- **Warnings and NOTAMs** (`notices.ts`): hatched areas from `/api/notices`; click for reference,
+  type, valid times (Z), altitude band and the original text in an "unverified" box.
+- **Actions** (`actionsboard.ts`): Proposed, Approved, Done, Rejected columns from `/api/actions`.
+  Approve and reject appear on proposed cards only; high-risk items ask for a second confirmation.

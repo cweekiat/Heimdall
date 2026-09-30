@@ -103,6 +103,10 @@ export class OpsMap {
   onCursor: (lon: number, lat: number, zoom: number) => void = () => undefined;
   onHover: (a: Alert[] | null, x: number, y: number) => void = () => undefined;
   onTool: () => void = () => undefined;
+  /** Fires (debounced by the caller) when the view changes; used to refetch visible traffic. */
+  onMove: () => void = () => undefined;
+  /** Extra deck layers (traffic, notices) drawn above the alert cells and below alert markers. */
+  extraLayers: (tool: MapState["tool"], zoom: number) => unknown[] = () => [];
 
   constructor(
     container: HTMLElement,
@@ -122,6 +126,7 @@ export class OpsMap {
     this.map.addControl(new maplibregl.ScaleControl({ unit: "nautical", maxWidth: 120 }), "bottom-left");
     this.map.on("mousemove", (e) => this.onCursor(e.lngLat.lng, e.lngLat.lat, this.map.getZoom()));
     this.map.on("zoomend", () => this.render());
+    this.map.on("moveend", () => this.onMove());
     this.map.on("click", (e) => {
       if (this.state.tool === "none") return;
       const p: [number, number] = [e.lngLat.lng, e.lngLat.lat];
@@ -159,6 +164,27 @@ export class OpsMap {
 
   zoomBy(d: number): void {
     this.map.easeTo({ zoom: this.map.getZoom() + d, duration: 200 });
+  }
+
+  /** Visible box as "w,s,e,n" (w > e means the view crosses the antimeridian). */
+  bbox(): string {
+    const b = this.map.getBounds();
+    const wrap = (x: number): number => ((((x + 180) % 360) + 360) % 360) - 180;
+    const r = (x: number): string => x.toFixed(3);
+    const span = b.getEast() - b.getWest();
+    if (span >= 360) return `-180,${r(Math.max(-90, b.getSouth()))},180,${r(Math.min(90, b.getNorth()))}`;
+    return `${r(wrap(b.getWest()))},${r(Math.max(-90, b.getSouth()))},${r(wrap(b.getEast()))},${r(Math.min(90, b.getNorth()))}`;
+  }
+
+  /** Screen position of a point (px inside the map). */
+  project(lon: number, lat: number): { x: number; y: number } {
+    const p = this.map.project([lon, lat]);
+    return { x: p.x, y: p.y };
+  }
+
+  /** Pan (keep zoom) so follow mode keeps a moving target in view. */
+  panTo(lon: number, lat: number): void {
+    this.map.easeTo({ center: [lon, lat], duration: 400 });
   }
 
   zoom(): number {
@@ -251,6 +277,7 @@ export class OpsMap {
         getLineColor: [248, 81, 73, 255],
         lineWidthMinPixels: 2,
       }),
+      ...(this.extraLayers(s.tool, this.map.getZoom()) as never[]),
       new PathLayer<{ hex: string; path: TrackPt[] }>({
         id: "tracks",
         data: s.tracks,

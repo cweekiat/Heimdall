@@ -1083,3 +1083,32 @@ ul.why {
     left: calc(50% + 22px);
   }
 }
+
+/* ---------- 012c data views ---------- */
+.filters fieldset, #layers-body fieldset { margin: 0 0 8px; }
+.filters .chk, .src-list .chk { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.filters input[type="search"] { width: 100%; margin-bottom: 6px; }
+.alt { display: grid; gap: 2px; margin: 6px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+.chips .chip { font-family: inherit; cursor: pointer; padding: 3px 8px; color: var(--fg, inherit); }
+.chips .chip[aria-pressed="true"] { background: #58a6ff; color: #0b1218; border-color: #58a6ff; }
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+.badge.risk { color: var(--bad); border-color: var(--bad); margin-left: 6px; }
+.dot.key { background: transparent; border: 1px dashed var(--sev-info); }
+.dot.off { background: var(--sev-info); opacity: 0.55; }
+.stat { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.sw { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); }
+.ent h2 { margin: 0 0 6px; font-size: 16px; }
+.ent .row, .actions-win .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.untrusted { margin-top: 8px; border: 1px dashed var(--line); border-radius: 6px; padding: 6px; background: var(--panel2); }
+.untrusted pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 200px; overflow: auto; }
+.kanban { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 8px; overflow-x: auto; padding: 0 8px 8px; }
+.actions-win > .note { padding: 0 8px; }
+.kcol { min-width: 150px; background: var(--panel2); border-radius: 6px; padding: 6px; }
+.kcol h3 { margin: 0 0 6px; font-size: 13px; }
+.acard { border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: var(--panel); }
+button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-decoration: underline; cursor: pointer; text-align: left; }
+.hovercard.tip { white-space: nowrap; }
+@media (max-width: 767px) { .kanban { grid-template-columns: 1fr; } }
