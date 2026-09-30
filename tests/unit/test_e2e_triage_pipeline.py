@@ -50,8 +50,7 @@ def test_triage_survives_pipeline_ticks(tmp_path: Path, status: str, extra: dict
     body = client.get(f"/api/alerts/{alert.id}").json()
     assert body["alert"]["status"] == status
     after = [a for a in store.list_alerts() if a.kind == AlertKind.GNSS_JAMMING]
-    if status != "dismissed":
-        # still the same single alert, refreshed by the pipeline
-        assert [a.id for a in after] == [alert.id]
-        assert after[0].last_seen >= alert.last_seen
+    # still the same single alert, refreshed by the pipeline (dismissed owns its episode too)
+    assert [a.id for a in after] == [alert.id]
+    assert after[0].last_seen > alert.last_seen
     assert any(n["status_to"] == status for n in body["notes"])
