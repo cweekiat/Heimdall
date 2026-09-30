@@ -19,6 +19,7 @@ from typing import Any
 
 from heimdall import config
 from heimdall.backtest.replay import ReplayResult, replay
+from heimdall.backtest.replay_io import read_obs_parquet, write_bundle
 from heimdall.backtest.score import (
     LEVELS,
     PREDS,
@@ -405,6 +406,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--aoi", required=True, help="AOI name from config/config.yaml")
     p.add_argument("--date", required=True, help="UTC day to replay, YYYY-MM-DD")
     p.add_argument("--traces", help="dir/file of readsb trace JSON (default data/raw/traces/DATE)")
+    p.add_argument(
+        "--input",
+        help="replay parquet from scripts/filter_adsblol.py (instead of --traces); also writes "
+        "<stem>.alerts.jsonl / <stem>.evidence.jsonl and a replay-local lake beside it",
+    )
     p.add_argument("--gpsjam", help="GPSJam day CSV (hex,count_good_aircraft,count_bad_aircraft)")
     p.add_argument("--refs", help="text file of reference ISO timestamps for lead time")
     p.add_argument("--out-dir", default="reports")
@@ -425,24 +431,33 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         raise SystemExit(f"unknown AOI {args.aoi!r}") from None
     day0 = datetime.fromisoformat(args.date).replace(tzinfo=UTC)
     day = (day0, day0 + timedelta(days=1))
-    traces = Path(args.traces or f"data/raw/traces/{args.date}")
-    files = trace_files(traces)
-    if not files:
-        raise SystemExit(f"no trace files under {traces}")
+    if args.input:
+        files = [Path(args.input)]
+        if not files[0].is_file():
+            raise SystemExit(f"replay input not found: {args.input}")
+    else:
+        traces = Path(args.traces or f"data/raw/traces/{args.date}")
+        files = trace_files(traces)
+        if not files:
+            raise SystemExit(f"no trace files under {traces}")
     effective = settings.detectors_for(aoi)
     lookback = max(
         float(effective.get(k, {}).get("window_min", d))
         for k, d in (("jamming", 30), ("spoofing", 30), ("orbit", 75))
     )
-    obs = list(
-        iter_trace_dir(
-            traces,
-            args.provider,
-            start=day[0] - timedelta(minutes=lookback + args.step_min),
-            end=day[1],
-            area=(aoi.lat, aoi.lon, aoi.radius_nm),
+    start = day[0] - timedelta(minutes=lookback + args.step_min)
+    if args.input:
+        obs = read_obs_parquet(args.input, start, day[1])
+    else:
+        obs = list(
+            iter_trace_dir(
+                traces,
+                args.provider,
+                start=start,
+                end=day[1],
+                area=(aoi.lat, aoi.lon, aoi.radius_nm),
+            )
         )
-    )
     truth = load_gpsjam(args.gpsjam) if args.gpsjam else None
     grades = grades_from_sources(config.sources())
     common = (obs, settings, aoi, day)
@@ -478,6 +493,8 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         truth=truth,
         leads=leads,
     )
+    if args.input:
+        write_bundle(args.input, current.result)
     out = Path(args.out_dir) / f"backtest-{aoi.name}-{args.date}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)

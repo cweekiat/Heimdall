@@ -1,17 +1,27 @@
-"""Seed a MemoryStore with synthetic alerts and serve the API: `python -m heimdall.api.demo`."""
+"""Seed a MemoryStore with synthetic alerts and serve the API: `python -m heimdall.api.demo`.
+
+`--replay PATH` serves a real-data replay (a parquet from `scripts/filter_adsblol.py` plus the
+`<stem>.alerts.jsonl` / `<stem>.evidence.jsonl` written by `heimdall.backtest --input`) instead of
+the synthetic seed. Replayed alerts keep their original (historical) timestamps; only the aircraft
+tracks are time-shifted onto the wall clock (looping over the replay span) so the live layers move.
+"""
 
 from __future__ import annotations
 
+import argparse
 import math
 import random
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 import h3
 
 from heimdall import config
 from heimdall.adapters.memory_store import MemoryStore
+from heimdall.backtest.replay import ReplayStore
+from heimdall.backtest.replay_io import read_bundle, read_obs_parquet
 from heimdall.geo import BBox, Ident
 from heimdall.ports import Store
 from heimdall.schemas import (
@@ -519,12 +529,74 @@ class DemoSources:
         return new
 
 
-def main() -> None:  # pragma: no cover
+class ReplayDemoStore(ReplayStore):
+    """Real replayed aircraft + alerts. Wall-clock windows are mapped onto the replay span (it
+    loops), and returned rows are shifted onto the wall clock, so `/api/aircraft` shows the
+    day's traffic moving in real time. Alerts/evidence are untouched (historical timestamps)."""
+
+    def __init__(self, obs: Sequence[AircraftObs], boot: datetime | None = None) -> None:
+        super().__init__()
+        self.boot = boot or datetime.now(UTC)
+        self.insert_aircraft(obs)
+        self.t0 = self.aircraft[0].ts if self.aircraft else self.boot
+        last = self.aircraft[-1].ts if self.aircraft else self.boot
+        self.span = max(last - self.t0, timedelta(seconds=1)) + timedelta(seconds=1)
+
+    def _segments(
+        self, start: datetime, end: datetime
+    ) -> list[tuple[datetime, datetime, timedelta]]:
+        """(replay_start, replay_end, shift-to-wall) pieces covering wall window [start, end)."""
+        k0 = math.floor((start - self.boot) / self.span)
+        r0 = self.t0 + ((start - self.boot) - k0 * self.span)
+        shift = self.boot + k0 * self.span - self.t0
+        r1 = r0 + (end - start)
+        top = self.t0 + self.span
+        if r1 <= top:
+            return [(r0, r1, shift)]
+        return [(r0, top, shift), (self.t0, r1 - self.span, shift + self.span)]
+
+    def aircraft_window(
+        self,
+        start: datetime,
+        end: datetime,
+        h3_r4: Sequence[str] | None = None,
+        *,
+        bbox: BBox | None = None,
+        ident: Ident | None = None,
+    ) -> list[AircraftObs]:
+        if end - start >= self.span:
+            return []
+        out: list[AircraftObs] = []
+        for r0, r1, shift in self._segments(start, end):
+            rows = super().aircraft_window(r0, r1, h3_r4, bbox=bbox, ident=ident)
+            out += [o.model_copy(update={"ts": o.ts + shift}) for o in rows]
+        return out
+
+
+def load_replay(path: str | Path) -> ReplayDemoStore:
+    """Build the demo store from a replay parquet and its alert/evidence bundle."""
+    p = Path(path)
+    if not p.is_file():
+        raise SystemExit(f"replay file not found: {p}")
+    store = ReplayDemoStore(read_obs_parquet(p))
+    alerts, evidence = read_bundle(p)
+    for e in evidence:
+        store.upsert_evidence(e)
+    for a in alerts:
+        store.upsert_alert(a)
+    return store
+
+
+def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover
     import uvicorn
 
     from heimdall.api.app import create_app
 
-    app = create_app(seed(LiveDemoStore()), sources=DemoSources())
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--replay", help="replay parquet (data/replay/hormuz/DATE.parquet)")
+    args = ap.parse_args(argv)
+    store = load_replay(args.replay) if args.replay else seed(LiveDemoStore())
+    app = create_app(store, sources=DemoSources())
     uvicorn.run(app, host="127.0.0.1", port=8000)
 
 

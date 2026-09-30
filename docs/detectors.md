@@ -303,3 +303,18 @@ Everything shown on screen from Evidence (counterfactual, rule descriptions, gap
 (jamming): "Clears when 2 or fewer of the 12 aircraft lose GPS accuracy (alert level 10%, now 25%)".
 Detector versions bumped for text: jamming-1.1.1, spoofing-1.0.2, orbit-1.0.1. `fuse/fusion.py`
 alert summaries still use R'/H3 wording (not in this task's scope).
+
+
+## Hormuz replay (task 014d)
+
+Pipeline: `scripts/fetch_adsblol_day.sh DATE` -> `scripts/filter_adsblol.py` (bbox prefilter 22.9-29.7N,
+52.5-60.1E, rows kept verbatim incl. `alt_baro`, NIC, NACp) -> `data/replay/hormuz/DATE.parquet` ->
+`python -m heimdall.backtest --aoi hormuz --date DATE --input <parquet> --no-sweep` (real jamming/
+spoofing/orbit detectors, unchanged thresholds; writes `<stem>.alerts.jsonl`, `<stem>.evidence.jsonl`
+and a replay-local lake) -> `python -m heimdall.api.demo --replay <parquet>` (alerts keep historical
+timestamps; tracks are time-shifted onto the wall clock and loop). No math added; thresholds untouched.
+
+**Date: UNVERIFIED.** Candidate 2025-06-17 (Israel-Iran conflict window, 13-24 Jun 2025). This session's
+sandbox blocked the archive host and web access, so no public jamming report could be cited and the
+release naming was not checked. Verify a source before treating the day as ground truth; if none, pick
+another date. Data: adsb.lol, ODbL 1.0 ("Contains information from adsb.lol, made available under the ODbL").
