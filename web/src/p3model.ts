@@ -1,20 +1,16 @@
 // P3 layer model (task 023b): pure functions, no deck.gl or DOM, so they run under node --test.
 // Wire shapes follow docs/tasks/023a-context-api.md. Every string here ends up in textContent.
 
-export type P3Layer = "thermal" | "outage" | "night_lights" | "imagery" | "overpass";
-export const P3_LAYERS: P3Layer[] = ["thermal", "outage", "night_lights", "imagery", "overpass"];
+export type P3Layer = "thermal" | "imagery" | "overpass";
+export const P3_LAYERS: P3Layer[] = ["thermal", "imagery", "overpass"];
 export const P3_LABEL: Record<P3Layer, string> = {
   thermal: "Heat spots (satellite)",
-  outage: "Internet outages",
-  night_lights: "Night lights",
   imagery: "Satellite image footprints",
   overpass: "Next satellite passes",
 };
-/** Refresh period per layer, in ms. Night lights change once a day. */
+/** Refresh period per layer, in ms. */
 export const P3_REFRESH_MS: Record<P3Layer, number> = {
   thermal: 300_000,
-  outage: 300_000,
-  night_lights: 1_800_000,
   imagery: 300_000,
   overpass: 300_000,
 };
@@ -108,40 +104,18 @@ export function dashSegments(ring: number[][], on = 2, off = 1): number[][][] {
 
 export const isRadar = (p: LayerProps): boolean => str(p.platform).toLowerCase().startsWith("sentinel-1");
 
-/** Night lights: brightness compared with the usual, as a multiple (1 = usual). Null if unknown. */
-export function lightsVsUsual(p: LayerProps): number | null {
-  const med = num(p.median);
-  const v = num(p.value);
-  return med !== null && med > 0 && v !== null ? v / med : null;
-}
-
-/** Days between the observation date and now. Night-lights imagery always lags. */
+/** Days between the observation date and now. */
 export function imageryLagDays(p: LayerProps, now = Date.now()): number | null {
   const t = Date.parse(str(p.date) || p.ts);
   return Number.isFinite(t) ? Math.max(0, Math.round((now - t) / 86_400_000)) : null;
 }
 
-export function hoverText(layer: P3Layer, f: LayerFeature, now = Date.now()): string {
+export function hoverText(layer: P3Layer, f: LayerFeature): string {
   const p = f.properties;
   switch (layer) {
     case "thermal": {
       const frp = num(p.value);
       return [`Heat spot · ${str(p.satellite) || "satellite"}`, fmtZ(p.ts), frp !== null ? `${frp} MW` : "power unknown", `confidence ${str(p.confidence) || "unknown"}`].join(" · ");
-    }
-    case "outage": {
-      const who = str(p.entity_code) || str(p.location) || "unknown place";
-      const obs = num(p.observed);
-      const base = num(p.baseline);
-      const share = obs !== null && base ? `${Math.round((obs / base) * 100)}% of normal` : str(p.outage_type) || "outage reported";
-      return [`Internet outage · ${who}`, share, fmtZ(p.ts)].join(" · ");
-    }
-    case "night_lights": {
-      const r = lightsVsUsual(p);
-      const lag = imageryLagDays(p, now);
-      return [
-        r !== null ? `Night lights at ${Math.round(r * 100)}% of the 30-night median` : `Night lights ${num(p.value) ?? "unknown"} nW/cm²/sr`,
-        lag !== null ? `imagery lag ${lag} days` : "imagery lag unknown",
-      ].join(" · ");
     }
     case "imagery": {
       const cc = num(p.cloud_cover);

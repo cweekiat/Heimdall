@@ -1,6 +1,6 @@
 # Seeing the Invisible Fight: Why Open-Source EW Monitoring Matters for National Security
 
-Modern conflict starts well before the first shot. It shows up in the electromagnetic spectrum, where GPS signals are jammed or spoofed, and in the movement of aircraft and ships whose patterns quietly change. It also shows up in outages, fires and warnings that, taken one at a time, look like noise.
+Modern conflict starts well before the first shot. It shows up in the electromagnetic spectrum, where GPS signals are jammed or spoofed, and in the movement of aircraft and ships whose patterns quietly change. It also shows up in fires and warnings that, taken one at a time, look like noise.
 
 For a small, trade-dependent state in Southeast Asia, these signals are not academic. The Malacca and Singapore Straits carry a large share of the world's seaborne trade. The South China Sea, the Taiwan and Luzon Straits and the conflict in Myanmar all sit within a few hours' flight. Disruption to navigation, whether deliberate or accidental, can reach shipping, aviation and the economy long before anyone makes an official statement.
 
@@ -11,7 +11,7 @@ A great deal of this activity is already visible in free, open data:
 - **Aircraft (ADS-B) broadcasts** report position and navigation integrity. When many aircraft in one area report degraded GPS at the same time, that points to interference.
 - **Ship (AIS) broadcasts** show vessels loitering, going dark, or "teleporting" to impossible positions, a classic sign of spoofing.
 - **Navigational warnings and NOTAMs** announce live-fire exercises, missile tests and closed airspace.
-- **Satellite fire detections, internet outage monitors and night-lights imagery** reveal strikes, blackouts and displacement on land.
+- **Satellite fire detections and radar imagery** reveal strikes on land and help explain radio interference seen elsewhere.
 
 The raw data is not what's scarce. What's scarce is the analyst time needed to fuse it, to separate a real surge from a quiet Sunday, and to explain *why* something deserves attention.
 

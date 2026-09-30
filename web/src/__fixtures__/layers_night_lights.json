@@ -1,4 +1,0 @@
-{"type":"FeatureCollection","truncated":false,"layer":"night_lights","aoi":"myanmar","hours":168,"features":[
-{"type":"Feature","id":"black_marble|VNP46A2|2026-09-27|84a0c9bffffffff","geometry":{"type":"Polygon","coordinates":[[[96,20],[96.3,20],[96.3,20.3],[96,20]]]},"properties":{"kind":"night_lights","source":"black_marble","ts":"2026-09-27T00:00:00+00:00","valid_from":null,"valid_to":null,"value":1.75,"h3_r4":"84a0c9bffffffff","date":"2026-09-27","product":"VNP46A2","median":5.0,"valid_frac":0.8,"cloud_frac":0.1}},
-{"type":"Feature","id":"black_marble|VNP46A2|2026-09-27|nomedian","geometry":{"type":"Point","coordinates":[96.5,20.5]},"properties":{"kind":"night_lights","source":"black_marble","ts":"2026-09-27T00:00:00+00:00","valid_from":null,"valid_to":null,"value":4.0,"date":"2026-09-27"}}
-]}

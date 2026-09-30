@@ -183,7 +183,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
   };
   root.replaceChildren(
     h("fieldset", {}, h("legend", {}, T.dataOnMap), chk(T.aircraft, "air", "plane"), chk(T.ships, "sea", "ship"), chk(T.alertMarkers, "alerts", "alerts"), chk(T.noticesLayer, "notices", "notice"), h("p", { class: "note coverage-note" }, COVERAGE_NOTE)),
-    h("fieldset", {}, h("legend", {}, "Satellite and outage data"), ...P3_LAYERS.map(p3chk), ctx.extra?.() ?? null),
+    h("fieldset", {}, h("legend", {}, "Satellite data"), ...P3_LAYERS.map(p3chk), ctx.extra?.() ?? null),
     h("fieldset", {}, h("legend", {}, T.sourcesToShow), srcBox),
     h(
       "fieldset",
