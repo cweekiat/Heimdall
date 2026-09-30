@@ -212,7 +212,7 @@ def score(
 @dataclass(frozen=True)
 class LeadTime:
     ref: datetime
-    first_alert: datetime | None  # earliest matching alert first_seen, None = missed
+    first_alert: datetime | None  # earliest matching alert time, None = missed
     lead_s: float | None  # ref - first_alert (> 0: we alerted before the reference)
     alert_id: str | None
 
@@ -223,34 +223,38 @@ def lead_times(
     *,
     kind: AlertKind | str | None = AlertKind.GNSS_JAMMING,
     cells: Iterable[str] | None = None,
+    raised_at: Mapping[str, datetime] | None = None,
     max_lead: timedelta = timedelta(hours=24),
     max_lag: timedelta = timedelta(hours=6),
 ) -> list[LeadTime]:
     """For each reference time (NOTAM issue, news report ...) the first alert time around it.
 
-    An alert matches a reference if it has the given kind (None = any), lies in `cells` (if
-    given) and first_seen is in [ref - max_lead, ref + max_lag]. lead_s = ref - first_seen:
-    positive when Heimdall alerted before the reference, negative when it lagged. Pure.
+    Alert time = `raised_at[alert.id]` (the replay tick at which the alert first existed, i.e.
+    when an analyst could have seen it) or, if absent, `first_seen` (start of the first gated
+    window — earlier than the alert could really have been raised). An alert matches a reference
+    if it has the given kind (None = any), lies in `cells` (if given) and its time is in
+    [ref - max_lead, ref + max_lag]. lead_s = ref - alert time: positive when Heimdall alerted
+    before the reference, negative when it lagged. Pure.
     """
     cellset = set(cells) if cells is not None else None
+    raised = raised_at or {}
     cands = sorted(
         (
-            a
+            (raised.get(a.id, a.first_seen), a.id)
             for a in alerts
             if (kind is None or a.kind == kind)
             and (cellset is None or (a.h3_cell or "") in cellset)
         ),
-        key=lambda a: (a.first_seen, a.id),
     )
     out = []
     for ref in sorted(refs):
-        hit = next((a for a in cands if ref - max_lead <= a.first_seen <= ref + max_lag), None)
+        hit = next(((t, i) for t, i in cands if ref - max_lead <= t <= ref + max_lag), None)
         out.append(
             LeadTime(
                 ref=ref,
-                first_alert=hit.first_seen if hit else None,
-                lead_s=(ref - hit.first_seen).total_seconds() if hit else None,
-                alert_id=hit.id if hit else None,
+                first_alert=hit[0] if hit else None,
+                lead_s=(ref - hit[0]).total_seconds() if hit else None,
+                alert_id=hit[1] if hit else None,
             )
         )
     return out

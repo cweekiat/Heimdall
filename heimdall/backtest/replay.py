@@ -83,6 +83,7 @@ class ReplayResult:
     n_obs: int = 0
     evidence: dict[str, Evidence] = field(default_factory=dict)  # final version per id
     alerts: list[Alert] = field(default_factory=list)
+    raised_at: dict[str, datetime] = field(default_factory=dict)  # alert id -> first tick seen
     coverage: dict[str, CellCoverage] = field(default_factory=dict)
     detectors: dict[str, dict[str, Any]] = field(default_factory=dict)
 
@@ -142,6 +143,8 @@ def replay(
         res.ticks += 1
         for e in r.evidence:
             res.evidence[e.id] = e
+        for al in r.alerts:
+            res.raised_at.setdefault(al.id, now)  # when an analyst could first have seen it
         if collect_coverage:
             window = store.aircraft_window(now - jwin - step, now)
             for cell, st in jamming.cell_stats(window, jcfg, now).items():

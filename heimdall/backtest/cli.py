@@ -459,7 +459,11 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
                 det = _variant(effective, ratio_alert=r, min_aircraft=m)
                 sweep.append(_run(f"{r}/{m}", *common, det, truth, args, grades))
     sparse = _run("sparse", *common, _variant(effective, **SPARSE_PROFILE), truth, args, grades)
-    leads = lead_times(current.result.alerts, _read_refs(args.refs)) if args.refs else None
+    leads = (
+        lead_times(current.result.alerts, _read_refs(args.refs), raised_at=current.result.raised_at)
+        if args.refs
+        else None
+    )
     text = render_report(
         aoi=aoi,
         date=args.date,
