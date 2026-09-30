@@ -170,6 +170,29 @@ are never read; only `attrs.ref` (re-sanitised to `[A-Z0-9/ -]`, 40 chars), sour
 url and times enter Evidence. Partial geometry (no_geometry/too_large/partial) -> centroid match,
 confidence 0.6.
 
+## Thermal anomalies (detect/thermal.py, `thermal-1.0.0`, ADR-007, task 021a)
+Input: FIRMS `thermal` GeoEvents (value = FRP MW, `attrs.confidence`, `attrs.satellite`); `text`/`title`
+never read. Window = `window_h` (24 h) aligned to the hour. `detect(events, baseline_events, cfg, now, *, aoi)`.
+1. Keep confidence in `min_confidence` (nominal, high) and inside the AOI radius. Low-confidence pixels
+   are dropped for rules and baselines.
+2. **Static mask**: r8 cell with detections (any confidence) on >= `static_days` (10) distinct UTC days of
+   the `baseline_days` (60) before the window -> events in it are dropped; the r4 Evidence gets gap
+   "static heat source masked: N detections". If everything is masked there is no Evidence, hence no gap.
+3. Cluster per r6 cell: T1 `n >= min_detections` (3); T2 `sum FRP >= frp_min_mw` (50);
+   T3 `ratio = N_r4_window / (B + 1) >= ratio_min` (3), with B = mean unmasked detections per day in the r4
+   cell over the baseline (`count / min(baseline_days, max(history_days, 1))`). **Fire = (T1 or T2) and T3.**
+   `+1` keeps a quiet cell from dividing by ~0: 3 fresh detections need a ratio of 3 -> B <= 0. With 5
+   detections B up to 0.67/day still fires.
+4. Coverage: `n_observed` = distinct passes (satellite, 10-min bin) in the cluster;
+   `confidence = min(1, passes / expected_passes)` (4). `n_quality` = high-confidence detections.
+   History length is estimated from the earliest baseline event in the feed; shorter than `baseline_days`
+   -> gap "short baseline: ..." and score capped at 0.6.
+5. `score = clamp(ratio / (2 ratio_min)) * coverage_confidence`. Records: up to 50 FIRMS event ids
+   (strongest FRP first). Counterfactual: "would not fire with < 3 detections or ratio < 3".
+Known limits: pixel jitter across r8 boundaries can leak a flare (T3 ratio is the backstop); no land
+cover mask (crop burning suppressed only via the baseline); persistence is fusion's (>= 2 windows);
+priors, not backtested (calibrate on the FIRMS archive, task 016).
+
 ## Fusion v0 (fuse/fusion.py) and Admiralty (fuse/admiralty.py)
 1. **Persistence gate** (set by the pipeline). Windows are 30 min at a 5-min step, so counting
    triggered windows would make one short burst "persist" for 6 windows. Per subject
