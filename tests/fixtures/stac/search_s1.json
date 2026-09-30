@@ -1,0 +1,30 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "stac_version": "1.0.0",
+      "id": "S1A_IW_GRDH_1SDV_20250601T113200_047890_05C1A2",
+      "collection": "sentinel-1-grd",
+      "bbox": [95.2, 18.4, 98.6, 21.9],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[95.2, 18.4], [98.6, 18.9], [98.2, 21.9], [95.4, 21.4], [95.2, 18.4]]]
+      },
+      "properties": {
+        "datetime": "2025-06-01T11:32:00.000000Z",
+        "platform": "sentinel-1a",
+        "sat:orbit_state": "ascending",
+        "sat:relative_orbit": 143,
+        "sar:instrument_mode": "IW"
+      },
+      "links": [
+        {"rel": "self", "href": "https://stac.example.invalid/v1/collections/sentinel-1-grd/items/S1A_IW_GRDH_1SDV_20250601T113200_047890_05C1A2"}
+      ],
+      "assets": {
+        "thumbnail": {"href": "https://thumbs.example.invalid/s1/S1A_20250601/quicklook.png"}
+      }
+    }
+  ],
+  "links": []
+}
