@@ -21,7 +21,6 @@ const WHAT: Record<string, string> = {
   ais_gap: "ships stopped reporting",
   ais_spoofing: "ships reported impossible positions",
   thermal: "unusual heat detected",
-  outage: "internet outage detected",
   event_surge: "surge in reported events",
   warning_area: "activity inside a warning area",
 };

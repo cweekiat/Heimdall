@@ -1,8 +1,7 @@
-// P3 map layers (task 023b): heat spots, outages, night lights, image footprints, next passes.
+// P3 map layers (task 023b): heat spots, image footprints, next passes.
 // Drawn with deck.gl on the same overlay in 2D and 3D. Nothing is ever fetched from an image host:
 // the STAC link of an imagery footprint is shown as copyable text only. All text goes via textContent.
 import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
-import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { api } from "./api";
 import { h } from "./dom";
 import { filters, onFilters } from "./filters";
@@ -18,7 +17,6 @@ import {
   hoverText,
   imageryLagDays,
   isRadar,
-  lightsVsUsual,
   nextPass,
   parseLayer,
   pointOf,
@@ -28,7 +26,6 @@ import {
 import type { LayerFC, LayerFeature, P3Layer } from "./p3model";
 
 const EMPTY: LayerFC = { type: "FeatureCollection", features: [], truncated: false };
-const NIGHT_HOURS = 168;
 
 export class P3Layers {
   private data = new Map<string, LayerFC>(); // `${layer}|${aoi}`
@@ -42,8 +39,6 @@ export class P3Layers {
   private memo = new Map<P3Layer, { key: string; v: { aoi: string; f: LayerFeature }[] }>();
   private ctl = new Map<P3Layer, AbortController>();
   private seq = new Map<P3Layer, number>();
-  /** Is there an open outage alert in this area? Then its outage ring is drawn in the alert colour. */
-  hasOutageAlert: (aoi: string) => boolean = () => false;
   aois: () => string[] = () => [];
 
   constructor(private ops: OpsMap, wrap: HTMLElement) {
@@ -87,7 +82,7 @@ export class P3Layers {
     this.ctl.set(l, ctl);
     const my = (this.seq.get(l) ?? 0) + 1;
     this.seq.set(l, my);
-    const hours = l === "night_lights" ? NIGHT_HOURS : undefined;
+    const hours = undefined;
     try {
       if (this.allOk !== false) {
         try {
@@ -171,27 +166,6 @@ export class P3Layers {
     const pick = tool === "none";
     const out: unknown[] = [];
 
-    const lights = this.of("night_lights", (f) => typeof f.properties.h3_r4 === "string");
-    if (lights.length)
-      out.push(
-        new H3HexagonLayer<{ aoi: string; f: LayerFeature }>({
-          id: "p3-lights",
-          data: lights,
-          getHexagon: (d) => String(d.f.properties.h3_r4),
-          extruded: false,
-          filled: true,
-          stroked: false,
-          // brighter than usual = neutral, stronger; dimmer than usual = amber (something switched off)
-          getFillColor: (d) => {
-            const r = lightsVsUsual(d.f.properties);
-            if (r === null) return rgba("neutral", 0.16);
-            return r < 0.7 ? rgba("military", Math.min(0.7, 0.25 + (0.7 - r))) : rgba("neutral", Math.min(0.5, 0.12 + 0.2 * Math.min(r, 1.5)));
-          },
-          pickable: pick,
-          onHover: (i) => this.hover("night_lights", i.object ? (i.object as { f: LayerFeature }).f : null, i.x, i.y),
-        }),
-      );
-
     const img = this.of("imagery", (f) => !!ringOf(f));
     if (img.length) {
       out.push(
@@ -223,25 +197,6 @@ export class P3Layers {
         }),
       );
     }
-
-    const outage = this.of("outage", (f) => !!pointOf(f));
-    if (outage.length)
-      out.push(
-        new ScatterplotLayer<{ aoi: string; f: LayerFeature }>({
-          id: "p3-outage",
-          data: outage,
-          getPosition: (d) => pointOf(d.f)!,
-          getRadius: 14,
-          radiusUnits: "pixels",
-          stroked: true,
-          filled: false,
-          getLineColor: (d) => (this.hasOutageAlert(d.aoi) ? rgba("alert", 0.95) : rgba("notice", 0.9)),
-          getLineWidth: 3,
-          lineWidthUnits: "pixels",
-          pickable: pick,
-          onHover: (i) => this.hover("outage", i.object ? (i.object as { f: LayerFeature }).f : null, i.x, i.y),
-        }),
-      );
 
     const heat = this.of("thermal", (f) => !!pointOf(f));
     if (heat.length)
@@ -305,4 +260,4 @@ export class P3Layers {
   }
 }
 
-export const swatch = (l: P3Layer): string => (l === "outage" ? css("notice") : l === "thermal" ? css("military") : css("neutral"));
+export const swatch = (l: P3Layer): string => (l === "thermal" ? css("military") : css("neutral"));

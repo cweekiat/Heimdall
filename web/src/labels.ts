@@ -10,7 +10,6 @@ export const KIND_LABEL: Record<string, string> = {
   ais_spoofing: "Ship position faked",
   ais_gap: "Ship went dark",
   thermal: "Heat / fire detected",
-  outage: "Internet or power outage",
   event_surge: "Burst of news events",
   warning_area: "Warning area",
   composite: "Several signs in one place",

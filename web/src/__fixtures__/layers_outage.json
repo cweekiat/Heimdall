@@ -1,3 +1,0 @@
-{"type":"FeatureCollection","truncated":false,"layer":"outage","aoi":"myanmar","hours":24,"features":[
-{"type":"Feature","id":"ioda|region|MM-MDY","geometry":{"type":"Point","coordinates":[96.1,21.9]},"properties":{"kind":"outage_signal","source":"ioda","ts":"2026-09-30T08:00:00+00:00","valid_from":null,"valid_to":null,"value":0.42,"entity_type":"region","entity_code":"MM-MDY","datasource":"bgp","observed":420,"baseline":1000,"level":"warning"}}
-]}
