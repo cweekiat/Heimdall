@@ -3,13 +3,32 @@
 # ICAO NOTAM phrasing; NOT yet calibrated against a backtest (see task 006). Order matters: the first
 # category with a matching keyword wins, so the most specific categories come first.
 categories:
-  gnss_interference:
+  gnss_interference:        # task 029d: FAA GPS NOTAM / NGA NAVAREA phrasing (contractions UNAVBL, AVBL); never bare "gps" (WGS84/GPS position notes)
     - "gps unreliable"
     - "gnss unreliable"
     - "gnss interference"
     - "gps interference"
     - "gps jamming"
     - "gnss jamming"
+    - "gps spoofing"
+    - "gnss spoofing"
+    - "gps unavbl"
+    - "gnss unavbl"
+    - "gps unavailable"
+    - "gnss unavailable"
+    - "gps outage"
+    - "gnss outage"
+    - "raim unavbl"
+    - "raim unavailable"
+    - "gps signals"
+    - "gnss signals"
+    - "gps signal degradation"
+    - "gnss degradation"
+    - "gps may not be avbl"
+    - "gps (including waas"
+    - "gnss may not be avbl"
+    - "navigation satellite interference"
+    - "radio frequency interference testing"
     - "gps信号"
     - "卫星导航干扰"
   missile_rocket:

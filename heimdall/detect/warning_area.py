@@ -35,7 +35,7 @@ from heimdall.schemas import (
 )
 
 NAME = "warning_area"
-VERSION = "warning-area-1.0.0"
+VERSION = "warning-area-1.1.0"  # 029d: GNSS interference notices carry band L1_GNSS
 
 NOTICE_KINDS = ("nav_warning", "notam")
 DEFAULTS: dict[str, Any] = {
