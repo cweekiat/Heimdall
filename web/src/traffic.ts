@@ -4,7 +4,11 @@
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { api } from "./api";
-import type { AirProps, DensityCell, FC, SeaProps, SourceState, TrafficResp } from "./api";
+import type { AirProps, SeaProps, SourceState } from "./api";
+import { Feed } from "./trafficfeed";
+import type { FeedReq } from "./trafficfeed";
+import { COVERAGE_NOTE, densityOpacity, iconOpacity, parseBox, truncationNote, wanted, zoomParam } from "./trafficdata";
+import type { DensityRow, Wanted } from "./trafficdata";
 import { rgba } from "./theme/palette";
 import { altitudeMeters, dropLines, view } from "./map3d";
 import { h } from "./dom";
@@ -23,7 +27,7 @@ export type Selected = { kind: "air"; id: string } | { kind: "sea"; id: number }
 const AIR_MS = 2000; // match the ~2 s writer flush; server-side query is bbox-limited
 const SEA_MS = 30000;
 const DECLUTTER_ZOOM = 5;
-export const DENSITY_BELOW_ZOOM = 5; // matches heimdall/api/traffic.py: below this the API returns H3 cells
+export { COVERAGE_NOTE };
 
 // ---- sprite atlas, generated in code (white masks, tinted per feature by deck). Passed as a
 // canvas, not a data: URL, because deck would fetch() the URL and CSP connect-src blocks data:.
@@ -96,14 +100,6 @@ const MAPPING = Object.fromEntries(NAMES.map((n, i) => [n, { x: i * TILE, y: 0, 
 // military is amber; anything in an alert is red (see theme/palette.ts).
 const isMil = (r: { mil?: boolean; ship_class?: string }): boolean => r.mil === true || r.ship_class === "military";
 
-const flat = <P extends object>(fc: FC<P>): (P & Pt)[] =>
-  fc.features
-    .filter((f) => f.geometry.type === "Point")
-    .map((f) => {
-      const [lon, lat] = f.geometry.coordinates as [number, number];
-      return { ...f.properties, lon, lat };
-    });
-
 /** Keep one marker per screen cell when zoomed far out (alert and military first). */
 function declutter<T extends Pt & { in_alert: boolean; mil?: boolean }>(rows: T[], zoom: number): { row: T; n: number }[] {
   if (zoom >= DECLUTTER_ZOOM) return rows.map((row) => ({ row, n: 1 }));
@@ -128,17 +124,27 @@ const fmtDeg = (v: number | null): string => (v === null ? T.unknown : `${Math.r
 const ageWord = (s: number): string => (s < 90 ? `${Math.round(s)} s ago` : `${Math.round(s / 60)} min ago`);
 
 export class Traffic {
-  private air: Air[] = [];
-  private sea: Sea[] = [];
-  private airCells: DensityCell[] = [];
-  private seaCells: DensityCell[] = [];
+  private feeds: Record<"air" | "sea", { points: Feed<Air | Sea>; density: Feed<Air | Sea>; want: Wanted; src: string[] }>;
+  private fv = 0; // bumps when filters change (cache key for the filtered/decluttered lists)
+  private memo = new Map<string, { key: string; v: unknown }>();
+  private banner: HTMLElement;
+  private get air(): Air[] {
+    return this.feeds.air.points.store.list() as Air[];
+  }
+  private get sea(): Sea[] {
+    return this.feeds.sea.points.store.list() as Sea[];
+  }
+  private get airCells(): DensityRow[] {
+    return this.feeds.air.density.cells;
+  }
+  private get seaCells(): DensityRow[] {
+    return this.feeds.sea.density.cells;
+  }
   private sources: SourceState[] = [];
   private counts: Record<string, number> = {};
   private trail: number[][] = [];
   private sel: Selected | null = null;
   private follow = false;
-  private busy = { air: false, sea: false };
-  private again = { air: false, sea: false };
   private timers: number[] = [];
   private moveTimer = 0;
   private tip: HTMLElement;
@@ -152,7 +158,16 @@ export class Traffic {
     mapwrap: HTMLElement,
   ) {
     this.tip = h("div", { class: "hovercard tip", hidden: true });
-    mapwrap.append(this.tip);
+    this.banner = h("div", { class: "p3-notice traffic-notice", role: "status", hidden: true });
+    mapwrap.append(this.tip, this.banner);
+    const mk = (d: "air" | "sea"): { points: Feed<Air | Sea>; density: Feed<Air | Sea>; want: Wanted; src: string[] } => {
+      const fetcher = () => (r: FeedReq) =>
+        api[d](r.bbox, this.feeds[d].src, r.zoom, { since: r.since, compact: r.compact, signal: r.signal });
+      const key = (r: Air | Sea): string => String(d === "air" ? (r as Air).hex : (r as Sea).mmsi);
+      const age = d === "air" ? 60_000 : 900_000;
+      return { points: new Feed("points", key, age, fetcher()), density: new Feed("density", key, age, fetcher()), want: { points: false, density: true }, src: [] };
+    };
+    this.feeds = { air: mk("air"), sea: mk("sea") };
     this.card = createWindow({
       id: "entity",
       title: T.aircraft,
@@ -174,6 +189,7 @@ export class Traffic {
       this.moveTimer = window.setTimeout(() => void this.pollAll(), 350);
     };
     onFilters(() => {
+      this.fv++;
       this.ops.render();
       if (this.sel) this.renderCard();
       void this.pollAll();
@@ -195,75 +211,36 @@ export class Traffic {
   }
 
   private pollAll(): Promise<unknown> {
-    return Promise.all([this.pollAir(), this.pollSea()]);
+    return Promise.all([this.pollDomain("air"), this.pollDomain("sea")]);
   }
+  private pollAir = (): Promise<void> => this.pollDomain("air");
+  private pollSea = (): Promise<void> => this.pollDomain("sea");
 
-  private async pollAir(): Promise<void> {
+  /** Fetch the padded view for one domain. Feeds ignore duplicate requests, abort superseded ones and
+   *  drop stale responses; here we only decide which datasets (points, density) the zoom needs. */
+  private async pollDomain(d: "air" | "sea"): Promise<void> {
     if (document.visibilityState === "hidden") return;
-    if (this.busy.air) {
-      this.again.air = true;
+    const f = this.feeds[d];
+    const only = filters[d] ? activeSources(this.sources, d) : [];
+    if (only && only.length === 0) {
+      const a = f.points.clear();
+      const b = f.density.clear();
+      if (a || b) this.afterPoll();
       return;
     }
-    if (!filters.air) {
-      if (this.air.length || this.airCells.length) {
-        this.air = [];
-        this.airCells = [];
-        this.recount();
-        this.ops.render();
-      }
-      return;
-    }
-    this.busy.air = true;
-    try {
-      const only = activeSources(this.sources, "air");
-      const r: TrafficResp<AirProps> | null =
-        only && only.length === 0 ? null : await api.air(this.ops.bbox(), only ?? [], this.ops.zoom());
-      if (r && r.type === "density") [this.air, this.airCells] = [[], r.cells];
-      else [this.air, this.airCells] = [r ? flat(r) : [], []];
-    } catch {
-      /* keep the last picture; the status strip shows source health */
-    } finally {
-      this.busy.air = false;
-    }
-    this.afterPoll();
-    if (this.again.air) {
-      this.again.air = false;
-      void this.pollAir();
-    }
-  }
-
-  private async pollSea(): Promise<void> {
-    if (document.visibilityState === "hidden") return;
-    if (this.busy.sea) {
-      this.again.sea = true;
-      return;
-    }
-    if (!filters.sea) {
-      if (this.sea.length || this.seaCells.length) {
-        this.sea = [];
-        this.seaCells = [];
-        this.recount();
-        this.ops.render();
-      }
-      return;
-    }
-    this.busy.sea = true;
-    try {
-      const only = activeSources(this.sources, "sea");
-      const r: TrafficResp<SeaProps> | null =
-        only && only.length === 0 ? null : await api.sea(this.ops.bbox(), only ?? [], this.ops.zoom());
-      if (r && r.type === "density") [this.sea, this.seaCells] = [[], r.cells];
-      else [this.sea, this.seaCells] = [r ? flat(r) : [], []];
-    } catch {
-      /* keep the last picture */
-    } finally {
-      this.busy.sea = false;
-    }
-    this.afterPoll();
-    if (this.again.sea) {
-      this.again.sea = false;
-      void this.pollSea();
-    }
+    f.src = only ?? [];
+    const z = this.ops.zoom();
+    f.want = wanted(f.want, z);
+    const view = parseBox(this.ops.bbox());
+    const sig = f.src.join(",");
+    const jobs: Promise<boolean>[] = [];
+    let changed = false;
+    if (f.want.points) jobs.push(f.points.poll(view, zoomParam("points", z), sig));
+    else changed = f.points.clear() || changed;
+    if (f.want.density) jobs.push(f.density.poll(view, zoomParam("density", z), `${sig}|z${Math.floor(z)}`));
+    else changed = f.density.clear() || changed;
+    const res = await Promise.all(jobs);
+    if (changed || res.some(Boolean)) this.afterPoll();
   }
 
   private recount(): void {
@@ -281,7 +258,17 @@ export class Traffic {
       if (e && this.follow) this.ops.panTo(e.lon, e.lat);
       this.renderCard();
     }
+    this.drawBanner();
     this.ops.renderSoon();
+  }
+
+  private drawBanner(): void {
+    const cut = (["air", "sea"] as const).flatMap((d) => {
+      const p = this.feeds[d].points;
+      return p.truncated ? [`${d === "air" ? T.aircraft : T.ships}: ${truncationNote(p.store.size, p.total)}`] : [];
+    });
+    this.banner.hidden = cut.length === 0;
+    this.banner.textContent = cut.join(" ");
   }
 
   private find(): (Air | Sea) | undefined {
@@ -295,17 +282,20 @@ export class Traffic {
   }
 
   /** Zoomed out: H3 density cells (opacity by log count); cells holding military get an amber outline. */
-  private densityLayers(): unknown[] {
-    const mk = (id: string, cells: DensityCell[], alpha: number): unknown[] => {
-      if (!cells.length) return [];
+  private densityLayers(zoom: number): unknown[] {
+    const fade = densityOpacity(zoom);
+    const mk = (id: string, cells: DensityRow[], alpha: number): unknown[] => {
+      if (!cells.length || fade <= 0.01) return [];
       const max = Math.log1p(Math.max(...cells.map((c) => c.count)));
-      const a = (c: DensityCell): number => alpha * (0.15 + 0.85 * (Math.log1p(c.count) / max));
+      const a = (c: DensityRow): number => alpha * (0.15 + 0.85 * (Math.log1p(c.count) / max));
       return [
-        new H3HexagonLayer<DensityCell>({
+        new H3HexagonLayer<DensityRow>({
           id,
           data: cells,
+          opacity: fade,
           getHexagon: (d) => d.h3,
           getFillColor: (d) => rgba("neutral", a(d)),
+          updateTriggers: { getFillColor: [cells] },
           getLineColor: (d) => (d.mil > 0 ? rgba("military", 0.9) : rgba("neutral", 0)),
           stroked: true,
           filled: true,
@@ -319,22 +309,32 @@ export class Traffic {
   }
 
   // ---- deck layers
+  private cached<V>(name: string, key: string, make: () => V): V {
+    const hit = this.memo.get(name);
+    if (hit && hit.key === key) return hit.v as V;
+    const v = make();
+    this.memo.set(name, { key, v });
+    return v;
+  }
+
   layers(tool: string, zoom: number): unknown[] {
-    const pick = tool === "none";
-    const air = this.air.filter(matchAir);
-    const sea = this.sea.filter(matchSea);
-    const da = declutter(air, zoom);
-    const ds = declutter(sea, zoom);
+    const fade = iconOpacity(zoom);
+    const zq = zoom >= DECLUTTER_ZOOM ? 9 : Math.round(zoom * 4) / 4; // declutter cell size is quantised, so data is stable
+    const da = this.cached("air", `${this.feeds.air.points.store.version}|${this.fv}|${zq}`, () => declutter(this.air.filter(matchAir), zq));
+    const ds = this.cached("sea", `${this.feeds.sea.points.store.version}|${this.fv}|${zq}`, () => declutter(this.sea.filter(matchSea), zq));
+    const pick = tool === "none" && fade > 0.5;
     const sel = this.sel;
     const out: unknown[] = [];
     if (this.trail.length > 1) {
       out.push(new PathLayer<{ p: number[][] }>({ id: "trail", data: [{ p: this.trail }], getPath: (d) => d.p as [number, number][], getColor: rgba("neutral", 0.9), widthMinPixels: 2.5 }));
     }
-    out.push(...this.densityLayers());
+    out.push(...this.densityLayers(zoom));
     out.push(
       new IconLayer<{ row: Sea; n: number }>({
         id: "ships",
         data: ds,
+        opacity: fade,
+        visible: fade > 0.01,
         iconAtlas: this.icons,
         iconMapping: MAPPING,
         getIcon: () => "ship",
@@ -353,6 +353,8 @@ export class Traffic {
       new IconLayer<{ row: Air; n: number }>({
         id: "aircraft",
         data: da,
+        opacity: fade,
+        visible: fade > 0.01,
         iconAtlas: this.icons,
         iconMapping: MAPPING,
         getIcon: (d) => (d.row.mil ? "diamond" : "plane"),
@@ -373,7 +375,7 @@ export class Traffic {
         ? [
             new PathLayer<[number, number, number][]>({
               id: "aircraft-drop",
-              data: dropLines(da.map((d) => d.row), true, view.exaggeration),
+              data: this.cached("drop", `${this.feeds.air.points.store.version}|${this.fv}|${zq}|${view.exaggeration}`, () => dropLines(da.map((d) => d.row), true, view.exaggeration)),
               getPath: (d) => d,
               getColor: rgba("neutral", 0.5),
               widthMinPixels: 1,
@@ -383,7 +385,8 @@ export class Traffic {
       // thin amber ring: GPS accuracy problem on that aircraft
       new ScatterplotLayer<{ row: Air }>({
         id: "gps-ring",
-        data: da.filter((d) => d.row.gps_bad),
+        opacity: fade,
+        data: this.cached("gps", `${this.feeds.air.points.store.version}|${this.fv}|${zq}`, () => da.filter((d) => d.row.gps_bad)),
         getPosition: (d) => [d.row.lon, d.row.lat],
         getRadius: 13,
         radiusUnits: "pixels",
@@ -396,7 +399,8 @@ export class Traffic {
       // halo: part of an alert
       new ScatterplotLayer<{ row: Air | Sea }>({
         id: "alert-halo",
-        data: [...da, ...ds].filter((d) => d.row.in_alert),
+        opacity: fade,
+        data: this.cached("halo", `${this.feeds.air.points.store.version}|${this.feeds.sea.points.store.version}|${this.fv}|${zq}`, () => [...da, ...ds].filter((d) => d.row.in_alert)),
         getPosition: (d) => [d.row.lon, d.row.lat],
         getRadius: 18,
         radiusUnits: "pixels",

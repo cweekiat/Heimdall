@@ -79,6 +79,7 @@ export class OpsMap {
   private container!: HTMLElement;
   private hintEl: HTMLElement | null = null;
   private soon = new Throttle(() => this.render(), 2);
+  private frame = new Throttle(() => this.render(), 60); // one render per animation frame while zooming (cross-fade)
   private overlay = new MapboxOverlay({ interleaved: false, layers: [], pickingRadius: 8 });
   state: MapState = {
     alerts: [],
@@ -123,6 +124,7 @@ export class OpsMap {
     this.map.on("mousemove", (e) => this.onCursor(e.lngLat.lng, e.lngLat.lat, this.map.getZoom()));
     this.wireDraw();
     this.map.on("zoomend", () => this.render());
+    this.map.on("zoom", () => this.frame.poke());
     this.map.on("moveend", () => this.onMove());
     this.map.on("click", (e) => {
       if (this.draw) return;

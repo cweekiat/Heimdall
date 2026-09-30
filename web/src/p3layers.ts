@@ -37,6 +37,11 @@ export class P3Layers {
   private chips: HTMLElement;
   private card: HTMLElement;
   private timers: number[] = [];
+  private allOk: boolean | undefined; // does the server answer aoi=all? unknown until first try
+  private rev = 0;
+  private memo = new Map<P3Layer, { key: string; v: { aoi: string; f: LayerFeature }[] }>();
+  private ctl = new Map<P3Layer, AbortController>();
+  private seq = new Map<P3Layer, number>();
   /** Is there an open outage alert in this area? Then its outage ring is drawn in the alert colour. */
   hasOutageAlert: (aoi: string) => boolean = () => false;
   aois: () => string[] = () => [];
@@ -69,37 +74,82 @@ export class P3Layers {
     return filters.p3.includes(l);
   }
 
+  /** One request per layer (`aoi=all`) when the server supports it; per-area requests otherwise. */
   async refresh(only: P3Layer[] = P3_LAYERS): Promise<void> {
-    const aois = this.aois();
-    await Promise.all(
-      only
-        .filter((l) => this.on(l))
-        .flatMap((l) =>
-          aois.map(async (a) => {
-            try {
-              this.data.set(`${l}|${a}`, parseLayer(await api.layer(l, a, l === "night_lights" ? NIGHT_HOURS : undefined)));
-            } catch {
-              this.data.set(`${l}|${a}`, EMPTY);
-            }
-          }),
-        ),
-    );
+    await Promise.all(only.filter((l) => this.on(l)).map((l) => this.refreshOne(l)));
     this.drawChrome();
     this.ops.render();
   }
 
-  private of(l: P3Layer): { aoi: string; f: LayerFeature }[] {
+  private async refreshOne(l: P3Layer): Promise<void> {
+    this.ctl.get(l)?.abort();
+    const ctl = new AbortController();
+    this.ctl.set(l, ctl);
+    const my = (this.seq.get(l) ?? 0) + 1;
+    this.seq.set(l, my);
+    const hours = l === "night_lights" ? NIGHT_HOURS : undefined;
+    try {
+      if (this.allOk !== false) {
+        try {
+          this.data.set(`${l}|*`, parseLayer(await api.layer(l, "all", hours, ctl.signal)));
+          if (my !== this.seq.get(l)) return;
+          this.allOk = true;
+          this.rev++;
+          return;
+        } catch {
+          if (my !== this.seq.get(l)) return;
+          if (this.allOk === true) return; // a blip: keep the last picture
+          this.allOk = false; // old server: fall back to one request per area
+        }
+      }
+      await Promise.all(
+        this.aois().map(async (a) => {
+          try {
+            const fc = parseLayer(await api.layer(l, a, hours, ctl.signal));
+            if (my === this.seq.get(l)) this.data.set(`${l}|${a}`, fc);
+          } catch {
+            if (my === this.seq.get(l) && !this.data.has(`${l}|${a}`)) this.data.set(`${l}|${a}`, EMPTY);
+          }
+        }),
+      );
+      this.rev++;
+    } finally {
+      if (this.ctl.get(l) === ctl) this.ctl.delete(l);
+    }
+  }
+
+  /** Features of a layer with the area each belongs to, memoised so deck sees the same array until data changes. */
+  private of(l: P3Layer, keep: (f: LayerFeature) => boolean = () => true): { aoi: string; f: LayerFeature }[] {
     if (!this.on(l)) return [];
-    return this.aois().flatMap((aoi) => (this.data.get(`${l}|${aoi}`) ?? EMPTY).features.map((f) => ({ aoi, f })));
+    const key = `${this.rev}|${this.aois().join()}`;
+    const hit = this.memo.get(l);
+    if (hit && hit.key === key) return hit.v;
+    const src: { aoi: string; f: LayerFeature }[] =
+      this.allOk === true
+        ? (this.data.get(`${l}|*`) ?? EMPTY).features.map((f) => ({ aoi: String(f.properties.aoi ?? ""), f }))
+        : this.aois().flatMap((aoi) => (this.data.get(`${l}|${aoi}`) ?? EMPTY).features.map((f) => ({ aoi, f })));
+    const v = src.filter((x) => keep(x.f));
+    this.memo.set(l, { key, v });
+    return v;
+  }
+
+  private fcOf(l: P3Layer, aoi: string): LayerFC {
+    if (this.allOk !== true) return this.data.get(`${l}|${aoi}`) ?? EMPTY;
+    const all = this.data.get(`${l}|*`) ?? EMPTY;
+    return { ...all, features: all.features.filter((f) => f.properties.aoi === aoi) };
+  }
+
+  private cut(l: P3Layer): boolean {
+    return this.allOk === true ? !!this.data.get(`${l}|*`)?.truncated : this.aois().some((a) => this.data.get(`${l}|${a}`)?.truncated);
   }
 
   private drawChrome(): void {
-    const cut = P3_LAYERS.filter((l) => this.on(l) && this.aois().some((a) => this.data.get(`${l}|${a}`)?.truncated));
+    const cut = P3_LAYERS.filter((l) => this.on(l) && this.cut(l));
     this.notice.hidden = cut.length === 0;
     this.notice.textContent = cut.length ? `${cut.map((l) => P3_LABEL[l]).join(", ")}: ${TRUNCATED_NOTICE}` : "";
     const chips = this.on("overpass")
       ? this.aois().flatMap((a) => {
-          const c = nextPass(a, this.data.get(`overpass|${a}`) ?? EMPTY);
+          const c = nextPass(a, this.fcOf("overpass", a));
           return c ? [h("span", { class: "chip p3-chip" }, `${c.aoi} ${c.text}`)] : [];
         })
       : [];
@@ -121,7 +171,7 @@ export class P3Layers {
     const pick = tool === "none";
     const out: unknown[] = [];
 
-    const lights = this.of("night_lights").filter((x) => typeof x.f.properties.h3_r4 === "string");
+    const lights = this.of("night_lights", (f) => typeof f.properties.h3_r4 === "string");
     if (lights.length)
       out.push(
         new H3HexagonLayer<{ aoi: string; f: LayerFeature }>({
@@ -142,7 +192,7 @@ export class P3Layers {
         }),
       );
 
-    const img = this.of("imagery").filter((x) => ringOf(x.f));
+    const img = this.of("imagery", (f) => !!ringOf(f));
     if (img.length) {
       out.push(
         new PathLayer<number[][]>({
@@ -174,7 +224,7 @@ export class P3Layers {
       );
     }
 
-    const outage = this.of("outage").filter((x) => pointOf(x.f));
+    const outage = this.of("outage", (f) => !!pointOf(f));
     if (outage.length)
       out.push(
         new ScatterplotLayer<{ aoi: string; f: LayerFeature }>({
@@ -193,7 +243,7 @@ export class P3Layers {
         }),
       );
 
-    const heat = this.of("thermal").filter((x) => pointOf(x.f));
+    const heat = this.of("thermal", (f) => !!pointOf(f));
     if (heat.length)
       out.push(
         new ScatterplotLayer<{ aoi: string; f: LayerFeature }>({

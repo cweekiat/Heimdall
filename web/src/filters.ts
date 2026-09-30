@@ -3,6 +3,7 @@ import type { AirProps, SeaProps, SourceState } from "./api";
 import { h } from "./dom";
 import { icon } from "./icons";
 import type { IconName } from "./icons";
+import { COVERAGE_NOTE } from "./trafficdata";
 import { T } from "./labels";
 import { P3_DEFAULT_ON, P3_LABEL, P3_LAYERS } from "./p3model";
 import type { P3Layer } from "./p3model";
@@ -181,7 +182,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
     return h("label", { class: "chk" }, i, P3_LABEL[l]);
   };
   root.replaceChildren(
-    h("fieldset", {}, h("legend", {}, T.dataOnMap), chk(T.aircraft, "air", "plane"), chk(T.ships, "sea", "ship"), chk(T.alertMarkers, "alerts", "alerts"), chk(T.noticesLayer, "notices", "notice")),
+    h("fieldset", {}, h("legend", {}, T.dataOnMap), chk(T.aircraft, "air", "plane"), chk(T.ships, "sea", "ship"), chk(T.alertMarkers, "alerts", "alerts"), chk(T.noticesLayer, "notices", "notice"), h("p", { class: "note coverage-note" }, COVERAGE_NOTE)),
     h("fieldset", {}, h("legend", {}, "Satellite and outage data"), ...P3_LAYERS.map(p3chk), ctx.extra?.() ?? null),
     h("fieldset", {}, h("legend", {}, T.sourcesToShow), srcBox),
     h(
