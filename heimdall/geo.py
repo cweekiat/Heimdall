@@ -89,3 +89,26 @@ def h3_center(cell: str) -> tuple[float, float]:
 
 def within_radius_nm(lat: float, lon: float, clat: float, clon: float, radius_nm: float) -> bool:
     return haversine_km(lat, lon, clat, clon) <= radius_nm * KM_PER_NM
+
+
+def bbox_for_radius(
+    lat: float, lon: float, radius_nm: float
+) -> list[tuple[float, float, float, float]]:
+    """Bounding box(es) (south, west, north, east) covering a circle; antimeridian-safe.
+
+    One box normally, two when the box crosses +-180 (split there), and a full-longitude band
+    if the circle contains a pole.
+    """
+    r_lat = radius_nm * KM_PER_NM / (math.pi * EARTH_RADIUS_KM / 180.0)
+    south, north = max(-90.0, lat - r_lat), min(90.0, lat + r_lat)
+    if lat + r_lat >= 90.0 or lat - r_lat <= -90.0:
+        return [(south, -180.0, north, 180.0)]
+    r_lon = r_lat / max(math.cos(math.radians(max(abs(south), abs(north)))), 1e-6)
+    if r_lon >= 180.0:
+        return [(south, -180.0, north, 180.0)]
+    west, east = lon - r_lon, lon + r_lon
+    if west < -180.0:
+        return [(south, west + 360.0, north, 180.0), (south, -180.0, north, east)]
+    if east > 180.0:
+        return [(south, west, north, 180.0), (south, -180.0, north, east - 360.0)]
+    return [(south, west, north, east)]

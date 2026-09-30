@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+from pydantic import BaseModel
 
 from heimdall.adapters.composite_store import CompositeStore
 from heimdall.adapters.duckdb_store import DuckDBStore
@@ -21,22 +22,45 @@ from heimdall.adapters.parquet_lake import ParquetLake
 from heimdall.config import Settings
 from heimdall.config import settings as load_settings
 from heimdall.geo import haversine_km
-from heimdall.ingest.adsb import AdsbAggregatorConnector, merge_providers
+from heimdall.ingest.adsb import merge_providers
 from heimdall.ingest.registry import build_connectors
 from heimdall.logging import configure_logging, get_logger, start_metrics_server
-from heimdall.ports import Bus, Lake, Store
-from heimdall.schemas import AircraftObs, SourceHealth
+from heimdall.ports import Bus, Connector, Lake, Store
+from heimdall.schemas import AircraftObs, GeoEvent, VesselObs
 
 log = get_logger("heimdall.run")
 
 TOPIC_AIR = "obs.air"
+TOPIC_SEA = "obs.sea"
+TOPIC_EVENTS = "events"
 FLUSH_S = 5.0
 HEALTH_S = 60.0
 
 
-async def pump(conn: AdsbAggregatorConnector, bus: Bus) -> None:
-    async for batch in conn.stream():
-        await bus.publish(TOPIC_AIR, batch)
+def route(batch: Sequence[BaseModel]) -> dict[str, list[BaseModel]]:
+    """Split a connector batch by row type (ADR-004 item 6); unknown row types are skipped."""
+    out: dict[str, list[BaseModel]] = {}
+    for row in batch:
+        if isinstance(row, AircraftObs):
+            out.setdefault(TOPIC_AIR, []).append(row)
+        elif isinstance(row, VesselObs):
+            out.setdefault(TOPIC_SEA, []).append(row)
+        elif isinstance(row, GeoEvent):
+            out.setdefault(TOPIC_EVENTS, []).append(row)
+        else:
+            log.warning("unroutable_row", row_type=type(row).__name__)
+    return out
+
+
+async def pump(conn: Connector, bus: Bus) -> None:
+    try:
+        async for batch in conn.stream():
+            for topic, rows in route(batch).items():
+                await bus.publish(topic, rows)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:  # one broken source must not stop the others
+        log.error("connector_crashed", source=conn.name, error=f"{type(e).__name__}: {e}")
 
 
 DEDUPE_TTL_S = 30.0
@@ -48,7 +72,7 @@ class _Recent:
     __slots__ = ("kept", "last_seen", "providers")
 
     def __init__(self) -> None:
-        self.kept: list[tuple[datetime, float, float]] = []
+        self.kept: list[tuple[datetime, float, float, datetime]] = []  # ts, lat, lon, inserted
         self.providers: set[str] = set()
         self.last_seen: datetime = datetime.min.replace(tzinfo=UTC)
 
@@ -64,6 +88,11 @@ class Writer:
         self.bus, self.lake, self.store = bus, lake, store
         self.ttl = timedelta(seconds=ttl_s)
         self.buf: list[AircraftObs] = []
+        self.sea_buf: list[VesselObs] = []
+        self.evt_buf: list[GeoEvent] = []
+        self._sea_seen: dict[tuple[int, datetime], datetime] = {}  # (mmsi, ts) -> inserted (wall)
+        self.n_sea = 0
+        self.n_events = 0
         self._recent: dict[str, _Recent] = {}
         self.n_written = 0
 
@@ -72,15 +101,22 @@ class Writer:
         return {h: set(r.providers) for h, r in self._recent.items()}
 
     async def consume(self) -> None:
-        async for batch in self.bus.subscribe(TOPIC_AIR):
-            self.buf.extend(b for b in batch if isinstance(b, AircraftObs))
+        async def _one(topic: str, buf: list[Any], typ: type[BaseModel]) -> None:
+            async for batch in self.bus.subscribe(topic):
+                buf.extend(b for b in batch if isinstance(b, typ))
+
+        await asyncio.gather(
+            _one(TOPIC_AIR, self.buf, AircraftObs),
+            _one(TOPIC_SEA, self.sea_buf, VesselObs),
+            _one(TOPIC_EVENTS, self.evt_buf, GeoEvent),
+        )
 
     def _is_dup(self, o: AircraftObs) -> bool:
         r = self._recent.get(o.hex)
         return r is not None and any(
             abs((o.ts - ts).total_seconds()) < DEDUPE_DT_S
             and haversine_km(o.lat, o.lon, lat, lon) < DEDUPE_KM
-            for ts, lat, lon in r.kept
+            for ts, lat, lon, _ in r.kept
         )
 
     def flush(self, now: datetime | None = None) -> int:
@@ -93,18 +129,40 @@ class Writer:
             r.last_seen = now
         fresh = [o for o in kept if not self._is_dup(o)]
         for o in fresh:
-            self._recent[o.hex].kept.append((o.ts, o.lat, o.lon))
+            self._recent[o.hex].kept.append((o.ts, o.lat, o.lon, now))
         # expire old state
         for hex_ in [h for h, r in self._recent.items() if now - r.last_seen > self.ttl]:
             del self._recent[hex_]
         for r in self._recent.values():
-            r.kept = [k for k in r.kept if now - k[0] <= self.ttl]
+            r.kept = [k for k in r.kept if now - k[3] <= self.ttl]  # wall time, not obs time
+        self._flush_sea(now)
+        self._flush_events()
         if not fresh:
             return 0
         self.lake.append("aircraft", fresh)
         n = self.store.insert_aircraft(fresh)
         self.n_written += n
         return n
+
+    def _flush_sea(self, now: datetime) -> None:
+        rows, self.sea_buf = self.sea_buf, []
+        for k in [k for k, t in self._sea_seen.items() if now - t > self.ttl]:
+            del self._sea_seen[k]
+        fresh: list[VesselObs] = []
+        for v in rows:
+            key = (v.mmsi, v.ts)
+            if key not in self._sea_seen:
+                self._sea_seen[key] = now
+                fresh.append(v)
+        if fresh:
+            self.lake.append("vessels", fresh)
+            self.n_sea += self.store.insert_vessels(fresh)
+
+    def _flush_events(self) -> None:
+        rows, self.evt_buf = self.evt_buf, []
+        if rows:  # Lake keeps every revision; the Store upserts by id (ADR-004)
+            self.lake.append("events", rows)
+            self.n_events += self.store.insert_events(rows)
 
     async def flush_loop(self, interval: float = FLUSH_S) -> None:
         try:
@@ -115,25 +173,10 @@ class Writer:
             self.flush()
 
 
-def health_for(conn: AdsbAggregatorConnector) -> SourceHealth:
-    total = conn.n_ok + conn.n_err
-    return SourceHealth(
-        source=conn.name,
-        domain=conn.domain,
-        reliability=conn.reliability,
-        last_ok=conn.last_ok,
-        last_error=conn.last_error,
-        last_error_at=conn.last_error_at,
-        records_last_hour=conn.records_hour.total(),
-        error_rate=conn.n_err / total if total else 0.0,
-        expected_latency_s=conn.expected_latency_s,
-    )
-
-
-async def health_loop(conns: Sequence[AdsbAggregatorConnector], store: Store) -> None:
+async def health_loop(conns: Sequence[Connector], store: Store) -> None:
     while True:
         for c in conns:
-            store.upsert_health(health_for(c))
+            store.upsert_health(c.health())
         await asyncio.sleep(HEALTH_S)
 
 
@@ -222,7 +265,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         t.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     for c in conns:
-        store.upsert_health(health_for(c))
+        store.upsert_health(c.health())
         await c.aclose()
     writer.flush()
     await bus.close()
