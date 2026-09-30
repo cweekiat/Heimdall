@@ -96,3 +96,17 @@ def test_status(client: TestClient, tmp_path: Path) -> None:
 
 def test_fetch_script_syntax() -> None:
     assert subprocess.run(["bash", "-n", str(SCRIPT)]).returncode == 0
+
+
+def test_bin_and_partial_files_not_served(tmp_path: Path) -> None:
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "pmtiles").write_bytes(b"\x7fELF")
+    (tmp_path / "world.pmtiles.part").write_bytes(b"x")
+    c = _client(tmp_path)
+    assert c.get("/basemap/bin/pmtiles").status_code == 404
+    assert c.get("/basemap/world.pmtiles.part").status_code == 404
+
+
+def test_huge_range_does_not_500(client: TestClient) -> None:
+    r = client.get("/basemap/world.pmtiles", headers={"Range": "bytes=" + "9" * 5000 + "-"})
+    assert r.status_code < 500

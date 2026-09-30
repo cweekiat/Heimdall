@@ -10,9 +10,10 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-BASEMAP_DIR = Path("data/basemap")
+BASEMAP_DIR = Path(__file__).resolve().parents[2] / "data" / "basemap"
 HINT = "run scripts/fetch_basemap.sh"
-_RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
+_RANGE = re.compile(r"^bytes=(\d{0,18})-(\d{0,18})$")
+_SERVABLE = {".pmtiles", ".json", ".png", ".pbf"}
 _CHUNK = 64 * 1024
 
 _THEMES = {
@@ -30,6 +31,8 @@ def _resolve(base: Path, rel: str) -> Path | None:
     root = base.resolve()
     target = (root / rel).resolve()
     if not target.is_relative_to(root) or not target.is_file():
+        return None
+    if target.suffix not in _SERVABLE or target.relative_to(root).parts[0] == "bin":
         return None
     return target
 

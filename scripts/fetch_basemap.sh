@@ -40,12 +40,23 @@ else
     REL="https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}"
     case "$A" in
       Darwin_*)  # macOS assets are zips named with a hyphen
-        curl -fsSL -o "$TMP/pmtiles.zip" "$REL/go-pmtiles-${PMTILES_VERSION}_${A}.zip"
+        curl --proto =https --tlsv1.2 -fsSL -o "$TMP/pmtiles.zip" "$REL/go-pmtiles-${PMTILES_VERSION}_${A}.zip"
         unzip -q -o "$TMP/pmtiles.zip" pmtiles -d "$TMP" ;;
       *)
-        curl -fsSL -o "$TMP/pmtiles.tgz" "$REL/go-pmtiles_${PMTILES_VERSION}_${A}.tar.gz"
+        curl --proto =https --tlsv1.2 -fsSL -o "$TMP/pmtiles.tgz" "$REL/go-pmtiles_${PMTILES_VERSION}_${A}.tar.gz"
         tar -xzf "$TMP/pmtiles.tgz" -C "$TMP" pmtiles ;;
     esac
+    # Pinned hash of the extracted binary (trust-on-first-use, recorded 2026-09-30).
+    case "$A" in
+      Darwin_arm64) WANT="9037562a73ae619c67976d50a892566caf72c0323b55e1c3e10598897f35313a" ;;
+      *) WANT="${PMTILES_SHA256:-}" ;;
+    esac
+    GOT="$( (command -v sha256sum >/dev/null && sha256sum "$TMP/pmtiles" || shasum -a 256 "$TMP/pmtiles") | cut -d' ' -f1)"
+    if [ -z "$WANT" ]; then
+      echo "no pinned pmtiles hash for $A; set PMTILES_SHA256 (got $GOT)" >&2; exit 1
+    elif [ "$GOT" != "$WANT" ]; then
+      echo "pmtiles checksum mismatch: got $GOT want $WANT" >&2; exit 1
+    fi
     mv "$TMP/pmtiles" "$PMT"
     chmod +x "$PMT"
   fi
@@ -56,7 +67,7 @@ if [ ! -s "$OUT/world.pmtiles" ] || [ "${FORCE:-0}" = "1" ]; then
   SRC=""
   for i in 0 1 2 3 4 5 6 7 8 9 10; do
     D="$(date -u -v-"${i}"d +%Y%m%d 2>/dev/null || date -u -d "-${i} day" +%Y%m%d)"
-    if curl -fsI --max-time 30 "$BUILD_HOST/$D.pmtiles" >/dev/null 2>&1; then
+    if curl --proto =https -fsI --max-time 30 "$BUILD_HOST/$D.pmtiles" >/dev/null 2>&1; then
       SRC="$BUILD_HOST/$D.pmtiles"
       break
     fi
@@ -74,9 +85,9 @@ fi
 if [ -z "$(ls -A "$OUT/fonts" 2>/dev/null)" ] || [ -z "$(ls -A "$OUT/sprites" 2>/dev/null)" ] \
   || [ "${FORCE:-0}" = "1" ]; then
   echo "Downloading fonts and sprites"
-  curl -fsSL -o "$TMP/assets.tgz" "$ASSETS_URL"
+  curl --proto =https --tlsv1.2 -fsSL -o "$TMP/assets.tgz" "$ASSETS_URL"
   mkdir "$TMP/assets"
-  tar -xzf "$TMP/assets.tgz" -C "$TMP/assets" --strip-components=1
+  tar --no-same-owner -xzf "$TMP/assets.tgz" -C "$TMP/assets" --strip-components=1
   rm -rf "$OUT/fonts" "$OUT/sprites"
   cp -R "$TMP/assets/fonts" "$OUT/fonts"
   cp -R "$TMP/assets/sprites" "$OUT/sprites"
