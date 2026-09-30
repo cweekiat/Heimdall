@@ -29,6 +29,14 @@ uv sync                       # Python deps (creates .venv)
 cd web && npm ci && npm run build && cd ..   # builds web/dist, served by the API
 ```
 
+Offline basemap (one-off download, several GB; needs internet once):
+
+```bash
+bash scripts/fetch_basemap.sh   # Protomaps extract (SE Asia + Middle East, z0-10), fonts, sprites -> data/basemap/
+```
+
+The API serves these files at `/basemap/...` (Range supported); `/api/basemap/status` reports whether they are present.
+
 Optional API keys (Phase 2+). Each keyed source switches itself off and shows "needs key" in Data health until its key is set:
 
 ```bash
