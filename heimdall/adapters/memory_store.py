@@ -42,8 +42,10 @@ class MemoryStore:
         return len(rows)
 
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
-        self.events.extend(rows)
-        return len(rows)
+        latest = {r.id: r for r in rows}  # last write wins (ADR-004)
+        self.events = [e for e in self.events if e.id not in latest]
+        self.events.extend(latest.values())
+        return len(latest)
 
     def aircraft_window(
         self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None

@@ -175,7 +175,13 @@ class DuckDBStore:
         return self._insert(_SEA, rows)
 
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
-        return self._insert(_EVT, rows)
+        if not rows:
+            return 0
+        latest = {r.id: r for r in rows}  # last write wins, also within the batch
+        with self._lock:  # delete-by-id + insert atomically (ADR-004)
+            self._con.executemany("DELETE FROM events WHERE id = ?", [[i] for i in latest])
+            self._con.executemany(_EVT.insert_sql(), [_EVT.to_row(r) for r in latest.values()])
+        return len(latest)
 
     def aircraft_window(
         self, start: datetime, end: datetime, h3_r4: Sequence[str] | None = None
