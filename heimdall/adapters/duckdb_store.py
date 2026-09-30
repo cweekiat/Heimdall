@@ -122,6 +122,9 @@ _DDL = [
     "CREATE TABLE IF NOT EXISTS notes (id VARCHAR PRIMARY KEY, alert_id VARCHAR, ts TIMESTAMP,"
     " doc VARCHAR)",
     "CREATE INDEX IF NOT EXISTS ix_notes ON notes (alert_id, ts)",
+    # insertion sequence: notes are ordered by it, not by ts (API and store clocks differ)
+    "CREATE SEQUENCE IF NOT EXISTS notes_seq START 1",
+    "ALTER TABLE notes ADD COLUMN IF NOT EXISTS seq BIGINT",
 ]
 
 
@@ -309,14 +312,33 @@ class DuckDBStore:
         ]
 
     def add_note(self, note: AnalystNote) -> None:
-        self._exec(
-            "INSERT OR REPLACE INTO notes VALUES (?, ?, ?, ?)",
-            [note.id, note.alert_id, _to_db(note.ts), note.model_dump_json()],
-        )
+        """Insert with the next insertion sequence; re-adding an id keeps its original slot."""
+        with self._lock:
+            if self._exec("SELECT 1 FROM notes WHERE id = ?", [note.id]):
+                self._exec(
+                    "UPDATE notes SET alert_id = ?, ts = ?, doc = ? WHERE id = ?",
+                    [note.alert_id, _to_db(note.ts), note.model_dump_json(), note.id],
+                )
+                return
+            self._exec(
+                "INSERT INTO notes (id, alert_id, ts, doc, seq)"
+                " VALUES (?, ?, ?, ?, nextval('notes_seq'))",
+                [note.id, note.alert_id, _to_db(note.ts), note.model_dump_json()],
+            )
 
     def notes_for(self, alert_id: str) -> list[AnalystNote]:
-        rows = self._exec("SELECT doc FROM notes WHERE alert_id = ? ORDER BY ts", [alert_id])
+        # legacy rows (seq NULL, written before the column existed) first, by ts
+        rows = self._exec(
+            "SELECT doc FROM notes WHERE alert_id = ? ORDER BY seq NULLS FIRST, ts", [alert_id]
+        )
         return [AnalystNote.model_validate_json(r[0]) for r in rows]
+
+    def record_status_change(self, note: AnalystNote) -> None:
+        with self._lock:
+            self.add_note(note)
+            cur = self.get_alert(note.alert_id)
+            if cur is not None and note.status_to is not None:
+                self.upsert_alert(cur.model_copy(update={"status": note.status_to}))
 
     def upsert_action(self, action: ActionRequest) -> None:
         self._exec(

@@ -7,6 +7,7 @@ import contextlib
 import importlib
 import signal
 import sys
+import threading
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -72,9 +73,10 @@ class _Recent:
     __slots__ = ("kept", "last_seen", "providers")
 
     def __init__(self) -> None:
-        self.kept: list[tuple[datetime, float, float, datetime]] = []  # ts, lat, lon, inserted
+        # (observation ts, lat, lon, insertion time); expiry uses the insertion time
+        self.kept: list[tuple[datetime, float, float, datetime]] = []
         self.providers: set[str] = set()
-        self.last_seen: datetime = datetime.min.replace(tzinfo=UTC)
+        self.last_seen: datetime = datetime.min.replace(tzinfo=UTC)  # insertion time
 
 
 class Writer:
@@ -82,6 +84,13 @@ class Writer:
 
     A rolling per-hex record of recently kept fixes (TTL `ttl_s`) catches duplicates that
     arrive in different flushes; the same TTL bounds the providers-seen side table.
+
+    Expiry is keyed on the **insertion time** (the flush clock `now`), never on observation
+    time: replayed/backtest data carries old observation timestamps, which would otherwise expire
+    every key immediately and disable cross-flush dedupe. Duplicate matching still compares
+    observation times (|dt| < 2 s). `flush` runs in a worker thread (`asyncio.to_thread`) while
+    `consume` and `providers` run on the event loop, so all shared state (`buf`, `_recent`) is
+    guarded by `_lock`; Lake/Store writes happen outside the lock.
     """
 
     def __init__(self, bus: Bus, lake: Lake, store: Store, ttl_s: float = DEDUPE_TTL_S) -> None:
@@ -94,19 +103,29 @@ class Writer:
         self.n_sea = 0
         self.n_events = 0
         self._recent: dict[str, _Recent] = {}
+        self._lock = threading.Lock()
         self.n_written = 0
 
     @property
     def providers(self) -> dict[str, set[str]]:
-        return {h: set(r.providers) for h, r in self._recent.items()}
+        with self._lock:
+            return {h: set(r.providers) for h, r in self._recent.items()}
+
+    def add(self, batch: Sequence[object]) -> None:
+        with self._lock:
+            self.buf.extend(b for b in batch if isinstance(b, AircraftObs))
 
     async def consume(self) -> None:
         async def _one(topic: str, buf: list[Any], typ: type[BaseModel]) -> None:
             async for batch in self.bus.subscribe(topic):
                 buf.extend(b for b in batch if isinstance(b, typ))
 
+        async def _air() -> None:
+            async for batch in self.bus.subscribe(TOPIC_AIR):
+                self.add(batch)
+
         await asyncio.gather(
-            _one(TOPIC_AIR, self.buf, AircraftObs),
+            _air(),
             _one(TOPIC_SEA, self.sea_buf, VesselObs),
             _one(TOPIC_EVENTS, self.evt_buf, GeoEvent),
         )
@@ -120,21 +139,23 @@ class Writer:
         )
 
     def flush(self, now: datetime | None = None) -> int:
+        """Dedupe and write buffered rows. `now` = insertion clock (wall clock by default)."""
         now = now or datetime.now(UTC)
-        rows, self.buf = self.buf, []
-        kept, prov = merge_providers(rows)
-        for hex_, p in prov.items():
-            r = self._recent.setdefault(hex_, _Recent())
-            r.providers.update(p)
-            r.last_seen = now
-        fresh = [o for o in kept if not self._is_dup(o)]
-        for o in fresh:
-            self._recent[o.hex].kept.append((o.ts, o.lat, o.lon, now))
-        # expire old state
-        for hex_ in [h for h, r in self._recent.items() if now - r.last_seen > self.ttl]:
-            del self._recent[hex_]
-        for r in self._recent.values():
-            r.kept = [k for k in r.kept if now - k[3] <= self.ttl]  # wall time, not obs time
+        with self._lock:
+            rows, self.buf = self.buf, []
+            kept, prov = merge_providers(rows)
+            for hex_, p in prov.items():
+                r = self._recent.setdefault(hex_, _Recent())
+                r.providers.update(p)
+                r.last_seen = now
+            fresh = [o for o in kept if not self._is_dup(o)]
+            for o in fresh:
+                self._recent[o.hex].kept.append((o.ts, o.lat, o.lon, now))
+            # expire old state by insertion time (observation time may be arbitrarily old)
+            for hex_ in [h for h, r in self._recent.items() if now - r.last_seen > self.ttl]:
+                del self._recent[hex_]
+            for r in self._recent.values():
+                r.kept = [k for k in r.kept if now - k[3] <= self.ttl]
         self._flush_sea(now)
         self._flush_events()
         if not fresh:

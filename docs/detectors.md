@@ -9,7 +9,7 @@ for cell-level jamming); detectors take a keyword `aoi`. Every Evidence also car
 anomaly, used for persistence. Every threshold below is a key in `config/config.yaml`; defaults are in
 each module's `DEFAULTS`. Shared helpers: `heimdall/detect/common.py`, `heimdall/geo.py`.
 
-## GNSS jamming (detect/jamming.py, `jamming-1.0.0`)
+## GNSS jamming (detect/jamming.py, `jamming-1.1.0`)
 Scope: airborne (`on_ground=false`) **true ADS-B** reports (`src_type ∈ {adsb_icao, adsb_icao_nt}`).
 Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `coverage.n_observed`.
 
@@ -30,14 +30,19 @@ Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `cove
   < 3 aircraft). Features `emitter_lat/lon`, `ellipse_major_km/minor_km/angle_deg`.
 * Provider agreement = mean over bad aircraft of (#providers whose own reports make it bad /
   #providers that saw it).
-* Coverage confidence = min(1, total / 15) × agreement × (0.8 if only one provider).
+* Coverage confidence = min(`confidence_cap`, min(1, total / 15) × agreement × (0.8 if only one
+  provider)). `confidence_cap` defaults to 1 (no cap); sparse-traffic AOI profiles lower it
+  (gap "confidence capped"), so severity = score × confidence cannot reach HIGH on thin data.
+* **Per-AOI overrides** (1.1.0): an AOI may carry `detectors: {jamming: {...}}` in config.yaml,
+  merged key-by-key over the global `detectors` block (`Settings.detectors_for`). The pipeline's
+  observation pull covers the longest window (+ one step) of any AOI.
 * Records: one RecordRef per (bad aircraft, provider whose *own* reports make it bad), i.e. only
   anomaly-showing providers. Anomaly span = first..last degraded report of the bad aircraft.
 * Score = min(1, R' / (3 × ratio_alert)).
 * Counterfactual: "would not fire if ≤ ⌊thr·total + 1⌋ of total were degraded", plus the
   baseline median that would have silenced the z-test.
 
-## GNSS spoofing (detect/spoofing.py, `spoofing-1.0.0`)
+## GNSS spoofing (detect/spoofing.py, `spoofing-1.0.1`)
 Per aircraft in the 30-min window; true-ADS-B fixes de-duplicated by timestamp (tie → provider name),
 then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
 
@@ -60,11 +65,16 @@ then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
 * **Alert** if #signals ≥ `min_signals` (2) or S3 fired. Location = last good fix before the jump
   (S1), else the MLAT position (S3), else the first divergent / clustered fix.
 * Score = max(0.5 if S3, min(1, #signals / 4)). Confidence = min(1, n_fixes / 20) × (0.8 if single provider).
-* Anomalous fixes = S1: flagged pairs alternate open/close (jump out, jump back); each opening
-  jump contributes the displaced segment from the jump until the track re-converges (the closing
-  flagged pair) **and** with ts − t_jump < `s1_span_cap_s` (300 s, strictly
-  under one step), so a single jump — even one whose displaced track continues all window — can
-  never span a full persistence step on its own; S2 divergent fixes; S3 ADS-B+MLAT pair fixes;
+* Anomalous fixes = S1: flagged pairs are **not** assumed to alternate out/back (1.0.1). The
+  first flagged pair of a capture opens a displaced segment and fixes its *anchor* (last good fix
+  before the jump). A later flagged pair (i, i+1) closes the capture only if it re-converges with
+  the anchor: pair(anchor, fix i+1) passes the pair test **and** d(anchor, fix i+1) < d(anchor,
+  fix i) (the jump points back). Otherwise it is a *further* jump (displaced → displaced): the
+  current segment ends and a new one starts at that jump (anchor unchanged). Each segment
+  contributes its fixes with ts − t_jump < `s1_span_cap_s` (300 s, strictly under one step), so a
+  single jump — even one whose displaced track continues all window — can never span a full
+  persistence step on its own. Limitation: a window that starts mid-capture sees the jump *back*
+  first and treats it as an opening jump; S2 divergent fixes; S3 ADS-B+MLAT pair fixes;
   S4 first fix of each hit bin (fired signals only).
 * Records: showing providers = providers whose own report reproduces an anomalous fix (same src
   type, |Δt| ≤ 2 s, ≤ 1 km); records = their first matching fix ∪ context records (S1 pre-jump
@@ -130,7 +140,15 @@ else bearing from previous fix.
    (evidence_ids and last_seen only; status, severity, summary untouched) and no new alert opens.
    A new alert opens only after the anomaly has been absent for >= the clear gap and re-triggers,
    **or** immediately if the new Evidence's severity is higher than the dismissed alert's
-   (escalation is never suppressed).
+   (escalation is never suppressed), **or** once the episode is older than
+   `dismiss_max_episode_h` (12 h, measured from the dismissed alert's first_seen to the new
+   Evidence's window_end) — so a same-severity campaign re-alerts at most every 12 h instead of
+   being silenced forever by one dismissal.
+   *Dismissal race*: if the analyst dismisses the alert between `fuse` and the pipeline's re-read,
+   `apply_evidence_update` keeps the dismissal (evidence_ids/last_seen only) unless the update's
+   severity is higher; then it returns a **new** NEW alert (id = sha1(alert|aoi|kind|cell|
+   update.last_seen), first_seen = update.last_seen, evidence = ids the dismissed alert had not
+   seen), matching the escalation rule above.
 9. NEW alerts without fresh Evidence for `expire_after_min` (60) → EXPIRED. At upsert the
    pipeline re-reads the alert and expires it only if the stored copy is still NEW, its last_seen
    is < now − expire_after_min and not newer than the snapshot fusion saw (a refresh between
@@ -144,6 +162,31 @@ the jamming Evidence); set `aoi` + persistence; record `jam_ratio` per cell with
 `min_aircraft` and `orbit_active` per orbit cell; fuse against live alerts; upsert Evidence and
 alerts. `record_metric` is an upsert on (key, metric, ts), so re-running the same tick is
 idempotent (same ids, metrics not duplicated, persistence not inflated).
+
+## Backtest (heimdall/backtest, task 006)
+`python -m heimdall.backtest --aoi A --date D --traces DIR [--gpsjam CSV] [--refs FILE]` ->
+`reports/backtest-A-D.md`. Offline and deterministic (no wall clock; sorted output).
+* **Traces** (`traces.py`): readsb `globe_history` per-aircraft JSON (gzip by magic bytes),
+  rows `[dt, lat, lon, alt|"ground", gs, track, flags, vrate, detail, type, alt_geom, geom_rate]`;
+  flags&8 = alt is geometric, flags&4 = vrate geometric. NIC/NACp only from the row's `detail`
+  object; rows without it are *unknown* (no forward fill). src_type = row[9] | detail.type | other.
+  Provider `history` (-> sources key adsb_lol_history).
+* **Replay** (`replay.py`): obs in the AOI radius -> `ReplayStore` (MemoryStore + bisect time index,
+  metric upsert) -> `pipeline.tick` every 5 min over the UTC day. `raised_at[alert]` = first tick
+  at which the alert existed.
+* **Scoring** (`score.py`): GPSJam day CSV (hex, count_good_aircraft, count_bad_aircraft; finer
+  cells summed to r4). R_g = max(0, bad-1)/(good+bad); red > 0.10, yellow (0.02, 0.10], green
+  else, gray if good+bad < min. Per r4 cell in the AOI our day = alert | evidence_only | quiet |
+  not_observed. Binary scores with positive prediction = alert: *red* (truth red) and *yellow+*
+  (truth yellow or red); gray / no-GPSJam cells excluded. P, R, F1 (undefined -> none).
+* **Sweep**: ratio_alert {0.05, 0.08, 0.10, 0.15} x min_aircraft {3, 5, 8}; ratio_clear scaled by
+  the configured ratio_clear/ratio_alert. Recommendation = max of (F1 red, P red, F1 yellow+,
+  ratio_alert, min_aircraft) (ties -> more conservative); "keep" unless it beats the current
+  config on the first three. The report also replays the sparse profile below.
+* **Lead time**: per reference time, first matching alert time (raised_at, else first_seen) in
+  [ref - 24 h, ref + 6 h]; lead = ref - alert time (> 0 = early).
+* **Sparse-region profile (proposed, not applied)**: per-AOI `detectors: {jamming: {window_min:
+  60, min_aircraft: 3, confidence_cap: 0.5}}` for SE Asia AOIs.
 
 ## Calibration status
 All thresholds are literature/GPSJam priors, **not yet backtested** (Baltic control run pending

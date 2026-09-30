@@ -39,6 +39,7 @@ DEFAULTS: dict[str, Any] = {
     "severity": {"high": 0.6, "medium": 0.35, "low": 0.15},
     "strong_score": 0.6,
     "expire_after_min": 60,
+    "dismiss_max_episode_h": 12,
     "max_evidence_ids": 100,
     "jam_proximity_km": 100,
     "critical_min_tankers": 2,
@@ -210,6 +211,7 @@ def fuse(
         if a.status == AlertStatus.DISMISSED:
             dismissed[(a.kind, a.h3_cell)] = a
     clear_gap = timedelta(minutes=c["expire_after_min"])
+    max_episode = timedelta(hours=float(c["dismiss_max_episode_h"]))
     by_cell: dict[str | None, list[Evidence]] = defaultdict(list)
     for e in gated:
         by_cell[e.h3_cell].append(e)
@@ -233,6 +235,7 @@ def fuse(
             prev is None
             and d is not None
             and min(e.window_end for e in group) - d.last_seen <= clear_gap
+            and max(e.window_end for e in group) - d.first_seen < max_episode
             and _SEV_ORDER.index(sev) <= _SEV_ORDER.index(d.severity)
         ):
             # same episode still running: attach evidence, keep the analyst's DISMISSED status
@@ -338,9 +341,29 @@ def apply_evidence_update(
     NEW -> EXPIRED, and only if the *re-read* alert is still NEW and still stale: its last_seen is
     < `expire_before` (the staleness horizon) and not newer than the snapshot fusion expired. An
     expiry never copies the snapshot's evidence fields over a fresher stored alert.
+
+    Dismissal race: if the analyst dismissed the alert between `fuse` and this re-read and the
+    update carries a *higher* severity than the dismissed alert, the escalation is not dropped
+    (docs/detectors.md, fusion rule 8): a new NEW alert is returned (id from the update's
+    last_seen, so the dismissed alert keeps its id, status and episode) holding the evidence the
+    dismissed alert has not seen. Same or lower severity -> episode bookkeeping only.
     """
     if current is None:
         return update
+    if (
+        current.status == AlertStatus.DISMISSED
+        and update.status != AlertStatus.EXPIRED
+        and _SEV_ORDER.index(update.severity) > _SEV_ORDER.index(current.severity)
+    ):
+        fresh = [i for i in update.evidence_ids if i not in set(current.evidence_ids)]
+        return update.model_copy(
+            update={
+                "id": alert_id(str(update.kind), update.h3_cell, update.last_seen, update.aoi),
+                "status": AlertStatus.NEW,
+                "first_seen": update.last_seen,
+                "evidence_ids": (fresh or list(update.evidence_ids))[-max_evidence_ids:],
+            }
+        )
     if current.status == AlertStatus.DISMISSED:  # episode bookkeeping only
         ids = list(dict.fromkeys([*current.evidence_ids, *update.evidence_ids]))
         return current.model_copy(
