@@ -96,7 +96,6 @@ def build_connectors(
                 client=RateLimitedClient(key, rps=rps),
             )
         )
-    return out
     for key, c in cfg.items():
         if key in ADSB_PROVIDERS or "impl" not in c:
             continue

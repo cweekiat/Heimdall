@@ -261,6 +261,7 @@ class AisStreamConnector:
         self._last_emit: dict[int, float] = {}
         self._stop = False
         self.connected = False
+        self._session_error = False  # server sent an error frame in this session
         self.last_ok: datetime | None = None
         self.last_error: str | None = None
         self.last_error_at: datetime | None = None
@@ -327,9 +328,9 @@ class AisStreamConnector:
                 self.n_dropped += 1
                 DROPPED.labels(self.name).inc()
             return None
-        now = self._clock()
+        now = obs.ts.timestamp()  # thin on observation time: deterministic, replay-safe
         last = self._last_emit.get(obs.mmsi)
-        if last is not None and now - last < self.min_interval_s:
+        if last is not None and abs(now - last) < self.min_interval_s:
             self.n_thinned += 1
             return None
         self._last_emit[obs.mmsi] = now
@@ -349,6 +350,7 @@ class AisStreamConnector:
             return
         if "error" in msg:
             self._note_error(f"server error: {msg['error']}")
+            self._session_error = True
             return
         obs = self._accept(msg, datetime.now(UTC))
         if obs is not None:
@@ -369,6 +371,7 @@ class AisStreamConnector:
         attempt = 0
         while not self._stop:
             buf: list[VesselObs] = []
+            self._session_error = False
             try:
                 async with self.connect(self.url) as ws:
                     await ws.send(json.dumps(self.subscription()))  # within the 3 s window
@@ -391,7 +394,8 @@ class AisStreamConnector:
                             last_flush = self._clock()
                             yield self._flush(out)
             except (websockets.WebSocketException, OSError, TimeoutError) as e:
-                self._note_error(f"{type(e).__name__}: {e}")
+                if not self._session_error:  # keep the server's reason as the visible error
+                    self._note_error(f"{type(e).__name__}: {e}")
             finally:
                 self.connected = False
             if buf:

@@ -1,0 +1,31 @@
+{
+ "metadata": {
+  "count": 4
+ },
+ "limit": 1,
+ "offset": 0,
+ "nextOffset": null,
+ "total": 4,
+ "entries": [
+  {
+   "id": "gap-3",
+   "type": "gap",
+   "start": "2026-09-28T05:00:00.000Z",
+   "end": "2026-09-28T08:30:00.000Z",
+   "position": {
+    "lat": 22.5,
+    "lon": 120.5
+   },
+   "vessel": {
+    "id": "vid-3",
+    "ssvid": "412000004",
+    "name": "SOME VESSEL",
+    "flag": "PAN",
+    "type": "cargo"
+   },
+   "gap": {
+    "durationHours": 3.5
+   }
+  }
+ ]
+}

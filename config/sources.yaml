@@ -4,7 +4,7 @@ sources:
   adsb_lol:        {domain: air,    reliability: B, latency_s: 5,     base: "https://api.adsb.lol",             auth: none,            rps: 1,   phase: 1, verified: true}
   adsb_fi:         {domain: air,    reliability: B, latency_s: 5,     base: "https://opendata.adsb.fi/api",     auth: none,            rps: 1,   phase: 1, verified: true}
   airplanes_live:  {domain: air,    reliability: B, latency_s: 5,     base: "https://api.airplanes.live",       auth: none,            rps: 1,   phase: 1, verified: false, enabled: false}  # task 005: access now by approval (contact@airplanes.live)
-  adsb_lol_history:{domain: air,    reliability: B, latency_s: 86400, base: "https://github.com/adsblol",       auth: none,                      phase: 1, verified: true}
+  adsb_lol_history: {domain: air,    reliability: B, latency_s: 86400, base: "https://github.com/adsblol",       auth: none,                      phase: 1, verified: true}
   opensky:         {domain: air,    reliability: B, latency_s: 10,    base: "https://opensky-network.org/api",  auth: OPENSKY_CLIENT_ID, phase: 1, verified: false}
   gpsjam:          {domain: air,    reliability: B, latency_s: 86400, base: "https://gpsjam.org",               auth: none,                      phase: 1, verified: true}
   faa_nms_notam:   {domain: air,    reliability: A, latency_s: 300,   base: "https://nms.aim.faa.gov",          auth: FAA_NMS_KEY, auth_secret: FAA_NMS_SECRET, impl: "heimdall.ingest.faa_nms:build", poll_s: 300, phase: 2, verified: false}
@@ -17,7 +17,7 @@ sources:
   celestrak:       {domain: space,  reliability: A, latency_s: 86400, base: "https://celestrak.org",            auth: none,                      phase: 3, verified: false}
   earth_search:    {domain: space,  reliability: A, latency_s: 86400, base: "https://earth-search.aws.element84.com/v1", auth: none,          phase: 3, verified: false}
   ioda:            {domain: cyber,  reliability: B, latency_s: 600,   base: "https://api.ioda.inetintel.cc.gatech.edu/v2", auth: none,       phase: 3, verified: false}
-  cloudflare_radar:{domain: cyber,  reliability: B, latency_s: 900,   base: "https://api.cloudflare.com/client/v4/radar", auth: CLOUDFLARE_TOKEN, phase: 3, verified: false}
+  cloudflare_radar: {domain: cyber,  reliability: B, latency_s: 900,   base: "https://api.cloudflare.com/client/v4/radar", auth: CLOUDFLARE_TOKEN, phase: 3, verified: false}
   gdelt:           {domain: events, reliability: C, latency_s: 900,   base: "https://api.gdeltproject.org/api/v2", auth: none,                 phase: 4, verified: false}
   taiwan_mnd:      {domain: events, reliability: B, latency_s: 86400, base: "https://www.mnd.gov.tw",           auth: none,                      phase: 4, verified: false}
   japan_jso:       {domain: events, reliability: B, latency_s: 86400, base: "https://www.mod.go.jp/js",         auth: none,                      phase: 4, verified: false}

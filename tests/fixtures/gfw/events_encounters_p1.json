@@ -1,0 +1,38 @@
+{
+ "metadata": {
+  "count": 2
+ },
+ "limit": 1,
+ "offset": 0,
+ "nextOffset": 1,
+ "total": 2,
+ "entries": [
+  {
+   "id": "encounter-6",
+   "type": "encounter",
+   "start": "2026-09-28T11:00:00.000Z",
+   "end": "2026-09-28T13:00:00.000Z",
+   "position": {
+    "lat": 12.4,
+    "lon": 113.4
+   },
+   "vessel": {
+    "id": "vid-6",
+    "ssvid": "477000003",
+    "name": "SOME VESSEL",
+    "flag": "PAN",
+    "type": "cargo"
+   },
+   "encounter": {
+    "medianDistanceKilometers": 0.1,
+    "medianSpeedKnots": 0.5,
+    "type": "fishing-carrier",
+    "vessel": {
+     "id": "vid-x",
+     "ssvid": "412000004",
+     "name": "PARTNER"
+    }
+   }
+  }
+ ]
+}
