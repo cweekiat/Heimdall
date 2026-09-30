@@ -30,6 +30,11 @@ aois:
   - {name: taiwan_luzon,   label: "Taiwan / Luzon Strait", role: primary, lat: 22.5, lon: 120.5, radius_nm: 250}
   - {name: malacca_sg,     label: "Malacca / Singapore Strait", role: primary, lat: 3.0,  lon: 100.8, radius_nm: 250}
   - {name: baltic,         label: "Baltic (control)", role: control, lat: 56.0, lon: 20.5,  radius_nm: 250}
+  # hormuz: added for the 014d real-data replay (docs/detectors.md, "Hormuz replay"). role primary
+  # so replayed alerts are not capped at INFO (control AOIs are); live connectors see it too.
+  # Centre = Strait of Hormuz (26.3N 56.3E); 200 NM covers the strait, the Gulf of Oman approaches
+  # and the eastern Persian Gulf. Matches the prefilter bbox in scripts/filter_adsblol.py.
+  - {name: hormuz,         label: "Strait of Hormuz", role: primary, lat: 26.3, lon: 56.3, radius_nm: 200}
 
 detectors:
   jamming:
