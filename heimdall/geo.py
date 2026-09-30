@@ -114,6 +114,7 @@ def bbox_for_radius(
     return [(south, west, north, east)]
 
 
+Ident = str | int | frozenset[str] | frozenset[int]  # one id, or a set of ids
 BBox = tuple[float, float, float, float]  # w, s, e, n (w > e crosses the antimeridian)
 
 
@@ -124,8 +125,10 @@ def in_bbox(lat: float, lon: float, bb: BBox) -> bool:
     return w <= lon <= e if w <= e else (lon >= w or lon <= e)
 
 
-def obs_match(o: object, bbox: BBox | None, ident: str | int | None, key: str) -> bool:
+def obs_match(o: object, bbox: BBox | None, ident: Ident | None, key: str) -> bool:
     """In-memory equivalent of the Store bbox/ident filter (`key` = 'hex' or 'mmsi')."""
-    if ident is not None and getattr(o, key) != ident:
-        return False
+    if ident is not None:
+        v = getattr(o, key)
+        if v not in ident if isinstance(ident, frozenset) else v != ident:
+            return False
     return bbox is None or in_bbox(o.lat, o.lon, bbox)  # type: ignore[attr-defined]

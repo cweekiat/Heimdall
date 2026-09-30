@@ -12,7 +12,7 @@ import h3
 
 from heimdall import config
 from heimdall.adapters.memory_store import MemoryStore
-from heimdall.geo import BBox
+from heimdall.geo import BBox, Ident
 from heimdall.ports import Store
 from heimdall.schemas import (
     ActionRequest,
@@ -410,7 +410,7 @@ class LiveDemoStore(MemoryStore):
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[AircraftObs]:
         rows = super().aircraft_window(start, end, h3_r4, bbox=bbox, ident=ident)
         if h3_r4 is not None:
@@ -439,7 +439,7 @@ class LiveDemoStore(MemoryStore):
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[VesselObs]:
         rows = super().vessels_window(start, end, h3_r4, bbox=bbox, ident=ident)
         if h3_r4 is not None:

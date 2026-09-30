@@ -15,7 +15,7 @@ from typing import Any
 import duckdb
 from pydantic import BaseModel
 
-from heimdall.geo import BBox
+from heimdall.geo import BBox, Ident
 from heimdall.schemas import (
     ActionRequest,
     AircraftObs,
@@ -171,7 +171,7 @@ class DuckDBStore:
         self,
         h3_r4: Sequence[str] | None,
         bbox: BBox | None,
-        ident: str | int | None,
+        ident: Ident | None,
         key: str,
     ) -> tuple[str | None, list[Any]]:
         """AND-clauses for the optional window filters; sql None = provably empty."""
@@ -183,7 +183,13 @@ class DuckDBStore:
             s1, p1 = self._in("h3_r4", h3_r4)
             sql, p = sql + " " + s1, p + p1
         if ident is not None:
-            sql, p = sql + f" AND {key} = ?", [*p, ident]
+            if isinstance(ident, frozenset):
+                if not ident:
+                    return None, []
+                s2, p2 = self._in(key, sorted(ident))
+                sql, p = sql + " " + s2, [*p, *p2]
+            else:
+                sql, p = sql + f" AND {key} = ?", [*p, ident]
         if bbox is not None:
             w, s, e, n = bbox
             lon = "lon >= ? AND lon <= ?" if w <= e else "(lon >= ? OR lon <= ?)"
@@ -217,7 +223,7 @@ class DuckDBStore:
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[AircraftObs]:
         sql, p = self._filters(h3_r4, bbox, ident, "hex")
         if sql is None:
@@ -231,7 +237,7 @@ class DuckDBStore:
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[VesselObs]:
         sql, p = self._filters(h3_r4, bbox, ident, "mmsi")
         if sql is None:

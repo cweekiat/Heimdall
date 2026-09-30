@@ -50,6 +50,19 @@ def _source_filter(raw: str | None) -> set[str] | None:
     return {k.replace(".", "_") for k in keys}
 
 
+def _newest(
+    rows: Iterable[Any], key: Callable[[Any], Any], want: set[str] | None
+) -> dict[Any, datetime]:
+    out: dict[Any, datetime] = {}
+    for r in rows:
+        if want is not None and _pkey(r.provider) not in want:
+            continue
+        k = key(r)
+        if k not in out or r.ts > out[k]:
+            out[k] = r.ts
+    return out
+
+
 def _pkey(provider: str) -> str:
     return provider.lower().replace(".", "_")
 
@@ -134,6 +147,16 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
                 continue
             latest[o.hex] = o
             provs.setdefault(o.hex, set()).add(o.provider)
+        # bbox pushdown only saw in-box fixes: drop entities whose newest fix is elsewhere.
+        if latest:
+            newest = _newest(
+                store.aircraft_window(
+                    t - timedelta(seconds=max_age_s), t + _FUTURE, ident=frozenset(latest)
+                ),
+                lambda o: o.hex,
+                want,
+            )
+            latest = {k: v for k, v in latest.items() if newest[k] == v.ts}
         hot = in_alert_entities()
         picked = sorted(
             (o for o in latest.values() if in_bbox(o.lat, o.lon, bb)),
@@ -177,6 +200,15 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
         for v in sorted(rows, key=lambda x: x.ts):
             if want is None or _pkey(v.provider) in want:
                 latest[v.mmsi] = v
+        if latest:
+            newest = _newest(
+                store.vessels_window(
+                    t - timedelta(seconds=max_age_s), t + _FUTURE, ident=frozenset(latest)
+                ),
+                lambda v: v.mmsi,
+                want,
+            )
+            latest = {k: v for k, v in latest.items() if newest[k] == v.ts}
         hot = in_alert_entities()
         picked = sorted(
             (v for v in latest.values() if in_bbox(v.lat, v.lon, bb)),

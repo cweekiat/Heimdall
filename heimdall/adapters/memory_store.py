@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 
-from heimdall.geo import BBox, obs_match
+from heimdall.geo import BBox, Ident, obs_match
 from heimdall.schemas import (
     ActionRequest,
     AircraftObs,
@@ -55,7 +55,7 @@ class MemoryStore:
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[AircraftObs]:
         return [
             r
@@ -72,7 +72,7 @@ class MemoryStore:
         h3_r4: Sequence[str] | None = None,
         *,
         bbox: BBox | None = None,
-        ident: str | int | None = None,
+        ident: Ident | None = None,
     ) -> list[VesselObs]:
         return [
             r
