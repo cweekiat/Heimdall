@@ -52,7 +52,7 @@ export function chart(points: { ts: string; value: number }[], baseline: number 
   svg.setAttribute("class", "chart");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "Degraded ratio over time versus baseline and threshold");
+  svg.setAttribute("aria-label", "Share of aircraft affected over time, against the normal level and the alert line");
   const wrap = h("div", { class: "chartwrap" }, svg);
   if (!points.length) return wrap;
   const mk = (tag: string, attrs: Record<string, string>, text?: string): SVGElement => {
@@ -87,10 +87,10 @@ export function chart(points: { ts: string; value: number }[], baseline: number 
     h(
       "div",
       { class: "legend" },
-      h("span", {}, h("i", { class: "k val" }), "degraded ratio"),
-      baseline !== null && h("span", {}, h("i", { class: "k base" }), `baseline ${(baseline * 100).toFixed(1)}%`),
-      threshold !== null && h("span", {}, h("i", { class: "k thr" }), `threshold ${(threshold * 100).toFixed(1)}%`),
-      h("span", { class: "note" }, "x: UTC time, y: ratio %"),
+      h("span", {}, h("i", { class: "k val" }), "aircraft affected"),
+      baseline !== null && h("span", {}, h("i", { class: "k base" }), `normal ${(baseline * 100).toFixed(1)}%`),
+      threshold !== null && h("span", {}, h("i", { class: "k thr" }), `alert line ${(threshold * 100).toFixed(1)}%`),
+      h("span", { class: "note" }, "x: UTC time, y: % affected"),
     ),
   );
   return wrap;
