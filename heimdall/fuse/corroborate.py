@@ -143,7 +143,8 @@ def _notice_corr(
     cat = str(n.attrs.get("category") or "other")
     kind = "NOTAM" if n.kind == "notam" else "navigational warning"
     note = (
-        f"official notice declares GNSS interference in this area: {kind} {safe_ref(n)} ({n.source})"
+        "official notice declares GNSS interference in this area: "
+        f"{kind} {safe_ref(n)} ({n.source})"
         if cat == "gnss_interference"
         else f"active {kind} {safe_ref(n)} ({n.source}, {cat}) covers the area"
     )

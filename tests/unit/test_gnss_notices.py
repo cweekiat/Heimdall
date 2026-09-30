@@ -1,4 +1,4 @@
-"""029d: official GNSS-interference notices -> category, band L1_GNSS, explicit corroboration note."""
+"""029d: official GNSS-interference notices -> category, band L1_GNSS, explicit note."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ GNSS_TEXTS = [
     "GPS UNRELIABLE AND MAY BE UNAVAILABLE WITHIN 310NM RADIUS CENTERED AT 3312N11548W FL400-UNL",
     "RAIM UNAVBL FOR RNAV APPROACHES 2210-2300",
     # NGA NAVAREA / HYDROPAC style
-    "NAVAREA XI 812/26. SOUTH CHINA SEA. GNSS INTERFERENCE REPORTED IN AREA BOUNDED BY 16-00N 112-00E",
+    "NAVAREA XI 812/26. SOUTH CHINA SEA. GNSS INTERFERENCE REPORTED IN AREA 16-00N 112-00E",
     "GPS SIGNALS MAY BE DEGRADED OR LOST IN VICINITY OF 10-30N 114-20E.",
     "HYDROPAC 3301/26. GPS SPOOFING REPORTED. MARINERS ADVISED TO USE ALTERNATE MEANS",
     # prompt injection inside a real GNSS notice: still categorised, never executed
