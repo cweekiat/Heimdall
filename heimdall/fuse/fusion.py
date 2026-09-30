@@ -23,7 +23,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from heimdall.fuse.admiralty import grade
+from heimdall.fuse.admiralty import grade, source_key
 from heimdall.fuse.corroborate import (
     DEFAULT_CORROBORATION,
     DEFAULT_SOURCE_FAMILY,
@@ -31,15 +31,19 @@ from heimdall.fuse.corroborate import (
     family_index,
     family_of,
 )
-from heimdall.geo import haversine_km
+from heimdall.geo import h3_cell_size_km, h3_resolution, haversine_km
 from heimdall.schemas import (
+    Admiralty,
     Alert,
     AlertKind,
+    AlertSource,
     AlertStatus,
     Corroboration,
     Evidence,
+    Footprint,
     GeoEvent,
     Severity,
+    SourceReliability,
 )
 
 DEFAULTS: dict[str, Any] = {
@@ -81,6 +85,8 @@ EVIDENCE_FIELDS = (
     "last_seen",
     "lat",
     "lon",
+    "sources",
+    "footprint",
 )
 CorrStatus = Literal["corroborated", "uncorroborated", "contradicted"]
 
@@ -126,6 +132,70 @@ def actions_for(kind: AlertKind | str, playbook: Mapping[str, Any] | None) -> li
         if "*" in applies or str(kind) in applies:
             out.append(str(aid))
     return out
+
+
+#: kinds that describe one moving object; the footprint is a track when exactly one entity is named
+_TRACK_KINDS = (AlertKind.AIS_SPOOFING, AlertKind.AIS_GAP, AlertKind.MIL_ORBIT)
+
+
+def _connector_index(
+    evidence: Sequence[Evidence], notices: Sequence[GeoEvent]
+) -> dict[str, set[str]]:
+    """{evidence id or notice id: source keys of the connectors whose records show it}."""
+    idx: dict[str, set[str]] = defaultdict(set)
+    for e in evidence:
+        idx[e.id] |= {source_key(r.source) for r in e.records}
+    for n in notices:
+        idx[n.id].add(source_key(n.source))
+    return idx
+
+
+def _alert_sources(
+    group: Sequence[Evidence],
+    corr: Sequence[Corroboration],
+    conn_idx: Mapping[str, set[str]],
+    adm: Admiralty,
+    grades: Mapping[str, str],
+    source_family: Mapping[str, str],
+) -> list[AlertSource]:
+    """One AlertSource per connector behind the alert: those whose own records show the anomaly
+    plus those behind a *supporting* corroboration. Admiralty = connector reliability (grade from
+    sources.yaml, F if unknown) x the alert's overall credibility (credibility is a property of
+    the whole alert, not of one connector). Sorted by (reliability, connector)."""
+    conns = {source_key(r.source) for e in group for r in e.records}
+    for x in corr:
+        if x.relation == "supports":
+            conns |= conn_idx.get(x.evidence_id, set())
+    out = []
+    for c in conns:
+        g = grades.get(c, "F").upper()
+        rel = SourceReliability(g if g in "ABCDEF" and len(g) == 1 else "F")
+        out.append(
+            AlertSource(
+                connector=c,
+                family=family_of(c, source_family),
+                admiralty=Admiralty(reliability=rel, credibility=adm.credibility),
+            )
+        )
+    return sorted(out, key=lambda s: (s.admiralty.reliability.value, s.connector))
+
+
+def _footprint(kind: AlertKind, group: Sequence[Evidence], cell: str | None) -> Footprint:
+    """single_track for a one-object kind with exactly one entity, else the alert's H3 cell."""
+    ents = sorted({x for e in group for x in e.entities})
+    if kind in _TRACK_KINDS and len(ents) == 1:
+        return Footprint(kind="single_track", description=f"Track {ents[0]}")
+    if cell:
+        try:
+            size = h3_cell_size_km(cell)
+        except Exception:  # not an H3 index (synthetic ids): describe without a size
+            return Footprint(kind="area_cell", description=f"Area cell {cell}")
+        res = h3_resolution(cell)
+        return Footprint(
+            kind="area_cell",
+            description=f"Area cell {cell} (H3 res {res}, about {size:.0f} km across)",
+        )
+    return Footprint(kind="area_cell", description="Area (no cell)")
 
 
 def _f(e: Evidence, k: str, default: float = 0.0) -> float:
@@ -243,6 +313,7 @@ def fuse(
     ]
     xs = cross_source(gated, gated, notices or [], c["corroboration"])
     fam_idx = family_index(gated, notices or [], c["source_family"])
+    conn_idx = _connector_index(gated, notices or [])
     groups: dict[tuple[AlertKind, str | None], list[Evidence]] = defaultdict(list)
     for e in gated:
         groups[(e.kind, e.h3_cell)].append(e)
@@ -322,6 +393,8 @@ def fuse(
             families=families,
             same_family_support=bool(fam_sup & fam_own),
         )
+        sources = _alert_sources(group, corr, conn_idx, adm, grades, c["source_family"])
+        footprint = _footprint(kind, group, cell)
         ev_ids = [e.id for e in sorted(group, key=lambda e: e.id)]
         first = min(e.window_start for e in group)
         last = max(e.window_end for e in group)
@@ -342,6 +415,8 @@ def fuse(
                     "evidence_ids": ids,
                     "corroborations": corr,
                     "corroboration_status": status_c,
+                    "sources": sources,
+                    "footprint": footprint,
                     "last_seen": max(prev.last_seen, last),
                     "lat": lead.lat,
                     "lon": lead.lon,
@@ -363,6 +438,8 @@ def fuse(
                 evidence_ids=ev_ids,
                 corroborations=corr,
                 corroboration_status=status_c,
+                sources=sources,
+                footprint=footprint,
                 recommended_actions=actions_for(kind, playbook),
                 status=AlertStatus.NEW,
                 first_seen=first,

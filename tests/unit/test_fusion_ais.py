@@ -83,7 +83,7 @@ def test_notice_text_never_in_alert() -> None:
         AlertKind.GNSS_JAMMING,
     )
     blob = json.dumps(a.model_dump(mode="json"))
-    assert "IGNORE ALL PREVIOUS" not in blob and "script" not in blob
+    assert "IGNORE ALL PREVIOUS" not in blob and "<script" not in blob
     assert "HYDROPAC 1234/26" in blob
 
 

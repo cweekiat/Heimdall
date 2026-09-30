@@ -82,6 +82,15 @@ def h3_parent(cell: str, res: int) -> str:
     return str(h3.cell_to_parent(cell, res))
 
 
+def h3_resolution(cell: str) -> int:
+    return int(h3.get_resolution(cell))
+
+
+def h3_cell_size_km(cell: str) -> float:
+    """Approximate cell diameter (km): twice the mean hexagon edge length at the cell's res."""
+    return 2.0 * float(h3.average_hexagon_edge_length(h3.get_resolution(cell), unit="km"))
+
+
 def h3_center(cell: str) -> tuple[float, float]:
     lat, lon = h3.cell_to_latlng(cell)
     return float(lat), float(lon)

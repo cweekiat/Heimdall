@@ -210,8 +210,26 @@ class Admiralty(BaseModel):
         return f"{self.reliability}{self.credibility}"
 
 
+class AlertSource(BaseModel):
+    """One connector behind an alert (ADR-006): its source family and Admiralty grade."""
+
+    connector: str  # source key, e.g. 'adsb_lol', 'aisstream', 'nga_msi'
+    family: str  # independent source family, e.g. 'adsb', 'ais', 'notice'
+    admiralty: Admiralty  # connector reliability x the alert's credibility
+
+
+class Footprint(BaseModel):
+    """What an alert covers: an area cell or a single track (ADR-006)."""
+
+    kind: Literal["area_cell", "single_track"]
+    description: str
+
+
 class Alert(BaseModel):
-    id: str
+    id: str  # dedup key (sha1); `ref` is the human-quotable handle
+    ref: str | None = None  # HMD-YYYYMMDD-NNNN, assigned by the Store on first put (ADR-006)
+    sources: list[AlertSource] = Field(default_factory=list)
+    footprint: Footprint | None = None
     kind: AlertKind
     severity: Severity
     confidence: float = Field(ge=0.0, le=1.0)

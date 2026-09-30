@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 
+from heimdall.adapters.alert_ref import format_ref, parse_ref, ref_day
 from heimdall.geo import BBox, Ident, obs_match
 from heimdall.schemas import (
     ActionRequest,
@@ -27,6 +28,7 @@ class MemoryStore:
         self.events: list[GeoEvent] = []
         self.evidence: dict[str, Evidence] = {}
         self.alerts: dict[str, Alert] = {}
+        self._ref_counter: dict[str, int] = {}  # UTC day (YYYYMMDD) -> last number issued
         self.feedback: list[Feedback] = []
         self.actions: list[ActionRequest] = []
         self.notes: list[AnalystNote] = []
@@ -115,7 +117,21 @@ class MemoryStore:
             and cur.status not in (AlertStatus.NEW, AlertStatus.EXPIRED)
         ):
             alert = alert.model_copy(update={"status": cur.status})
-        self.alerts[alert.id] = alert
+        self.alerts[alert.id] = alert.model_copy(update={"ref": self._ref_for(alert, cur)})
+
+    def _ref_for(self, alert: Alert, cur: Alert | None) -> str:
+        """ADR-006: keep the stored ref; else honour a well-formed incoming one (lake rebuild,
+        bumping the day counter past it); else take the next per-UTC-day number."""
+        if cur is not None and cur.ref:
+            return cur.ref
+        got = parse_ref(alert.ref)
+        if got is not None:
+            day, n = got
+            self._ref_counter[day] = max(self._ref_counter.get(day, 0), n)
+            return str(alert.ref)
+        day = ref_day(alert.first_seen)
+        self._ref_counter[day] = self._ref_counter.get(day, 0) + 1
+        return format_ref(day, self._ref_counter[day])
 
     def get_alert(self, alert_id: str) -> Alert | None:
         return self.alerts.get(alert_id)

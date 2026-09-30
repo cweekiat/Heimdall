@@ -15,6 +15,7 @@ from typing import Any
 import duckdb
 from pydantic import BaseModel
 
+from heimdall.adapters.alert_ref import format_ref, parse_ref, ref_day
 from heimdall.geo import BBox, Ident
 from heimdall.schemas import (
     ActionRequest,
@@ -126,6 +127,9 @@ _DDL = [
     # insertion sequence: notes are ordered by it, not by ts (API and store clocks differ)
     "CREATE SEQUENCE IF NOT EXISTS notes_seq START 1",
     "ALTER TABLE notes ADD COLUMN IF NOT EXISTS seq BIGINT",
+    # ADR-006 alert refs: stable human ref per alert id + per-UTC-day counter (survives restarts)
+    "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS ref VARCHAR",
+    "CREATE TABLE IF NOT EXISTS alert_ref_day (day VARCHAR PRIMARY KEY, n INTEGER)",
 ]
 
 
@@ -285,21 +289,51 @@ class DuckDBStore:
         )
         return [Evidence.model_validate_json(r[0]) for r in rows]
 
+    def _ref_for(self, alert: Alert) -> str:
+        """ADR-006: keep the stored ref; else honour a well-formed incoming one (lake rebuild,
+        bumping the day counter past it); else take the next per-UTC-day number."""
+        with self._lock:
+            rows = self._con.execute("SELECT ref FROM alerts WHERE id = ?", [alert.id]).fetchall()
+            if rows and rows[0][0]:
+                return str(rows[0][0])
+            got = parse_ref(alert.ref)
+            if got is not None:
+                day, n = got
+                self._con.execute(
+                    "INSERT INTO alert_ref_day VALUES (?, ?) ON CONFLICT (day) DO UPDATE"
+                    " SET n = greatest(alert_ref_day.n, excluded.n)",
+                    [day, n],
+                )
+                return str(alert.ref)
+            day = ref_day(alert.first_seen)
+            n = int(
+                self._con.execute(
+                    "INSERT INTO alert_ref_day VALUES (?, 1) ON CONFLICT (day) DO UPDATE"
+                    " SET n = alert_ref_day.n + 1 RETURNING n",
+                    [day],
+                ).fetchall()[0][0]
+            )
+            return format_ref(day, n)
+
     def upsert_alert(self, alert: Alert) -> None:
-        self._exec(
-            "INSERT OR REPLACE INTO alerts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                alert.id,
-                alert.kind.value,
-                alert.severity.value,
-                alert.status.value,
-                alert.aoi,
-                alert.confidence,
-                _to_db(alert.first_seen),
-                _to_db(alert.last_seen),
-                alert.model_dump_json(),
-            ],
-        )
+        with self._lock:
+            alert = alert.model_copy(update={"ref": self._ref_for(alert)})
+            self._con.execute(
+                "INSERT OR REPLACE INTO alerts (id, kind, severity, status, aoi, confidence,"
+                " first_seen, last_seen, doc, ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    alert.id,
+                    alert.kind.value,
+                    alert.severity.value,
+                    alert.status.value,
+                    alert.aoi,
+                    alert.confidence,
+                    _to_db(alert.first_seen),
+                    _to_db(alert.last_seen),
+                    alert.model_dump_json(),
+                    alert.ref,
+                ],
+            )
 
     def get_alert(self, alert_id: str) -> Alert | None:
         rows = self._exec("SELECT doc FROM alerts WHERE id = ?", [alert_id])
