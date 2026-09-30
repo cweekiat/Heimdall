@@ -37,7 +37,7 @@ Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `cove
 * Counterfactual: "would not fire if ≤ ⌊thr·total + 1⌋ of total were degraded", plus the
   baseline median that would have silenced the z-test.
 
-## GNSS spoofing (detect/spoofing.py, `spoofing-1.0.0`)
+## GNSS spoofing (detect/spoofing.py, `spoofing-1.0.1`)
 Per aircraft in the 30-min window; true-ADS-B fixes de-duplicated by timestamp (tie → provider name),
 then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
 
@@ -60,11 +60,16 @@ then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
 * **Alert** if #signals ≥ `min_signals` (2) or S3 fired. Location = last good fix before the jump
   (S1), else the MLAT position (S3), else the first divergent / clustered fix.
 * Score = max(0.5 if S3, min(1, #signals / 4)). Confidence = min(1, n_fixes / 20) × (0.8 if single provider).
-* Anomalous fixes = S1: flagged pairs alternate open/close (jump out, jump back); each opening
-  jump contributes the displaced segment from the jump until the track re-converges (the closing
-  flagged pair) **and** with ts − t_jump < `s1_span_cap_s` (300 s, strictly
-  under one step), so a single jump — even one whose displaced track continues all window — can
-  never span a full persistence step on its own; S2 divergent fixes; S3 ADS-B+MLAT pair fixes;
+* Anomalous fixes = S1: flagged pairs are **not** assumed to alternate out/back (1.0.1). The
+  first flagged pair of a capture opens a displaced segment and fixes its *anchor* (last good fix
+  before the jump). A later flagged pair (i, i+1) closes the capture only if it re-converges with
+  the anchor: pair(anchor, fix i+1) passes the pair test **and** d(anchor, fix i+1) < d(anchor,
+  fix i) (the jump points back). Otherwise it is a *further* jump (displaced → displaced): the
+  current segment ends and a new one starts at that jump (anchor unchanged). Each segment
+  contributes its fixes with ts − t_jump < `s1_span_cap_s` (300 s, strictly under one step), so a
+  single jump — even one whose displaced track continues all window — can never span a full
+  persistence step on its own. Limitation: a window that starts mid-capture sees the jump *back*
+  first and treats it as an opening jump; S2 divergent fixes; S3 ADS-B+MLAT pair fixes;
   S4 first fix of each hit bin (fired signals only).
 * Records: showing providers = providers whose own report reproduces an anomalous fix (same src
   type, |Δt| ≤ 2 s, ≤ 1 km); records = their first matching fix ∪ context records (S1 pre-jump
@@ -130,7 +135,15 @@ else bearing from previous fix.
    (evidence_ids and last_seen only; status, severity, summary untouched) and no new alert opens.
    A new alert opens only after the anomaly has been absent for >= the clear gap and re-triggers,
    **or** immediately if the new Evidence's severity is higher than the dismissed alert's
-   (escalation is never suppressed).
+   (escalation is never suppressed), **or** once the episode is older than
+   `dismiss_max_episode_h` (12 h, measured from the dismissed alert's first_seen to the new
+   Evidence's window_end) — so a same-severity campaign re-alerts at most every 12 h instead of
+   being silenced forever by one dismissal.
+   *Dismissal race*: if the analyst dismisses the alert between `fuse` and the pipeline's re-read,
+   `apply_evidence_update` keeps the dismissal (evidence_ids/last_seen only) unless the update's
+   severity is higher; then it returns a **new** NEW alert (id = sha1(alert|aoi|kind|cell|
+   update.last_seen), first_seen = update.last_seen, evidence = ids the dismissed alert had not
+   seen), matching the escalation rule above.
 9. NEW alerts without fresh Evidence for `expire_after_min` (60) → EXPIRED. At upsert the
    pipeline re-reads the alert and expires it only if the stored copy is still NEW, its last_seen
    is < now − expire_after_min and not newer than the snapshot fusion saw (a refresh between

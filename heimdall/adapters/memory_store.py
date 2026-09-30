@@ -129,10 +129,21 @@ class MemoryStore:
         return [a for a in self.actions if a.alert_id == alert_id]
 
     def add_note(self, note: AnalystNote) -> None:
-        self.notes = [n for n in self.notes if n.id != note.id] + [note]
+        """Append; re-adding an existing id updates it in place (keeps its insertion slot)."""
+        for i, n in enumerate(self.notes):
+            if n.id == note.id:
+                self.notes[i] = note
+                return
+        self.notes.append(note)
 
     def notes_for(self, alert_id: str) -> list[AnalystNote]:
-        return sorted((n for n in self.notes if n.alert_id == alert_id), key=lambda n: n.ts)
+        return [n for n in self.notes if n.alert_id == alert_id]  # insertion order
+
+    def record_status_change(self, note: AnalystNote) -> None:
+        self.add_note(note)
+        cur = self.alerts.get(note.alert_id)
+        if cur is not None and note.status_to is not None:
+            self.alerts[cur.id] = cur.model_copy(update={"status": note.status_to})
 
     def get_action(self, action_id: str) -> ActionRequest | None:
         return next((a for a in self.actions if a.id == action_id), None)

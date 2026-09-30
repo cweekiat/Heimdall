@@ -89,3 +89,4 @@ detectors:
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior
     strong_score: 0.6         # Admiralty credibility 3 (single domain strong & persistent) vs 4
     expire_after_min: 60      # open alerts with no fresh evidence for 60 min expire
+    dismiss_max_episode_h: 12 # a dismissal owns its episode for <= 12 h after first_seen, then a same-severity campaign re-alerts. Prior (review 003)

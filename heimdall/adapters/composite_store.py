@@ -31,9 +31,6 @@ from heimdall.schemas import (
 
 
 class CompositeStore:
-    # The API journals status changes as notes; this store derives the status from them.
-    derives_status_from_notes = True
-
     def __init__(
         self, read: Store, analyst: Store, clock: Callable[[], datetime] | None = None
     ) -> None:
@@ -100,7 +97,8 @@ class CompositeStore:
         if alert_id not in self._overrides:
             latest = [n for n in self.analyst.notes_for(alert_id) if n.status_to is not None]
             if latest:
-                last = max(latest, key=lambda n: n.ts)
+                # insertion order, not ts: the API and this store may run on different clocks
+                last = latest[-1]
                 self._overrides[alert_id] = last.status_to  # type: ignore[assignment]
                 if last.status_to == AlertStatus.SHELVED and last.shelve_until:
                     self._shelved_until[alert_id] = last.shelve_until
@@ -174,6 +172,10 @@ class CompositeStore:
 
     def notes_for(self, alert_id: str) -> list[AnalystNote]:
         return self.analyst.notes_for(alert_id)
+
+    def record_status_change(self, note: AnalystNote) -> None:
+        """Status is derived from the journal: adding the note is the status change."""
+        self.add_note(note)
 
     def feedback_for(self, alert_id: str) -> list[Feedback]:
         return self.analyst.feedback_for(alert_id)

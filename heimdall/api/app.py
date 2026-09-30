@@ -174,9 +174,7 @@ def create_app(
             status_to=to,
             shelve_until=until,
         )
-        st.add_note(note)  # journal first: it is the audit trail and source of the override
-        if not getattr(st, "derives_status_from_notes", False):
-            st.upsert_alert(a.model_copy(update={"status": to}))
+        st.record_status_change(note)  # journal = audit trail; the store applies the status
         return note
 
     @app.post("/api/alerts/{alert_id}/status")

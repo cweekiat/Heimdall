@@ -113,6 +113,12 @@ class FakeStore:
     def notes_for(self, alert_id: str) -> list[AnalystNote]:
         return [n for n in self.notes if n.alert_id == alert_id]
 
+    def record_status_change(self, note: AnalystNote) -> None:
+        self.add_note(note)
+        cur = self.alerts.get(note.alert_id)
+        if cur is not None and note.status_to is not None:
+            self.alerts[cur.id] = cur.model_copy(update={"status": note.status_to})
+
     def upsert_action(self, action: ActionRequest) -> None:
         self.actions[action.id] = action
 

@@ -38,7 +38,7 @@ from heimdall.geo import KM_PER_NM, circular_variance, haversine_km, implied_spe
 from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "spoofing"
-VERSION = "spoofing-1.0.0"
+VERSION = "spoofing-1.0.1"
 
 DEFAULTS: dict[str, Any] = {
     "h3_res": 4,
@@ -121,6 +121,50 @@ def _pair(a: AircraftObs, b: AircraftObs, c: dict[str, Any]) -> tuple[bool, floa
     return False, v
 
 
+def _reconverges(
+    anchor: AircraftObs, before: AircraftObs, after: AircraftObs, c: dict[str, Any]
+) -> bool:
+    """True if the jump before -> after returns to the track that `anchor` was on."""
+    if _pair(anchor, after, c)[0]:
+        return False
+    d_after = haversine_km(anchor.lat, anchor.lon, after.lat, after.lon)
+    return d_after < haversine_km(anchor.lat, anchor.lon, before.lat, before.lon)
+
+
+def _displaced_segments(
+    clean: Sequence[AircraftObs], flagged: Sequence[int], c: dict[str, Any]
+) -> list[tuple[int, int]]:
+    """Displaced segments as (k_open, stop): fixes clean[k_open + 1 : stop] are displaced.
+
+    Flagged pairs are *not* assumed to alternate out/back. A flagged pair k closes the open
+    segment only if its far fix clean[k+1] re-converges with the anchor (the last good fix
+    before the *first* jump of the capture): the pair (anchor, clean[k+1]) passes the same pair
+    rule **and** clean[k+1] is closer to the anchor than clean[k] is (the jump points back).
+    Otherwise it is a further jump (displaced -> displaced, e.g. a spoofer stepping its fake
+    position): the current segment closes at k and a new one starts at k, so each jump carries
+    its own span cap, while re-convergence is still judged against the original anchor. A
+    segment still open at the end of the window runs to the last fix.
+    Limitation: if the window starts mid-capture, the first flagged pair is the jump *back* to
+    the truth and is treated as an opening jump (no pre-window context to tell them apart).
+    """
+    segs: list[tuple[int, int]] = []
+    anchor: int | None = None  # last good fix before the first jump of the current capture
+    k_open: int | None = None  # start of the current displaced segment
+    for k in flagged:
+        if anchor is not None and k_open is not None:
+            if _reconverges(clean[anchor], clean[k], clean[k + 1], c):
+                segs.append((k_open, k + 1))  # back on the pre-jump track
+                anchor = k_open = None
+                continue
+            segs.append((k_open, k + 1))  # further jump: close at k, re-open from k
+        else:
+            anchor = k
+        k_open = k
+    if k_open is not None:
+        segs.append((k_open, len(clean)))
+    return segs
+
+
 def _s1(fixes: list[AircraftObs], c: dict[str, Any], sig: AircraftSignals) -> None:
     seq = _thin(fixes, c["min_dt_s"])
     if len(seq) < 2:
@@ -152,10 +196,7 @@ def _s1(fixes: list[AircraftObs], c: dict[str, Any], sig: AircraftSignals) -> No
         # flagged pair) and strictly shorter than `s1_span_cap_s`, so one jump alone can never
         # span a full persistence step
         cap = timedelta(seconds=c["s1_span_cap_s"])
-        # flags alternate: odd flags open a displaced segment, the next flag closes it (jump back)
-        for i in range(0, len(flagged), 2):
-            k = flagged[i]
-            stop = flagged[i + 1] + 1 if i + 1 < len(flagged) else len(clean)
+        for k, stop in _displaced_segments(clean, flagged, c):
             t_jump = clean[k + 1].ts
             sig.anomalous += [o for o in clean[k + 1 : stop] if o.ts - t_jump < cap]
         after = [o.nic for o in clean[k0 + 1 :] if o.nic is not None]
