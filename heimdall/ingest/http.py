@@ -7,6 +7,7 @@ import random
 import time
 from collections.abc import Awaitable, Callable
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -151,6 +152,32 @@ class RateLimitedClient:
             log.warning("circuit_open", source=self.source)
 
     async def get(self, url: str, **kwargs: Any) -> httpx.Response:
+        return await self.request("GET", url, **kwargs)
+
+    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
+        return await self.request("POST", url, **kwargs)
+
+    async def download(self, url: str, dest: Path, **kwargs: Any) -> int:
+        """Stream a large file to `dest` (bucket + breaker, no retries). Returns bytes written."""
+        if not self.breaker.allow():
+            raise CircuitOpenError(f"{self.source}: circuit open")
+        await self.bucket.acquire()
+        n = 0
+        try:
+            async with self._client.stream("GET", url, **kwargs) as resp:
+                resp.raise_for_status()
+                with dest.open("wb") as fh:
+                    async for chunk in resp.aiter_bytes(1 << 20):
+                        fh.write(chunk)
+                        n += len(chunk)
+        except (httpx.TransportError, httpx.HTTPStatusError):
+            self._fail()
+            dest.unlink(missing_ok=True)
+            raise
+        self.breaker.success()
+        return n
+
+    async def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         if not self.breaker.allow():
             raise CircuitOpenError(f"{self.source}: circuit open")
         last_exc: Exception | None = None
@@ -158,7 +185,7 @@ class RateLimitedClient:
             await self.bucket.acquire()
             resp: httpx.Response | None = None
             try:
-                resp = await self._client.get(url, **kwargs)
+                resp = await self._client.request(method, url, **kwargs)
             except httpx.TransportError as e:
                 last_exc = e
             else:

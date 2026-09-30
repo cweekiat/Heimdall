@@ -327,6 +327,7 @@ KEY_CONNECTORS: dict[str, str] = dict(
         ("FAA_NMS_SECRET", "faa_nms_notam"),
         ("OPENSKY_CLIENT_ID", "opensky_global"),
         ("OPENSKY_CLIENT_SECRET", "opensky_global"),
+        ("EARTHDATA_TOKEN", "black_marble"),  # task 019: NASA Earthdata bearer token (LAADS)
     ]
 )
 
