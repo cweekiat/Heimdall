@@ -233,6 +233,8 @@ class AisStreamConnector:
         *,
         message_types: Sequence[str] = DEFAULT_MESSAGE_TYPES,
         min_interval_s: float = 10.0,
+        global_mode: bool = False,
+        global_min_interval_s: float = 60.0,
         reliability: SourceReliability = SourceReliability.B,
         expected_latency_s: int = 5,
         connect: Callable[[str], Any] | None = None,
@@ -250,6 +252,8 @@ class AisStreamConnector:
         self._key = api_key or None
         self.message_types = list(message_types)
         self.min_interval_s = min_interval_s
+        self.global_mode = global_mode  # 024g: world bbox, outside-AOI rows downsampled
+        self.global_min_interval_s = global_min_interval_s
         self.reliability = reliability
         self.expected_latency_s = expected_latency_s
         self.connect = connect or _default_connect
@@ -277,7 +281,9 @@ class AisStreamConnector:
 
     def subscription(self) -> dict[str, Any]:
         boxes: list[list[list[float]]] = []
-        for a in self.aois:
+        if self.global_mode:
+            boxes.append([[-90.0, -180.0], [90.0, 180.0]])
+        for a in [] if self.global_mode else self.aois:
             for s, w, n, e in bbox_for_radius(a.lat, a.lon, a.radius_nm):
                 boxes.append([[round(s, 4), round(w, 4)], [round(n, 4), round(e, 4)]])
         return {
@@ -327,14 +333,18 @@ class AisStreamConnector:
                 self.n_dropped += 1
                 DROPPED.labels(self.name).inc()
             return None
+        interval = self.min_interval_s
+        if self.global_mode and not any(a.contains(obs.lat, obs.lon) for a in self.aois):
+            obs.is_global = True
+            interval = self.global_min_interval_s
         now = obs.ts.timestamp()  # thin on observation time: deterministic, replay-safe
         last = self._last_emit.get(obs.mmsi)
-        if last is not None and abs(now - last) < self.min_interval_s:
+        if last is not None and abs(now - last) < interval:
             self.n_thinned += 1
             return None
         self._last_emit[obs.mmsi] = now
         if len(self._last_emit) > 200_000:  # bound memory: forget entries past the interval
-            cutoff = now - self.min_interval_s
+            cutoff = now - max(self.min_interval_s, self.global_min_interval_s)
             self._last_emit = {k: v for k, v in self._last_emit.items() if v > cutoff}
         return obs
 
@@ -419,6 +429,8 @@ def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connector:
         secret(env),
         message_types=list(cfg.get("message_types", DEFAULT_MESSAGE_TYPES)),
         min_interval_s=float(cfg.get("min_interval_s", 10)),
+        global_mode=bool(cfg.get("global", False)),
+        global_min_interval_s=float(cfg.get("global_min_interval_s", 60)),
         reliability=SourceReliability(cfg.get("reliability", "B")),
         expected_latency_s=int(cfg.get("latency_s", 5)),
     )

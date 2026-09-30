@@ -69,6 +69,11 @@ async def pump(conn: Connector, bus: Bus) -> None:
         log.error("connector_crashed", source=conn.name, error=f"{type(e).__name__}: {e}")
 
 
+GLOBAL_AIR = "global/aircraft"  # 024g lake partitions (display-only, short retention)
+GLOBAL_SEA = "global/vessels"
+GLOBAL_SEEN_TTL = timedelta(minutes=10)
+JANITOR_S = 3600.0
+
 DEDUPE_TTL_S = 30.0
 DEDUPE_DT_S = 2.0
 DEDUPE_KM = 0.5
@@ -105,7 +110,9 @@ class Writer:
         self.sea_buf: list[VesselObs] = []
         self.evt_buf: list[GeoEvent] = []
         self._sea_seen: dict[tuple[int, datetime], datetime] = {}  # (mmsi, ts) -> inserted (wall)
+        self._glob_seen: dict[tuple[str, datetime], datetime] = {}  # 024g (hex, ts) -> inserted
         self.n_sea = 0
+        self.n_global = 0
         self.n_events = 0
         self._recent: dict[str, _Recent] = {}
         self._lock = threading.Lock()
@@ -151,7 +158,11 @@ class Writer:
         """Dedupe and write buffered rows. `now` = insertion clock (wall clock by default)."""
         now = now or datetime.now(UTC)
         with self._lock:
-            rows, self.buf = self.buf, []
+            all_rows, self.buf = self.buf, []
+            # 024g: global (OpenSky) rows skip cross-provider merge so they can never displace an
+            # ADS-B fix carrying NIC/NACp; they only need an exact (hex, ts) repeat filter.
+            rows = [o for o in all_rows if not o.is_global]
+            glob = [o for o in all_rows if o.is_global]
             kept, prov = merge_providers(rows)
             for hex_, p in prov.items():
                 r = self._recent.setdefault(hex_, _Recent())
@@ -167,12 +178,27 @@ class Writer:
                 r.kept = [k for k in r.kept if now - k[3] <= self.ttl]
         self._flush_sea(now)
         self._flush_events()
+        self._flush_global_air(glob, now)
         if not fresh:
             return 0
         self.lake.append("aircraft", fresh)
         n = self.store.insert_aircraft(fresh)
         self.n_written += n
         return n
+
+    def _flush_global_air(self, rows: Sequence[AircraftObs], now: datetime) -> None:
+        if not rows:
+            return
+        for k in [k for k, t in self._glob_seen.items() if now - t > GLOBAL_SEEN_TTL]:
+            del self._glob_seen[k]
+        fresh: list[AircraftObs] = []
+        for o in rows:
+            if (o.hex, o.ts) not in self._glob_seen:
+                self._glob_seen[(o.hex, o.ts)] = now
+                fresh.append(o)
+        if fresh:
+            self.lake.append(GLOBAL_AIR, fresh)
+            self.n_global += self.store.insert_aircraft(fresh)
 
     def _flush_sea(self, now: datetime) -> None:
         with self._lock:
@@ -186,7 +212,11 @@ class Writer:
                 self._sea_seen[key] = now
                 fresh.append(v)
         if fresh:
-            self.lake.append("vessels", fresh)
+            local = [v for v in fresh if not v.is_global]
+            if local:
+                self.lake.append("vessels", local)
+            if len(local) < len(fresh):  # 024g: outside-AOI rows live in the global partition
+                self.lake.append(GLOBAL_SEA, [v for v in fresh if v.is_global])
             self.n_sea += self.store.insert_vessels(fresh)
 
     def _flush_events(self) -> None:
@@ -203,6 +233,22 @@ class Writer:
                 await asyncio.to_thread(self.flush)
         finally:
             self.flush()
+
+
+async def janitor_loop(lake: Lake, store: Store, retention_days: int) -> None:
+    """024g: drop display-only global data older than `retention_days`; AOI data is untouched."""
+    while True:
+        try:
+            cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+            purge = getattr(lake, "purge_global", None)
+            n_files = await asyncio.to_thread(purge, cutoff) if purge else 0
+            fn = getattr(store, "purge_global", None)
+            n_rows = await asyncio.to_thread(fn, cutoff) if fn else 0
+            if n_files or n_rows:
+                log.info("janitor_global", lake_dirs=n_files, store_rows=n_rows)
+        except Exception as e:  # housekeeping must never take the runtime down
+            log.warning("janitor_failed", error=f"{type(e).__name__}: {e}")
+        await asyncio.sleep(JANITOR_S)
 
 
 async def health_loop(
@@ -312,6 +358,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     tasks = [
         asyncio.create_task(writer.consume()),
         asyncio.create_task(writer.flush_loop()),
+        asyncio.create_task(janitor_loop(lake, store, cfg.storage.global_retention_days)),
         asyncio.create_task(health_loop(lambda: manager.connectors, store)),
         asyncio.create_task(tick_loop(store, cfg, step_min)),
     ]

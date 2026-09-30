@@ -201,7 +201,9 @@ def test_connectors_see_new_aoi(tmp_path: Path) -> None:
     asyncio.run(svc.create(UserAoiIn.model_validate(CIRCLE)))
     src = {
         "sources": {
-            k: v for k, v in config.sources()["sources"].items() if k in ("adsb_lol", "aisstream")
+            k: ({**v, "global": False} if k == "aisstream" else v)  # AOI boxes, not world
+            for k, v in config.sources()["sources"].items()
+            if k in ("adsb_lol", "aisstream")
         }
     }
     built = {c.name: c for c in build_connectors(s, src)}

@@ -91,6 +91,8 @@ class _Table:
         for c, v in zip(self.cols, row, strict=True):
             if self.types[c] == "TIMESTAMP":
                 v = _from_db(v)
+            elif c == "is_global":
+                v = bool(v)  # NULL on rows written before 024g
             elif c in ("geometry", "attrs") and isinstance(v, str):
                 v = json.loads(v)
             d[c] = v
@@ -105,6 +107,8 @@ _DDL = [
     _AIR.ddl(),
     _SEA.ddl(),
     _EVT.ddl(),
+    "ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS is_global BOOLEAN",
+    "ALTER TABLE vessels ADD COLUMN IF NOT EXISTS is_global BOOLEAN",
     "CREATE INDEX IF NOT EXISTS ix_aircraft ON aircraft (h3_r4, ts)",
     "CREATE INDEX IF NOT EXISTS ix_vessels ON vessels (h3_r4, ts)",
     "CREATE INDEX IF NOT EXISTS ix_events ON events (h3_r4, ts)",
@@ -210,6 +214,17 @@ class DuckDBStore:
 
     def insert_vessels(self, rows: Sequence[VesselObs]) -> int:
         return self._insert(_SEA, rows)
+
+    def purge_global(self, before: datetime) -> int:
+        """Delete display-only global rows older than `before` (024g janitor)."""
+        n = 0
+        with self._lock:
+            for t in ("aircraft", "vessels"):
+                r = self._con.execute(
+                    f"DELETE FROM {t} WHERE is_global AND ts < ? RETURNING 1", [_to_db(before)]
+                ).fetchall()
+                n += len(r)
+        return n
 
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
         if not rows:

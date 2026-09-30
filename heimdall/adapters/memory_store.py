@@ -44,6 +44,12 @@ class MemoryStore:
         self.vessels.extend(rows)
         return len(rows)
 
+    def purge_global(self, before: datetime) -> int:
+        n = len(self.aircraft) + len(self.vessels)
+        self.aircraft = [r for r in self.aircraft if not (r.is_global and r.ts < before)]
+        self.vessels = [r for r in self.vessels if not (r.is_global and r.ts < before)]
+        return n - len(self.aircraft) - len(self.vessels)
+
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
         latest = {r.id: r for r in rows}  # last write wins (ADR-004)
         self.events = [e for e in self.events if e.id not in latest]
