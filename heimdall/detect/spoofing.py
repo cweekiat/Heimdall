@@ -429,7 +429,7 @@ def detect(
             ),
             RuleResult(
                 rule="S2_alt_divergence",
-                description="GPS altitude vs barometric altitude mismatch beyond the local norm (ft)",
+                description="GPS vs barometric altitude mismatch beyond the local norm (ft)",
                 value=f.get("alt_div_ft_median"),
                 threshold=float(c["alt_divergence_ft"]),
                 op=">",
@@ -465,7 +465,7 @@ def detect(
             ),
             RuleResult(
                 rule="signals",
-                description="Independent spoofing signals seen (the MLAT disagreement alone suffices)",
+                description="Independent spoofing signals seen (MLAT disagreement alone suffices)",
                 value=float(n),
                 threshold=float(c["min_signals"]),
                 passed=True,

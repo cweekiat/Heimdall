@@ -10,7 +10,8 @@ Assumptions
 * A vessel moored/at anchor (nav_status 1 or 5) and slow (sog < 0.5 kn; unknown sog counts as
   slow) at its last fix switches its transponder off legitimately: skipped.
 * **Coverage test** (a gap in a hole in the receiver network is not a gap): the gap is cut into
-  hourly bins from the last fix (`ceil(gap_h)` bins, the final one partial); a bin is *covered* if >= `gap_min_neighbors` other MMSIs were
+  hourly bins from the last fix (`ceil(gap_h)` bins, the final one partial); a bin is *covered*
+  if >= `gap_min_neighbors` other MMSIs were
   heard inside it within `gap_neighbor_km` of the last fix. Evidence only when the covered
   fraction >= `gap_covered_frac`; otherwise the gap is reported by `find_gaps` as
   "no reception evidence" and produces nothing ("absence of evidence" is never an alert).

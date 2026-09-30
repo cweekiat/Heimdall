@@ -279,7 +279,7 @@ _RING_SAMPLES = 600  # max circumcircle candidates per neighbourhood (exhaustive
 
 def _circle_inliers(xy: dict[int, tuple[float, float]], c: dict[str, Any]) -> list[int]:
     """RANSAC circle: the largest set of points within `ring_cv_max * R` of a circle through three
-    of them, with R in `ring_radius_km`. Deterministic (fixed seed, exhaustive if C(n,3) is small)."""
+    of them, with R in `ring_radius_km`. Deterministic (fixed seed; exhaustive if few)."""
     ids = sorted(xy)
     lo, hi = c["ring_radius_km"]
     triples: Sequence[tuple[int, int, int]]
@@ -522,7 +522,7 @@ def detect(
                     "laps": round(cr["turn_deg"] / 360, 2),
                 },
                 cr["anomalous"],
-                f"Would not fire on a single lap (under {c['circle_min_turn_deg']} degrees), e.g. a "
+                f"Would not fire on a single lap (under {c['circle_min_turn_deg']} deg), e.g. a "
                 "fishing net set, or a track that does not fit a circle.",
                 [mmsi],
                 None,

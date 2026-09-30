@@ -167,7 +167,7 @@ def detect(
         )
         r_d = RuleResult(
             rule="displacement",
-            description="Distance from start to end as a share of path flown (1 = straight, 0 = closed loop)",
+            description="Start-to-end distance as a share of path flown (1 = straight, 0 = loop)",
             value=f["displacement"],
             threshold=c["displacement_max"],
             op="<=",
