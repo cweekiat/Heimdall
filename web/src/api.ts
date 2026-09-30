@@ -356,6 +356,12 @@ export const api = {
   /** GNSS interference day map (task 031): date = YYYY-MM-DD or last24h. Parsed by spectrummodel.parseGnssDay. */
   gnssDay: (date: string, signal?: AbortSignal) => req<unknown>(`/api/gnss/day?date=${encodeURIComponent(date)}`, { signal }),
   gnssDays: () => req<{ days: string[]; last24h: boolean }>("/api/gnss/days"),
+  /** Spectrum status board (task 033). Parsed by spectrummodel.parseStatus. */
+  spectrumStatus: () => req<unknown>("/api/spectrum/status"),
+  /** Estimated jammer locations from open GNSS-jamming alerts (GeoJSON ellipses). */
+  jammers: () => req<unknown>("/api/jammers"),
+  spaceWeather: () =>
+    req<{ available: boolean; kp?: number; kp_max_24h?: number; g_scale?: number | null; r_scale?: number | null; s_scale?: number | null; ts?: string }>("/api/spaceweather"),
   /** Receiver coverage per band (task 028): H3 r4 cells with receiver counts over the last hour. */
   coverage: (band: string, bbox?: string) => req<unknown>(`/api/coverage?band=${encodeURIComponent(band)}${bbox ? `&bbox=${bbox}` : ""}`),
   board: (sinceH = 72) => req<BoardAction[]>(`/api/actions?since_h=${sinceH}`),

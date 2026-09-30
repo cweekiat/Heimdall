@@ -492,3 +492,15 @@ Math is added here when each ships. Thresholds start as priors in `config/config
   ionospheric midpoint; explained away by solar flares (SWPC X-ray) and storms (Kp); output "unexplained HF anomaly",
   never an emitter type.
 
+
+## Spectrum status and SPECTRUM_ANOMALY (detect/spectrum_state.py, `spectrum-state-1.0.0`, tasks 033/034)
+Per AOI and tick, one indicator per band (see the module table): GNSS L1 % degraded aircraft (1 h), aircraft heard
+(15 min), ships heard (1 h), HF spots with path midpoint within AOI radius + 500 km (1 h), SatNOGS bad/failed share within
++1500 km (6 h), SMAP flagged footprint share (72 h), Sentinel-1 scenes with RFI (72 h). Recorded as metric
+`band_indicator` (+ `band_receivers`) under `<aoi>|<band>`. State from the metric history (14 d; HF only same UTC hour
+±1): robust z = (v − median)/(1.4826·MAD + floor), signed so + = trouble (high for GNSS/RFI/failures, low for counts);
+no_coverage when receivers < min_n; learning when < 288 samples (HF 36); elevated z ≥ 2; anomalous z ≥ 3.
+Natural explanations: Kp ≥ 5 (HF) / ≥ 7 (GNSS), R ≥ 1 (HF). For hf, sat_downlink, l_1400 and c_sar an anomalous state
+emits SPECTRUM_ANOMALY Evidence: score = min(1, z/6); confidence = min(0.6, n / 4·min_n), ×0.5 if explained; gaps say
+"never names an emitter type"; persistence 3 ticks. Fusion caps a single-band spectrum alert at medium (ADR-008 s4).
+All thresholds are priors (config `detectors.spectrum_state`). API: `GET /api/spectrum/status`.

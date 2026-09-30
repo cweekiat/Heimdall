@@ -153,3 +153,24 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
   **Satellite passes**: SatNOGS ground stations, red when the pass was bad/failed. **C-band interference**:
   Sentinel-1 footprints, red outline when ESA's RFI annotation flags interference. **L-band interference**: SMAP
   cells shaded by the share of flagged footprints.
+
+## Spectrum watch, the watch-floor entry point (task 033, key `w`, open on first run)
+- **Board**: areas (rows) × bands (columns: L1 GNSS, L 1090, VHF marine, HF, Sat downlinks, L 1.4 GHz, C SAR). Each
+  cell shows the state, the current value and a 24 h sparkline. States: **Anomalous** (red, ≥ 3 spreads from typical in
+  the direction that means trouble), **Elevated** (warning tone, ≥ 2), **Normal**, **Learning** (baseline too short)
+  and **No coverage** (too few receivers; never read as quiet). Each cell is judged against that area's own history.
+- **Investigate** (click a cell): value vs typical, spreads, receivers/observations and history length, the 24 h trend,
+  natural explanations checked (space weather for HF and GNSS), open alerts in that area and band, and a next-steps
+  checklist per band. The click also filters alerts to the band (`#band=`) and flies the map to the area.
+- **Band ladder**: a left-edge colour marks each band's worst state across areas.
+- **Status bar**: space-weather chip (Kp, G/R/S scales, NOAA SWPC), outlined when a storm or radio blackout can explain
+  HF or GPS effects.
+
+## More map layers from existing data (Live group)
+- **Estimated jammer locations**: an ellipse and centre per open GNSS-jamming alert (radio-horizon fit or centroid,
+  `GET /api/jammers`); hover shows the fit method and the share of aircraft consistent with it.
+- **Receivers heard**: hexes of receivers per cell over the last hour for the band picked in the ladder (L1 GNSS,
+  L 1090 or VHF marine; `GET /api/coverage`), which shows where "no data" is really "no receivers".
+- **HF spots**: band selector (3–28 MHz) and brightness by median SNR.
+- **Only official GPS-interference notices** (notices drawn in the attention colour) and **Only aircraft with GPS
+  problems** (quick filter).

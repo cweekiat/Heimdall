@@ -1276,3 +1276,42 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
 .gnss-yellow { background: rgb(225 190 40); }
 .gnss-red { background: rgb(220 60 50); }
 .spectrum-toggles { display: contents; }
+
+/* task 033: spectrum watch board (areas x bands) and investigate pane */
+.watch { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.watch.with-inv { grid-template-columns: minmax(0, 1.4fr) minmax(220px, 1fr); }
+@media (max-width: 700px) { .watch.with-inv { grid-template-columns: 1fr; } }
+.wtable-wrap { overflow-x: auto; }
+.wtable { border-collapse: separate; border-spacing: 3px; font-size: 11px; width: 100%; }
+.wtable th { text-align: left; font-weight: 600; color: var(--muted); white-space: nowrap; padding: 2px 4px; }
+.wcell { padding: 0; }
+.wcell-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-width: 64px; padding: 3px 5px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; text-align: left; }
+.wcell-btn[aria-pressed="true"] { outline: 2px solid var(--accent); }
+.wcell-btn:focus-visible { outline: 2px solid var(--focus); }
+.wcell-btn .wstate { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; }
+.wcell-btn .wval { font-size: 12px; font-weight: 600; }
+.spark path { fill: none; stroke: currentColor; stroke-width: 1.2; opacity: .8; }
+.spark.big path { stroke-width: 1.6; }
+.st-anomalous { background: color-mix(in srgb, var(--bad) 28%, var(--panel)); border-color: var(--bad); }
+.st-elevated { background: color-mix(in srgb, var(--warn) 22%, var(--panel)); border-color: var(--warn); }
+.st-normal { color: var(--fg); }
+.st-learning, .st-no_coverage { color: var(--muted); border-style: dashed; }
+.st-no_coverage .wval { opacity: .6; }
+.wlegend { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; font-size: 11px; }
+.wkey { padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line); }
+.winvest { border-left: 1px solid var(--line); padding-left: 10px; font-size: 12px; overflow-y: auto; }
+.winvest h3 { margin: 0 0 4px; font-size: 14px; }
+.winvest h4 { margin: 10px 0 2px; font-size: 12px; color: var(--muted); }
+.wbadge { display: inline-block; padding: 1px 8px; border-radius: 3px; border: 1px solid var(--line); font-size: 11px; text-transform: uppercase; }
+.wbig { margin: 6px 0; }
+
+/* band ladder: worst state across areas as a left edge marker */
+.band-row { border-left-width: 3px; }
+.band-row.ws-anomalous { border-left-color: var(--bad); }
+.band-row.ws-elevated { border-left-color: var(--warn); }
+.band-row.ws-normal { border-left-color: color-mix(in srgb, var(--ok) 60%, transparent); }
+
+/* space-weather chip in the status bar */
+.sw-chip { padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 11px; white-space: nowrap; }
+.sw-chip.sw-storm { border-color: var(--warn); color: var(--warn); }
+@media (max-width: 600px) { .sw-chip { display: none; } }

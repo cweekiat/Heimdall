@@ -4,7 +4,7 @@ import type { LayerFeature } from "./p3model.ts";
 
 // ------------------------------------------------------------------ bands (ladder, frequency order)
 
-export type Band = "hf" | "vhf_marine" | "l_1090" | "l1_gnss" | "l_1400" | "c_sar";
+export type Band = "hf" | "vhf_marine" | "sat_downlink" | "l_1090" | "l1_gnss" | "l_1400" | "c_sar";
 export interface BandDef {
   band: Band;
   name: string;
@@ -15,6 +15,7 @@ export interface BandDef {
 export const BANDS: BandDef[] = [
   { band: "hf", name: "HF", range: "3–30 MHz", sources: ["wspr_live", "pskreporter"] },
   { band: "vhf_marine", name: "VHF marine", range: "156–162 MHz", sources: ["aisstream"] },
+  { band: "sat_downlink", name: "Sat downlinks", range: "VHF/UHF/S", sources: ["satnogs"] },
   { band: "l_1090", name: "L 1090", range: "1090 MHz", sources: ["adsb_lol", "adsb_fi", "opensky_global"] },
   { band: "l1_gnss", name: "L1 GNSS", range: "1559–1610 MHz", sources: ["adsb_lol", "adsb_fi", "aisstream", "faa_nms_notam", "nga_msi"] },
   { band: "l_1400", name: "L 1.4 GHz", range: "1400–1427 MHz", sources: ["smap_rfi"] },
@@ -61,11 +62,13 @@ export function writeHash(hash: string, patch: { band?: string; gnss?: string })
 
 // ------------------------------------------------------------------ spectrum layers
 
-export type SpectrumLayer = "gnss" | "hf" | "satnogs" | "sar_rfi" | "smap";
-export const SPECTRUM_LAYERS: SpectrumLayer[] = ["hf", "satnogs", "gnss", "sar_rfi", "smap"];
-export const LIVE_LAYERS: SpectrumLayer[] = ["hf", "satnogs"];
+export type SpectrumLayer = "gnss" | "hf" | "satnogs" | "sar_rfi" | "smap" | "jammers" | "coverage";
+export const SPECTRUM_LAYERS: SpectrumLayer[] = ["jammers", "coverage", "hf", "satnogs", "gnss", "sar_rfi", "smap"];
+export const LIVE_LAYERS: SpectrumLayer[] = ["jammers", "coverage", "hf", "satnogs"];
 export const DAILY_LAYERS: SpectrumLayer[] = ["gnss", "sar_rfi", "smap"];
 export const SPECTRUM_LABEL: Record<SpectrumLayer, string> = {
+  jammers: "Estimated jammer locations",
+  coverage: "Receivers heard (band picked in the band panel)",
   hf: "HF propagation spots (WSPR, PSK Reporter)",
   satnogs: "Satellite passes (SatNOGS ground stations)",
   gnss: "GNSS interference (daily, GPSJam method)",
@@ -73,9 +76,23 @@ export const SPECTRUM_LABEL: Record<SpectrumLayer, string> = {
   smap: "L-band interference (SMAP)",
 };
 /** Hours of data requested per layer. */
-export const SPECTRUM_HOURS: Record<Exclude<SpectrumLayer, "gnss">, number> = { hf: 1, satnogs: 6, sar_rfi: 72, smap: 48 };
-export const SPECTRUM_REFRESH_MS: Record<SpectrumLayer, number> = { hf: 120_000, satnogs: 300_000, gnss: 300_000, sar_rfi: 600_000, smap: 600_000 };
-export const SPECTRUM_DEFAULT_ON: SpectrumLayer[] = ["gnss"];
+export type EventLayer = "hf" | "satnogs" | "sar_rfi" | "smap";
+export const SPECTRUM_HOURS: Record<EventLayer, number> = { hf: 1, satnogs: 6, sar_rfi: 72, smap: 48 };
+export const SPECTRUM_REFRESH_MS: Record<SpectrumLayer, number> = {
+  jammers: 60_000,
+  coverage: 60_000,
+  hf: 120_000,
+  satnogs: 300_000,
+  gnss: 300_000,
+  sar_rfi: 600_000,
+  smap: 600_000,
+};
+export const SPECTRUM_DEFAULT_ON: SpectrumLayer[] = ["gnss", "jammers"];
+/** Bands the coverage layer can show (receivers the live index knows about). */
+export const COVERAGE_BANDS = ["l1_gnss", "l_1090", "vhf_marine"];
+export const HF_BANDS_MHZ = [3, 5, 7, 10, 14, 18, 21, 24, 28];
+/** HF spot opacity from median SNR: -28 dB (barely decoded) .. +5 dB (strong) -> 0.15 .. 0.95. */
+export const hfAlpha = (snr: number | null): number => (snr === null ? 0.4 : Math.min(0.95, Math.max(0.15, 0.15 + (0.8 * (snr + 28)) / 33)));
 
 // ------------------------------------------------------------------ GNSS day map
 
@@ -155,6 +172,8 @@ export function spectrumHover(layer: SpectrumLayer, f: LayerFeature): string {
       return [`SMAP L-band: ${num(p.n_rfi_h) ?? 0}H/${num(p.n_rfi_v) ?? 0}V of ${num(p.n_footprints) ?? 0} footprints flagged`, fr !== null ? `${Math.round(fr * 100)}%` : "", t].filter(Boolean).join(" · ");
     }
     case "gnss":
+    case "jammers":
+    case "coverage":
       return "";
   }
 }
@@ -168,3 +187,157 @@ export function newestLabel(features: LayerFeature[]): string {
 
 /** HF spot radius (px) from spot count, log scale 3..14. */
 export const hfRadius = (n: number | null): number => Math.min(14, Math.max(3, 3 + 3 * Math.log10((n ?? 1) + 1)));
+
+// ------------------------------------------------------------------ status board (033)
+
+export type BandStateName = "no_coverage" | "learning" | "normal" | "elevated" | "anomalous";
+export interface BandCell {
+  state: BandStateName;
+  value: number | null;
+  median: number | null;
+  z: number | null;
+  n: number;
+  n_history: number;
+  explanations: string[];
+  spark: (number | null)[];
+}
+export interface StatusBand {
+  band: string;
+  label: string;
+  unit: string;
+  direction: "high" | "low";
+}
+export interface StatusArea {
+  aoi: string;
+  label: string;
+  bands: Record<string, BandCell>;
+}
+export interface SpectrumStatus {
+  generated: string;
+  bands: StatusBand[];
+  areas: StatusArea[];
+}
+
+const STATES: BandStateName[] = ["no_coverage", "learning", "normal", "elevated", "anomalous"];
+export const STATE_LABEL: Record<BandStateName, string> = {
+  no_coverage: "No coverage",
+  learning: "Learning",
+  normal: "Normal",
+  elevated: "Elevated",
+  anomalous: "Anomalous",
+};
+/** Plain explanation of each state, for tooltips and the legend. */
+export const STATE_HELP: Record<BandStateName, string> = {
+  no_coverage: "Too few receivers here to judge. Not the same as quiet.",
+  learning: "Collecting history; no judgement until the baseline is long enough.",
+  normal: "Within the usual range for this area.",
+  elevated: "Unusual (2 or more spreads from typical). Keep an eye on it.",
+  anomalous: "Far from typical (3 or more spreads). Investigate.",
+};
+const RANK: Record<BandStateName, number> = { no_coverage: 0, learning: 1, normal: 2, elevated: 3, anomalous: 4 };
+
+export function parseStatus(raw: unknown): SpectrumStatus | null {
+  if (!isObj(raw) || !Array.isArray(raw.areas) || !Array.isArray(raw.bands)) return null;
+  const bands: StatusBand[] = raw.bands.filter(isObj).map((b) => ({
+    band: str(b.band),
+    label: str(b.label),
+    unit: str(b.unit),
+    direction: b.direction === "low" ? "low" : "high",
+  }));
+  const areas: StatusArea[] = raw.areas.filter(isObj).map((a) => {
+    const cells: Record<string, BandCell> = {};
+    const src = isObj(a.bands) ? a.bands : {};
+    for (const [k, v] of Object.entries(src)) {
+      if (!isObj(v)) continue;
+      const state = STATES.includes(v.state as BandStateName) ? (v.state as BandStateName) : "no_coverage";
+      cells[k] = {
+        state,
+        value: num(v.value),
+        median: num(v.median),
+        z: num(v.z),
+        n: num(v.n) ?? 0,
+        n_history: num(v.n_history) ?? 0,
+        explanations: Array.isArray(v.explanations) ? v.explanations.filter((x): x is string => typeof x === "string") : [],
+        spark: Array.isArray(v.spark) ? v.spark.map((x) => num(x)) : [],
+      };
+    }
+    return { aoi: str(a.aoi), label: str(a.label) || str(a.aoi), bands: cells };
+  });
+  return { generated: str(raw.generated), bands, areas };
+}
+
+/** Worst state of one band across all areas (drives the band-ladder marker). */
+export function worstState(s: SpectrumStatus | null, band: string): BandStateName {
+  let w: BandStateName = "no_coverage";
+  for (const a of s?.areas ?? []) {
+    const c = a.bands[band];
+    if (c && RANK[c.state] > RANK[w]) w = c.state;
+  }
+  return w;
+}
+
+export function fmtValue(v: number | null, unit: string): string {
+  if (v === null) return "–";
+  const r = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10;
+  return unit === "%" ? `${r}%` : `${r}`;
+}
+
+/** One-sentence reading of a cell, e.g. "38 ships heard (1 h) vs typical 52 · 3.4 spreads towards trouble". */
+export function cellSentence(c: BandCell, b: StatusBand): string {
+  if (c.state === "no_coverage") return `${b.label}: ${STATE_HELP.no_coverage}`;
+  const now = `${fmtValue(c.value, b.unit)} ${b.unit === "%" ? "" : b.unit} ${b.label}`.replace(/\s+/g, " ").trim();
+  if (c.state === "learning") return `${now}. ${STATE_HELP.learning}`;
+  const typ = c.median !== null ? ` vs typical ${fmtValue(c.median, b.unit)}` : "";
+  const z = c.z !== null ? ` · ${Math.abs(c.z).toFixed(1)} spreads ${c.z >= 0 ? "towards trouble" : "on the safe side"}` : "";
+  return `${now}${typ}${z}`;
+}
+
+/** SVG path (0..w x 0..h) for a sparkline; gaps (null) break the line. */
+export function sparkPath(vals: (number | null)[], w = 60, h = 16): string {
+  const xs = vals.map((v, i) => [i, v] as const).filter((p): p is readonly [number, number] => p[1] !== null);
+  if (!xs.length) return "";
+  const lo = Math.min(...xs.map((p) => p[1]));
+  const hi = Math.max(...xs.map((p) => p[1]));
+  const span = hi - lo || 1;
+  const step = vals.length > 1 ? w / (vals.length - 1) : 0;
+  let d = "";
+  let prev = -2;
+  for (const [i, v] of xs) {
+    const x = (i * step).toFixed(1);
+    const y = (h - ((v - lo) / span) * (h - 2) - 1).toFixed(1);
+    d += `${i === prev + 1 ? "L" : "M"}${x} ${y} `;
+    prev = i;
+  }
+  return d.trim();
+}
+
+/** What an analyst checks next, per band (the investigate checklist). */
+export const NEXT_STEPS: Record<string, string[]> = {
+  l1_gnss: [
+    "Open the GNSS interference map for today and compare with the last few days",
+    "Look for an estimated jammer location and official GNSS notices in this area",
+    "Check whether ships nearby also report position jumps",
+  ],
+  l_1090: ["Check the aircraft feeds in Data sources: a drop is usually a receiver or feed outage, not jamming"],
+  vhf_marine: ["Check AIS in Data sources; a drop across the whole area is usually reception, not ships going dark"],
+  hf: [
+    "Check space weather: a flare or geomagnetic storm explains most HF blackouts",
+    "Compare neighbouring areas: a natural disturbance is wide, a local one is not",
+    "Treat what is left as an unexplained HF anomaly; never name an emitter from this alone",
+  ],
+  sat_downlink: ["Look at which satellites failed: one satellite failing everywhere is the satellite, not interference"],
+  l_1400: ["Compare with the last 30 days: a cell that is always flagged is a known emitter; a new one is the finding"],
+  c_sar: ["Open the Sentinel-1 footprint and check the next pass to confirm the emitter is still active"],
+};
+
+export function jammerHover(p: Record<string, unknown>): string {
+  const agr = num(p.agreement);
+  return [
+    `Estimated jammer ${str(p.ref)}`.trim(),
+    str(p.method) === "horizon_fit" ? "fit from aircraft altitudes" : "centre of affected aircraft",
+    agr !== null ? `${Math.round(agr * 100)}% of aircraft consistent` : "",
+    `about ${Math.round(num(p.major_km) ?? 0)} km across`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
