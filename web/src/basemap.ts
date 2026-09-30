@@ -2,9 +2,10 @@
 // Heimdall's own layers (hexes, alerts, tracks, ellipses, AOIs) are drawn by a separate deck.gl
 // MapboxOverlay canvas (interleaved: false), so they stay on top of any base or overlay and are
 // unaffected by map.setStyle().
-import * as maplibregl from "maplibre-gl";
-import { h } from "./dom";
-import { css, surfaceCss } from "./theme/palette";
+import type * as maplibregl from "maplibre-gl";
+import { h } from "./dom.ts";
+import { css, surfaceCss } from "./theme/palette.ts";
+import { absolutizeStyle, offlineStyleUrl } from "./map3d.ts";
 
 export type Provider = "openfreemap" | "carto" | "none";
 type Style = maplibregl.StyleSpecification | string;
@@ -68,8 +69,8 @@ export const OVERLAYS: OverlayDef[] = [
   { id: "graticule", label: "Graticule (5 deg)", license: "local", thirdParty: false },
 ];
 
-function basesFor(provider: Provider): BaseDef[] {
-  if (provider === "none")
+function basesFor(provider: Provider, online: boolean): BaseDef[] {
+  if (provider === "none" || !online)
     return [
       { id: "blank-dark", label: "Blank dark (private)", thirdParty: false, style: () => blank("dark") },
       { id: "blank-light", label: "Blank light (private)", thirdParty: false, style: () => blank("light") },
@@ -126,17 +127,19 @@ export class BaseLayers {
   private bases: BaseDef[];
   private baseId: string;
   private overlays: Set<string>;
+  private online: boolean;
   private theme: Theme;
   private panelEl = h("div", { class: "layerbody" });
 
-  constructor(
-    private map: maplibregl.Map,
-    private provider: Provider,
-    defaultOverlays: string[],
-    theme: Theme,
-  ) {
+  private map: maplibregl.Map;
+  private provider: Provider;
+
+  constructor(map: maplibregl.Map, provider: Provider, defaultOverlays: string[], theme: Theme) {
+    this.map = map;
+    this.provider = provider;
     this.theme = theme;
-    this.bases = basesFor(provider);
+    this.online = provider !== "none" && safeGet("hm.online") === "1";
+    this.bases = this.allBases();
     const stored = safeGet("hm.base");
     this.baseId = this.bases.some((b) => b.id === stored) ? (stored as string) : this.themeBase();
     let ov = defaultOverlays;
@@ -146,7 +149,7 @@ export class BaseLayers {
     } catch {
       /* ignore corrupt value */
     }
-    this.overlays = new Set(provider === "none" ? ov.filter((x) => !OVERLAYS.find((o) => o.id === x)?.thirdParty) : ov);
+    this.overlays = new Set(!this.online ? ov.filter((x) => !OVERLAYS.find((o) => o.id === x)?.thirdParty) : ov);
     this.map.on("style.load", () => {
       try {
         this.refresh();
@@ -156,13 +159,41 @@ export class BaseLayers {
     });
   }
 
+  private allBases(): BaseDef[] {
+    const offline: BaseDef = { id: "offline", label: "Offline map (local, default)", thirdParty: false, style: () => offlineStyleUrl(this.theme) };
+    return [offline, ...basesFor(this.provider, this.online)];
+  }
+
   private themeBase(): string {
-    return this.provider === "none" ? `blank-${this.theme}` : this.theme;
+    return "offline";
+  }
+
+  /** Fires when the base changes so the app can check the offline files are present. */
+  onBaseChange: (id: string) => void = () => undefined;
+
+  setOnline(on: boolean): void {
+    this.online = on && this.provider !== "none";
+    safeSet("hm.online", this.online ? "1" : "0");
+    this.bases = this.allBases();
+    if (!this.bases.some((b) => b.id === this.baseId)) this.baseId = "offline";
+    if (!this.online) for (const o of OVERLAYS) if (o.thirdParty) this.overlays.delete(o.id);
+    this.setBase(this.baseId);
+  }
+
+  /** The offline style has root-relative sprite/glyph URLs; workers need absolute ones. */
+  private styleOpts(): never {
+    return { diff: false, transformStyle: (_p: unknown, next: never) => absolutizeStyle(next, location.origin) } as never;
   }
 
   /** Initial style to construct the map with. */
   initialStyle(): Style {
     return this.current().style();
+  }
+
+  /** Apply the initial style (with the origin fix). */
+  applyInitial(): void {
+    this.map.setStyle(this.initialStyle(), this.styleOpts());
+    this.onBaseChange(this.baseId);
   }
 
   private current(): BaseDef {
@@ -172,14 +203,17 @@ export class BaseLayers {
   setTheme(theme: Theme): void {
     this.theme = theme;
     // Only follow the theme when a theme-paired base is showing; keep satellite/detailed as chosen.
-    if (["dark", "light", "blank-dark", "blank-light"].includes(this.baseId)) this.setBase(this.themeBase());
+    if (this.baseId === "offline") this.setBase("offline");
+    else if (["dark", "light"].includes(this.baseId)) this.setBase(theme);
+    else if (["blank-dark", "blank-light"].includes(this.baseId)) this.setBase(`blank-${theme}`);
   }
 
   setBase(id: string): void {
     this.baseId = id;
     safeSet("hm.base", id);
-    this.map.setStyle(this.current().style(), { diff: false });
+    this.map.setStyle(this.current().style(), this.styleOpts());
     this.renderPanel();
+    this.onBaseChange(id);
   }
 
   toggleOverlay(id: string, on: boolean): void {
@@ -197,7 +231,7 @@ export class BaseLayers {
     for (const id of Object.keys(m.getStyle().sources ?? {})) if (id.startsWith("hm-")) m.removeSource(id);
 
     const on = (id: string) => this.overlays.has(id);
-    const dark = this.baseId === "dark" || this.baseId === "satellite" || this.baseId === "blank-dark";
+    const dark = this.baseId === "dark" || this.baseId === "satellite" || this.baseId === "blank-dark" || (this.baseId === "offline" && this.theme === "dark");
     const mode: Theme = dark ? "dark" : "light";
     const needsVector = on("borders") || on("military");
     if (needsVector) {
@@ -350,7 +384,7 @@ export class BaseLayers {
   }
 
   private renderPanel(): void {
-    const third = this.provider !== "none";
+    const third = this.online;
     this.panelEl.replaceChildren(
       h("fieldset", {}, h("legend", {}, "Base map"),
         ...this.bases.map((b) =>
@@ -362,6 +396,9 @@ export class BaseLayers {
           h("label", { title: o.license }, h("input", { type: "checkbox", checked: this.overlays.has(o.id), onchange: (e) => this.toggleOverlay(o.id, (e.target as HTMLInputElement).checked) }), o.label),
         ),
       ),
+      this.provider === "none"
+        ? h("p", { class: "note" }, "Online map styles are disabled (ui.basemap: none).")
+        : h("label", {}, h("input", { type: "checkbox", checked: this.online, onchange: (e) => this.setOnline((e.target as HTMLInputElement).checked) }), "Allow online map styles (third-party tiles)"),
       h("p", { class: "note" }, third ? "Map tiles from third parties see viewed areas. Set ui.basemap: none for a fully private map." : "Private mode: no third-party requests."),
     );
   }

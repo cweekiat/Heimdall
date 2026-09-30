@@ -67,6 +67,8 @@ export const T = {
   status: "Status",
   source: "Source",
   layers: "Layers & filters",
+  view3d: "Switch between flat (2D) and tilted (3D) map",
+  compass: "Reset north and flatten the map",
   sources: "Data sources",
   actions: "Actions",
   timeline: "Timeline",

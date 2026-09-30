@@ -5,6 +5,7 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/laye
 import { api } from "./api";
 import type { AirProps, FC, SeaProps, SourceState } from "./api";
 import { rgba } from "./theme/palette";
+import { altitudeMeters, dropLines, view } from "./map3d";
 import { h } from "./dom";
 import { icon, iconButton } from "./icons";
 import { T } from "./labels";
@@ -270,13 +271,17 @@ export class Traffic {
       if (e && this.follow) this.ops.panTo(e.lon, e.lat);
       this.renderCard();
     }
-    this.ops.render();
+    this.ops.renderSoon();
   }
 
   private find(): (Air | Sea) | undefined {
     const s = this.sel;
     if (!s) return undefined;
     return s.kind === "air" ? this.air.find((a) => a.hex === s.id) : this.sea.find((v) => v.mmsi === s.id);
+  }
+
+  private z(r: Air): number {
+    return view.mode === "3d" ? altitudeMeters(r.alt_baro, r.on_ground, view.exaggeration) : 0;
   }
 
   // ---- deck layers
@@ -313,8 +318,9 @@ export class Traffic {
         iconAtlas: this.icons,
         iconMapping: MAPPING,
         getIcon: (d) => (d.row.mil ? "diamond" : "plane"),
-        getPosition: (d) => [d.row.lon, d.row.lat],
+        getPosition: (d) => [d.row.lon, d.row.lat, this.z(d.row)],
         getAngle: (d) => -(d.row.track ?? 0),
+        updateTriggers: { getPosition: [view.mode, view.exaggeration] },
         getSize: (d) => (d.row.mil ? 17 : 16),
         getColor: (d) => (isMil(d.row) ? rgba("military", 1) : rgba("neutral", 0.95)),
         sizeUnits: "pixels",
@@ -325,6 +331,17 @@ export class Traffic {
         },
         onClick: (i) => i.object && this.select({ kind: "air", id: (i.object as { row: Air }).row.hex }),
       }),
+      ...(view.mode === "3d" && view.drop
+        ? [
+            new PathLayer<[number, number, number][]>({
+              id: "aircraft-drop",
+              data: dropLines(da.map((d) => d.row), true, view.exaggeration),
+              getPath: (d) => d,
+              getColor: rgba("neutral", 0.5),
+              widthMinPixels: 1,
+            }),
+          ]
+        : []),
       // thin amber ring: GPS accuracy problem on that aircraft
       new ScatterplotLayer<{ row: Air }>({
         id: "gps-ring",
