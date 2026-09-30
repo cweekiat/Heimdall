@@ -13,10 +13,14 @@ import type { LayerFC, LayerFeature } from "./p3model";
 import { rgba } from "./theme/palette";
 import {
   BANDS,
+  BAND_NAME,
+  COVERAGE_BANDS,
   DAILY_LAYERS,
   GNSS_LEGEND,
   GNSS_RGB,
+  HF_BANDS_MHZ,
   LIVE_LAYERS,
+  STATE_LABEL,
   SPECTRUM_HOURS,
   SPECTRUM_LABEL,
   SPECTRUM_LAYERS,
@@ -25,21 +29,31 @@ import {
   bandDot,
   gnssDateLabel,
   gnssHover,
+  hfAlpha,
   hfRadius,
+  jammerHover,
   newestLabel,
   parseGnssDay,
   readHash,
   spectrumHover,
   stepDay,
+  worstState,
   writeHash,
 } from "./spectrummodel";
-import type { GnssCell, GnssDay, SpectrumLayer } from "./spectrummodel";
+import type { EventLayer, GnssCell, GnssDay, SpectrumLayer, SpectrumStatus } from "./spectrummodel";
 
-type EventLayer = Exclude<SpectrumLayer, "gnss">;
 const EMPTY: LayerFC = { type: "FeatureCollection", features: [], truncated: false };
+const isEvent = (l: SpectrumLayer): l is EventLayer => l === "hf" || l === "satnogs" || l === "sar_rfi" || l === "smap";
+interface CovCell {
+  h3: string;
+  receivers: number;
+}
 
 export class SpectrumLayers {
   private data = new Map<EventLayer, LayerFC>();
+  private jam: LayerFC = EMPTY;
+  private covCells: CovCell[] = [];
+  private status: SpectrumStatus | null = null;
   private gnss: GnssDay | null = null;
   private gnssMissing = false;
   private days: string[] = [];
@@ -55,11 +69,12 @@ export class SpectrumLayers {
   constructor(private ops: OpsMap, wrap: HTMLElement) {
     this.tip = h("div", { class: "hovercard tip", hidden: true });
     wrap.append(this.tip, this.ladder);
-    let last = `${filters.spectrum.join()}|${filters.gnssDate}|${filters.band}`;
+    let last = `${filters.spectrum.join()}|${filters.gnssDate}|${filters.band}|${filters.hfBand}`;
     onFilters(() => {
-      const now = `${filters.spectrum.join()}|${filters.gnssDate}|${filters.band}`;
+      const now = `${filters.spectrum.join()}|${filters.gnssDate}|${filters.band}|${filters.hfBand}`;
       if (now === last) return;
       const dateChanged = now.split("|")[1] !== last.split("|")[1];
+      if (now.split("|")[2] !== last.split("|")[2]) this.setHash({ band: filters.band }); // board clicks too
       last = now;
       if (dateChanged) this.gnss = null;
       void this.refresh();
@@ -114,6 +129,25 @@ export class SpectrumLayers {
           } catch {
             this.gnss = null;
             this.gnssMissing = true; // 404: no map for that day yet
+          }
+          return;
+        }
+        if (l === "jammers") {
+          try {
+            this.jam = parseLayer(await api.jammers());
+          } catch {
+            /* keep the last picture */
+          }
+          return;
+        }
+        if (l === "coverage") {
+          this.covCells = [];
+          if (!COVERAGE_BANDS.includes(filters.band)) return;
+          try {
+            const r = (await api.coverage(filters.band)) as { cells?: CovCell[] };
+            this.covCells = (r.cells ?? []).filter((c) => typeof c.h3 === "string" && typeof c.receivers === "number");
+          } catch {
+            /* nothing to show */
           }
           return;
         }
@@ -178,13 +212,39 @@ export class SpectrumLayers {
     this.setHash({ gnss: d === "last24h" ? "" : d });
   }
 
+  private hfSelect(): HTMLElement {
+    const sel = h("select", { "aria-label": "HF band (MHz)" });
+    for (const mhz of [0, ...HF_BANDS_MHZ]) {
+      const o = h("option", { value: String(mhz) }, mhz ? `${mhz} MHz` : "All HF bands");
+      o.selected = filters.hfBand === mhz;
+      sel.append(o);
+    }
+    sel.addEventListener("change", () => setFilter({ hfBand: Number(sel.value) }));
+    return h("div", { class: "gnss-controls" }, sel, h("div", { class: "note" }, "Brighter = stronger signal (median SNR). Placed where each path reflects."));
+  }
+
+  private note(l: SpectrumLayer): string {
+    if (!this.on(l)) return "";
+    if (isEvent(l)) return newestLabel((this.data.get(l) ?? EMPTY).features);
+    if (l === "jammers") return `${this.jam.features.length} open`;
+    if (l === "coverage") return COVERAGE_BANDS.includes(filters.band) ? `${BAND_NAME[filters.band]}` : "pick L1 GNSS, L 1090 or VHF marine";
+    return "";
+  }
+
   private drawPanels(): void {
-    const note = (l: EventLayer): string => (this.on(l) ? newestLabel((this.data.get(l) ?? EMPTY).features) : "");
-    this.liveBox.replaceChildren(...LIVE_LAYERS.map((l) => this.toggle(l, note(l as EventLayer))));
+    this.liveBox.replaceChildren(
+      ...LIVE_LAYERS.flatMap((l) => [this.toggle(l, this.note(l)), l === "hf" && this.on("hf") ? this.hfSelect() : ""]),
+    );
     this.dailyBox.replaceChildren(
-      ...DAILY_LAYERS.map((l) => (l === "gnss" ? this.toggle(l, "") : this.toggle(l, note(l as EventLayer)))),
+      ...DAILY_LAYERS.map((l) => this.toggle(l, this.note(l))),
       this.on("gnss") ? this.gnssControls() : "",
     );
+  }
+
+  /** Status board result (033): the ladder marks each band with its worst state across areas. */
+  setStatus(s: SpectrumStatus | null): void {
+    this.status = s;
+    this.drawLadder();
   }
 
   // -------------------------------------------------------------- band ladder
@@ -221,12 +281,13 @@ export class SpectrumLayers {
       const dot = bandDot(b, this.sources);
       const feeds = b.sources.join(", ");
       const cov = this.cov.get(b.band);
-      const title = `${b.name} (${b.range}) · sources: ${feeds}${cov !== undefined ? ` · ${cov} receivers in view (last hour)` : ""}`;
+      const ws = worstState(this.status, b.band);
+      const title = `${b.name} (${b.range}) · worst area: ${STATE_LABEL[ws]} · sources: ${feeds}${cov !== undefined ? ` · ${cov} receivers in view (last hour)` : ""}`;
       return h(
         "button",
         {
           type: "button",
-          class: "band-row",
+          class: `band-row ws-${ws}`,
           title,
           "aria-pressed": String(filters.band === b.band),
           onclick: () => this.pickBand(b.band),
@@ -286,6 +347,25 @@ export class SpectrumLayers {
         }),
       );
     }
+    if (this.on("coverage") && this.covCells.length) {
+      const top = Math.max(1, ...this.covCells.map((c) => c.receivers));
+      out.push(
+        new H3HexagonLayer<CovCell>({
+          id: "spec-coverage",
+          data: this.covCells,
+          getHexagon: (d) => d.h3,
+          getFillColor: (d) => rgba("neutral", 0.08 + 0.5 * Math.min(1, Math.log1p(d.receivers) / Math.log1p(top))),
+          updateTriggers: { getFillColor: [this.covCells] },
+          stroked: true,
+          getLineColor: rgba("neutral", 0.35),
+          lineWidthMinPixels: 1,
+          filled: true,
+          extruded: false,
+          pickable: pick,
+          onHover: (i) => this.hover(i.object ? `${(i.object as CovCell).receivers} receivers heard here in the last hour (${BAND_NAME[filters.band] ?? ""})` : null, i.x, i.y),
+        }),
+      );
+    }
     const smap = this.feats("smap").filter((f) => typeof f.properties.h3 === "string");
     if (smap.length)
       out.push(
@@ -322,7 +402,7 @@ export class SpectrumLayers {
           onHover: (i) => this.hover(i.object ? spectrumHover("sar_rfi", i.object as LayerFeature) : null, i.x, i.y),
         }),
       );
-    const hf = this.feats("hf").filter((f) => !!pointOf(f));
+    const hf = this.feats("hf").filter((f) => !!pointOf(f) && (!filters.hfBand || f.properties.band_mhz === filters.hfBand));
     if (hf.length)
       out.push(
         new ScatterplotLayer<LayerFeature>({
@@ -332,7 +412,8 @@ export class SpectrumLayers {
           getRadius: (d) => hfRadius(typeof d.properties.n === "number" ? d.properties.n : null),
           radiusUnits: "pixels",
           stroked: true,
-          getFillColor: rgba("neutral", 0.25),
+          getFillColor: (d) => rgba("neutral", hfAlpha(typeof d.properties.snr_med === "number" ? d.properties.snr_med : null)),
+          updateTriggers: { getFillColor: [filters.hfBand] },
           getLineColor: rgba("neutral", 0.8),
           getLineWidth: 1,
           lineWidthUnits: "pixels",
@@ -356,6 +437,31 @@ export class SpectrumLayers {
           lineWidthUnits: "pixels",
           pickable: pick,
           onHover: (i) => this.hover(i.object ? spectrumHover("satnogs", i.object as LayerFeature) : null, i.x, i.y),
+        }),
+      );
+    const jam = this.on("jammers") ? this.jam.features.filter((f) => !!ringOf(f)) : [];
+    if (jam.length)
+      out.push(
+        new PathLayer<LayerFeature>({
+          id: "spec-jam-ellipse",
+          data: jam,
+          getPath: (d) => ringOf(d) as [number, number][],
+          getColor: rgba("alert", 0.9),
+          widthMinPixels: 2,
+        }),
+        new ScatterplotLayer<LayerFeature>({
+          id: "spec-jam-centre",
+          data: jam,
+          getPosition: (d) => [Number(d.properties.lon), Number(d.properties.lat)],
+          getRadius: 6,
+          radiusUnits: "pixels",
+          stroked: true,
+          getFillColor: rgba("alert", 0.9),
+          getLineColor: rgba("base", 0.9),
+          getLineWidth: 1.5,
+          lineWidthUnits: "pixels",
+          pickable: pick,
+          onHover: (i) => this.hover(i.object ? jammerHover((i.object as LayerFeature).properties) : null, i.x, i.y),
         }),
       );
     return out;

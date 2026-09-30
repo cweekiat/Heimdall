@@ -35,6 +35,7 @@ import { Traffic } from "./traffic";
 import { Notices } from "./notices";
 import { P3Layers } from "./p3layers";
 import { SpectrumLayers } from "./spectrum";
+import { SpectrumWatch } from "./watch";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
 import { ctxHooks } from "./context";
 import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, hasSavedGeometry, isOpen, openWindow, placeWindow, toggleWindow, winRect } from "./wm";
@@ -89,11 +90,13 @@ const winToggles: Record<string, () => void> = {
   x: () => toggleWindow("actions"),
   o: () => toggleWindow("draw"),
   t: () => toggleWindow("timeline"),
+  w: () => toggleWindow("watch"),
   h: shiftTool("shift", () => showShift()),
   "?": shiftTool("help", showHelp),
   i: shiftTool("about", showAbout),
 };
 const tools: Tool[] = [
+  { id: "watch", icon: "activity", label: "Spectrum watch", key: "w", toggle: winToggles.w! },
   { id: "queue", icon: "alerts", label: T.alerts, key: "q", toggle: winToggles.q! },
   { id: "board", icon: "areas", label: T.areas, key: "b", toggle: winToggles.b! },
   { id: "layers", icon: "layers", label: T.layers, key: "l", toggle: winToggles.l! },
@@ -110,7 +113,23 @@ installKeys(winToggles);
 $("brand").title = T.brandTip;
 
 // ---- top-right status tools: search + theme
+const swChip = h("span", { class: "sw-chip note", title: "Space weather (NOAA SWPC): storms and flares can disturb HF and GPS on their own" }, "Space weather …");
+async function refreshSpaceWeather(): Promise<void> {
+  try {
+    const w = await api.spaceWeather();
+    if (!w.available) {
+      swChip.textContent = "Space weather: no data";
+      return;
+    }
+    const kp = typeof w.kp === "number" ? w.kp : null;
+    swChip.textContent = `Kp ${kp ?? "?"} · G${w.g_scale ?? 0} R${w.r_scale ?? 0} S${w.s_scale ?? 0}`;
+    swChip.classList.toggle("sw-storm", (kp ?? 0) >= 5 || (w.r_scale ?? 0) >= 1);
+  } catch {
+    swChip.textContent = "Space weather: unavailable";
+  }
+}
 $("sb-tools").replaceChildren(
+  swChip,
   iconButton("search", T.search, () => {
     openWindow("queue");
     $("q")?.focus();
@@ -399,6 +418,17 @@ async function boot(): Promise<void> {
       refreshFilters();
     };
     subscribe(() => spec.update(state.alerts, sourcesWin.list));
+    // 033: spectrum watch board (Monitor -> Detect -> Investigate)
+    const watch = new SpectrumWatch({
+      flyTo: (name) => {
+        const a = state.aois.find((x) => x.name === name);
+        if (a) ops?.flyTo(a.lon, a.lat);
+      },
+      openAlert: (id) => void selectAlert(id),
+      alerts: () => state.alerts,
+    });
+    watch.onStatus = (s) => spec.setStatus(s);
+    if (!hasSavedGeometry("watch")) openWindow("watch");
     let lastBand = filters.band;
     onFilters(() => {
       if (ops) ops.state.alerts = filters.alerts ? mapAlerts() : [];
@@ -425,7 +455,10 @@ async function boot(): Promise<void> {
       void notices.refresh();
       p3.start();
       spec.start();
+      watch.start();
     });
+    void refreshSpaceWeather();
+    setInterval(() => void refreshSpaceWeather(), 300_000);
     setInterval(() => void notices.refresh(), 300_000);
     setInterval(() => void sourcesWin.refresh(), 60_000);
     void actionsWin.refresh();

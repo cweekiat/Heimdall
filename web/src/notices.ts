@@ -92,15 +92,19 @@ export class Notices {
   layers(tool: string): unknown[] {
     if (!filters.notices || this.items.length === 0) return [];
     const pick = tool === "none";
-    const shapes = this.items.filter((n) => n.polys.length > 0);
+    // official GNSS-interference notices (029d) stand out in the attention colour
+    const isGnss = (n: Notice): boolean => n.props.category === "gnss_interference";
+    const items = filters.gnssNoticesOnly ? this.items.filter(isGnss) : this.items;
+    const shapes = items.filter((n) => n.polys.length > 0);
     return [
       new GeoJsonLayer<Notice>({
         id: "notice-areas",
         data: shapes.map((n) => ({ type: "Feature", properties: n, geometry: { type: "MultiPolygon", coordinates: n.polys } })) as never,
         filled: true,
         stroked: true,
-        getFillColor: rgba("notice", 0.1),
-        getLineColor: rgba("notice", 0.9),
+        getFillColor: (f: { properties: Notice }) => (isGnss(f.properties) ? rgba("alert", 0.08) : rgba("notice", 0.1)),
+        getLineColor: (f: { properties: Notice }) => (isGnss(f.properties) ? rgba("alert", 0.9) : rgba("notice", 0.9)),
+        updateTriggers: { getFillColor: [filters.gnssNoticesOnly], getLineColor: [filters.gnssNoticesOnly] },
         lineWidthMinPixels: 1.5,
         pickable: pick,
         onClick: (i) => i.object && this.open((i.object as { properties: Notice }).properties),
@@ -114,7 +118,7 @@ export class Notices {
       }),
       new ScatterplotLayer<Notice>({
         id: "notice-points",
-        data: this.items.filter((n) => n.point),
+        data: items.filter((n) => n.point),
         getPosition: (n) => n.point!,
         getRadius: 8,
         radiusUnits: "pixels",

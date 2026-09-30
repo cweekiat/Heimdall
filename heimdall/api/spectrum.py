@@ -9,6 +9,7 @@ and works for any Store; `stale_min` without a new value -> no_coverage.
 
 from __future__ import annotations
 
+import math
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,7 +18,9 @@ from fastapi import APIRouter
 
 from heimdall import config
 from heimdall.detect import spectrum_state as ss
+from heimdall.fuse.fusion import ACTIVE
 from heimdall.ports import Store
+from heimdall.schemas import AlertKind
 
 CACHE_S = 30.0
 STALE_MIN = 20
@@ -78,6 +81,85 @@ def band_status(store: Store, now: datetime) -> dict[str, Any]:
     }
 
 
+def ellipse_ring(
+    lat: float, lon: float, major_km: float, minor_km: float, angle_deg: float, n: int = 36
+) -> list[list[float]]:
+    """Closed lon/lat ring of an ellipse (semi-axes in km, angle from north, clockwise)."""
+    a, b, t = max(major_km, 0.5), max(minor_km, 0.5), math.radians(angle_deg)
+    out = []
+    for k in range(n + 1):
+        u = 2 * math.pi * k / n
+        x, y = a * math.cos(u), b * math.sin(u)  # x along the major axis
+        north = x * math.cos(t) - y * math.sin(t)
+        east = x * math.sin(t) + y * math.cos(t)
+        out.append(
+            [
+                round(lon + east / (111.32 * max(0.05, math.cos(math.radians(lat)))), 5),
+                round(lat + north / 110.57, 5),
+            ]
+        )
+    return out
+
+
+def jammers(store: Store) -> dict[str, Any]:
+    """Estimated jammer locations from open GNSS-jamming alerts (lead evidence per alert)."""
+    feats = []
+    for al in store.list_alerts(status=list(ACTIVE), limit=500):
+        if al.kind != AlertKind.GNSS_JAMMING:
+            continue
+        evs = [e for e in store.get_evidence(al.evidence_ids) if "emitter_lat" in e.features]
+        if not evs:
+            continue
+        e = max(evs, key=lambda x: x.window_end)
+        f = e.features
+        lat, lon = f["emitter_lat"], f["emitter_lon"]
+        ring = ellipse_ring(
+            lat, lon, f.get("ellipse_major_km", 5), f.get("ellipse_minor_km", 5),
+            f.get("ellipse_angle_deg", 0),
+        )  # fmt: skip
+        feats.append(
+            {
+                "type": "Feature",
+                "id": al.id,
+                "geometry": {"type": "Polygon", "coordinates": [ring]},
+                "properties": {
+                    "ref": al.ref,
+                    "aoi": al.aoi,
+                    "severity": al.severity.value,
+                    "lat": lat,
+                    "lon": lon,
+                    "method": "horizon_fit" if f.get("emitter_method") == 1.0 else "centroid",
+                    "agreement": f.get("emitter_agreement"),
+                    "major_km": f.get("ellipse_major_km"),
+                    "bad": f.get("bad"),
+                    "total": f.get("total"),
+                    "last_seen": al.last_seen.isoformat(),
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": feats}
+
+
+def space_weather(store: Store, now: datetime) -> dict[str, Any]:
+    ev = store.events_window(
+        now - timedelta(hours=24), now + timedelta(minutes=5), ["space_weather"]
+    )
+    if not ev:
+        return {"available": False}
+    latest = max(ev, key=lambda e: e.ts)
+    a = latest.attrs
+    kp_max = max(float(e.attrs.get("kp") or 0) for e in ev)
+    return {
+        "available": True,
+        "ts": latest.ts.isoformat(),
+        "kp": a.get("kp"),
+        "kp_max_24h": kp_max,
+        "g_scale": a.get("g_scale"),
+        "r_scale": a.get("r_scale"),
+        "s_scale": a.get("s_scale"),
+    }
+
+
 def spectrum_router(st: Store) -> APIRouter:
     r = APIRouter()
     cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -90,5 +172,13 @@ def spectrum_router(st: Store) -> APIRouter:
         out = band_status(st, datetime.now(UTC))
         cache["s"] = (time.monotonic(), out)
         return out
+
+    @r.get("/api/jammers")
+    def get_jammers() -> dict[str, Any]:
+        return jammers(st)
+
+    @r.get("/api/spaceweather")
+    def get_space_weather() -> dict[str, Any]:
+        return space_weather(st, datetime.now(UTC))
 
     return r

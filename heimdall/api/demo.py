@@ -152,7 +152,25 @@ def seed(store: Store, seed_value: int = 7) -> Store:
             geometry=_ellipse(lat, lon) if is_jam else None,
             score=conf,
             rules=rules,
-            features={"degraded_ratio": ratio, "baseline_ratio": base},
+            features={
+                "degraded_ratio": ratio,
+                "baseline_ratio": base,
+                **(
+                    {
+                        "emitter_lat": lat + 0.12,
+                        "emitter_lon": lon - 0.08,
+                        "ellipse_major_km": 38.0,
+                        "ellipse_minor_km": 17.0,
+                        "ellipse_angle_deg": 35.0,
+                        "emitter_method": 1.0,
+                        "emitter_agreement": 0.86,
+                        "bad": 7.0,
+                        "total": 21.0,
+                    }
+                    if is_jam
+                    else {}
+                ),
+            },
             records=[RecordRef(source="adsb.lol", id=f"3c6{i}a1@{now:%H%M}")],
             entities=(
                 CLUSTER_HEX
@@ -271,6 +289,7 @@ def seed(store: Store, seed_value: int = 7) -> Store:
     _seed_notices(store, now)
     _seed_p3(store, now)
     _seed_spectrum(store, now)
+    _seed_spectrum_metrics(store, now)
     _seed_actions(store, now)
     return store
 
@@ -280,6 +299,28 @@ _P3_AOIS = {
     "south_china_sea": (12.5, 113.5),
     "taiwan_luzon": (22.5, 120.5),
 }
+
+
+def _seed_spectrum_metrics(store: Store, now: datetime) -> None:
+    """Two days of synthetic band-indicator history per AOI so the status board has baselines.
+    Demo only: Myanmar C-band is anomalous now, South China Sea HF elevated."""
+    from heimdall.detect import spectrum_state as ss
+
+    rnd = random.Random(41)
+    typical = {"l1_gnss": 2.0, "l_1090": 60.0, "vhf_marine": 40.0, "hf": 120.0,
+               "sat_downlink": 15.0, "l_1400": 3.0, "c_sar": 5.0}  # fmt: skip
+    for aoi in config.settings().aois:
+        for band, base in typical.items():
+            key = f"{aoi.name}|{band}"
+            for k in range(576, -1, -1):  # 48 h at 5 min
+                ts = now - timedelta(minutes=5 * k)
+                v = max(0.0, base * (1 + rnd.gauss(0, 0.08)))
+                if k == 0 and aoi.name == "myanmar" and band == "c_sar":
+                    v = 60.0
+                if k < 3 and aoi.name == "south_china_sea" and band == "hf":
+                    v = base * 0.62
+                store.record_metric(key, ss.METRIC, ts, round(v, 2))
+            store.record_metric(key, ss.N_METRIC, now, 25.0)
 
 
 def _seed_spectrum(store: Store, now: datetime) -> None:
@@ -372,6 +413,17 @@ def _seed_spectrum(store: Store, now: datetime) -> None:
                 },
             )
         )
+    out.append(
+        GeoEvent(
+            id="demo-swpc|kp",
+            ts=now - timedelta(hours=1),
+            source="swpc",
+            domain=Domain.SPACE,
+            kind="space_weather",
+            value=3.33,
+            attrs={"role": "confounder", "kp": 3.33, "g_scale": 0, "r_scale": 0, "s_scale": 0},
+        )
+    )
     store.insert_events(out)
 
 

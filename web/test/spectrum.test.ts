@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   BANDS,
+  cellSentence,
+  hfAlpha,
+  jammerHover,
+  parseStatus,
+  sparkPath,
+  worstState,
   bandCounts,
   bandDot,
   gnssDateLabel,
@@ -16,7 +22,7 @@ import {
 import type { LayerFeature } from "../src/p3model.ts";
 
 test("bands are frequency ordered and filter alerts", () => {
-  assert.deepEqual(BANDS.map((b) => b.band), ["hf", "vhf_marine", "l_1090", "l1_gnss", "l_1400", "c_sar"]);
+  assert.deepEqual(BANDS.map((b) => b.band), ["hf", "vhf_marine", "sat_downlink", "l_1090", "l1_gnss", "l_1400", "c_sar"]);
   assert.equal(inBand({ bands: ["l1_gnss"] }, "l1_gnss"), true);
   assert.equal(inBand({ bands: ["l1_gnss"] }, "hf"), false);
   assert.equal(inBand({}, ""), true);
@@ -29,7 +35,7 @@ test("status dot per band", () => {
   assert.equal(bandDot(hf, []), "grey");
   assert.equal(bandDot(hf, [{ key: "wspr_live", status: "ok" }]), "green");
   assert.equal(bandDot(hf, [{ key: "wspr_live", status: "ok" }, { key: "pskreporter", status: "degraded" }]), "amber");
-  assert.equal(bandDot(BANDS[4]!, [{ key: "smap_rfi", status: "needs_key" }]), "amber");
+  assert.equal(bandDot(BANDS.find((b) => b.band === "l_1400")!, [{ key: "smap_rfi", status: "needs_key" }]), "amber");
   assert.equal(bandDot(hf, [{ key: "wspr_live", status: "ok", enabled: false }]), "grey");
 });
 
@@ -69,4 +75,27 @@ test("hover text for spectrum layers uses plain words", () => {
   assert.match(spectrumHover("sar_rfi", f({ platform: "sentinel-1d", rfi_detected: true, max_power_ratio: 18.7 })), /RFI detected · interference strength ×18.7/);
   assert.match(spectrumHover("hf", f({ mode: "WSPR", band_mhz: 14, n: 32, paths: 19, snr_med: -17 })), /WSPR 14 MHz · 32 spots on 19 paths · median SNR -17 dB/);
   assert.match(spectrumHover("satnogs", f({ sat_name: "PADRE", rf_band: "UHF", status: "bad" })), /PADRE UHF · pass bad/);
+});
+
+test("status board parsing, worst state per band, plain sentences", () => {
+  const s = parseStatus({
+    generated: "2026-10-01T00:00:00Z",
+    bands: [{ band: "c_sar", label: "Sentinel-1 scenes with interference (3 d)", unit: "%", direction: "high" }],
+    areas: [
+      { aoi: "myanmar", label: "Myanmar", bands: { c_sar: { state: "anomalous", value: 60, median: 5, z: 5.5, n: 3, n_history: 500, explanations: [], spark: [5, null, 60] } } },
+      { aoi: "baltic", label: "Baltic", bands: { c_sar: { state: "bogus", value: null } } },
+    ],
+  })!;
+  assert.equal(s.areas[1]!.bands.c_sar!.state, "no_coverage"); // unknown state is never shown as normal
+  assert.equal(worstState(s, "c_sar"), "anomalous");
+  assert.equal(worstState(null, "c_sar"), "no_coverage");
+  assert.match(cellSentence(s.areas[0]!.bands.c_sar!, s.bands[0]!), /60%.*vs typical 5% · 5.5 spreads towards trouble/);
+  assert.equal(parseStatus({ nope: 1 }), null);
+});
+
+test("sparkline breaks at gaps; HF brightness and jammer hover", () => {
+  assert.match(sparkPath([1, 2, null, 4], 30, 10), /^M0\.0 .* L10\.0 .* M30\.0 /);
+  assert.equal(sparkPath([null, null]), "");
+  assert.ok(hfAlpha(-28) < hfAlpha(0) && hfAlpha(null) === 0.4 && hfAlpha(99) <= 0.95);
+  assert.match(jammerHover({ ref: "HMD-1", method: "horizon_fit", agreement: 0.86, major_km: 38 }), /HMD-1 · fit from aircraft altitudes · 86% of aircraft consistent · about 38 km/);
 });

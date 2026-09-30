@@ -35,6 +35,12 @@ export interface Filters {
   gnssDate: string;
   /** Band filter from the band ladder ("" = all bands). */
   band: string;
+  /** Only aircraft whose GPS accuracy is degraded. */
+  gpsBadOnly: boolean;
+  /** Notices layer: only official GNSS-interference notices. */
+  gnssNoticesOnly: boolean;
+  /** HF spots: one amateur band in MHz, 0 = all. */
+  hfBand: number;
 }
 
 const KEY = "hm.filters.v1";
@@ -54,6 +60,9 @@ const DEFAULTS: Filters = {
   spectrum: [...SPECTRUM_DEFAULT_ON],
   gnssDate: "last24h",
   band: "",
+  gpsBadOnly: false,
+  gnssNoticesOnly: false,
+  hfBand: 0,
 };
 
 function load(): Filters {
@@ -84,6 +93,7 @@ const altFilterOn = (): boolean => filters.altMin > 0 || filters.altMax < ALT_MA
 export function matchAir(p: AirProps): boolean {
   if (filters.milOnly && !p.mil) return false;
   if (filters.onlyAlerts && !p.in_alert) return false;
+  if (filters.gpsBadOnly && !p.gps_bad) return false;
   if (altFilterOn()) {
     const alt = p.on_ground ? 0 : p.alt_baro;
     if (alt === null || alt < filters.altMin || alt > filters.altMax) return false;
@@ -119,7 +129,7 @@ export interface PanelCtx {
   daily?: () => HTMLElement;
 }
 
-type ToggleKey = "air" | "sea" | "alerts" | "notices" | "milOnly" | "onlyAlerts";
+type ToggleKey = "air" | "sea" | "alerts" | "notices" | "milOnly" | "onlyAlerts" | "gpsBadOnly" | "gnssNoticesOnly";
 
 /** Build the filter panel once; call the returned refresh() to update source rows and counts. */
 export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
@@ -178,7 +188,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
     {
       type: "button",
       onclick: () => {
-        setFilter({ milOnly: false, altMin: 0, altMax: ALT_MAX, shipClasses: [], onlyAlerts: false, search: "" });
+        setFilter({ milOnly: false, altMin: 0, altMax: ALT_MAX, shipClasses: [], onlyAlerts: false, gpsBadOnly: false, search: "" });
         altLo.value = "0";
         altHi.value = String(ALT_MAX);
         search.value = "";
@@ -204,6 +214,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
       chk(T.ships, "sea", "ship"),
       chk(T.alertMarkers, "alerts", "alerts"),
       chk(T.noticesLayer, "notices", "notice"),
+      chk("Only official GPS-interference notices", "gnssNoticesOnly"),
       ctx.live?.() ?? null,
       h("p", { class: "note coverage-note" }, COVERAGE_NOTE),
     ),
@@ -224,6 +235,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
       search,
       chk(T.militaryOnly, "milOnly", undefined, true),
       chk(T.onlyInAlerts, "onlyAlerts", undefined, true),
+      chk("Only aircraft with GPS problems", "gpsBadOnly", undefined, true),
       h("div", { class: "alt" }, h("span", {}, T.altitudeBand), altLo, altHi, altTxt),
       h("div", {}, h("span", {}, T.shipTypes), chips),
       reset,
