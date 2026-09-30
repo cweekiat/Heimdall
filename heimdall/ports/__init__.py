@@ -28,6 +28,7 @@ from heimdall.schemas import (
     SourceHealth,
     SourceReliability,
     SourceState,
+    UserAoi,
     VesselObs,
 )
 
@@ -177,3 +178,12 @@ class SecretStore(Protocol):
     def delete(self, name: str) -> None: ...
 
     def status(self) -> builtins.list[KeyStatus]: ...
+
+
+@runtime_checkable
+class AoiStore(Protocol):
+    """Persistence for user-drawn areas of operations (task 015)."""
+
+    def load(self) -> builtins.list[UserAoi]: ...
+
+    def save(self, aois: Sequence[UserAoi]) -> None: ...

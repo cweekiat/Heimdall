@@ -19,7 +19,10 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from heimdall import config
+from heimdall.adapters.aoi_file import MemoryAoiStore
+from heimdall.aoi_ctl import AoiService
 from heimdall.api import triage
+from heimdall.api.aois import aois_router
 from heimdall.api.basemap import basemap_router
 from heimdall.api.keys import keys_router
 from heimdall.api.traffic import traffic_router
@@ -127,6 +130,7 @@ def create_app(
     basemap: str | None = None,
     sources: SourceControl | None = None,
     secrets: SecretStore | None = None,
+    aoi_service: AoiService | None = None,
 ) -> FastAPI:
     st: Store = store
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
@@ -403,6 +407,9 @@ def create_app(
                     "role": aoi.role,
                     "lat": aoi.lat,
                     "lon": aoi.lon,
+                    "radius_nm": aoi.radius_nm,
+                    "origin": aoi.origin,
+                    "polygon": aoi.polygon,
                     "open_total": len(open_al),
                     "open_by_kind": dict(Counter(a.kind.value for a in open_al)),
                     "max_severity": max(
@@ -472,6 +479,17 @@ def create_app(
 
     app.include_router(traffic_router(st))
     app.include_router(keys_router(secrets, sources))
+    app.include_router(
+        aois_router(
+            aoi_service
+            or AoiService(
+                MemoryAoiStore(),  # demo/tests: user areas live for this process only
+                config.settings(),
+                sources,
+                config.sources().get("sources", {}),
+            )
+        )
+    )
     app.include_router(basemap_router())
 
     @app.get("/api/ui-config")

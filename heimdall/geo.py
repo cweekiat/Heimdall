@@ -100,6 +100,19 @@ def within_radius_nm(lat: float, lon: float, clat: float, clon: float, radius_nm
     return haversine_km(lat, lon, clat, clon) <= radius_nm * KM_PER_NM
 
 
+def point_in_polygon(lat: float, lon: float, ring: Sequence[tuple[float, float]]) -> bool:
+    """Ray-casting test on (lat, lon) vertices; planar, fine for areas of a few degrees."""
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        yi, xi = ring[i]
+        yj, xj = ring[j]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
 def bbox_for_radius(
     lat: float, lon: float, radius_nm: float
 ) -> list[tuple[float, float, float, float]]:

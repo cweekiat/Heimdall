@@ -1,15 +1,15 @@
 # Source registry. `verified` is set by source-scout after a live check (see docs/sources.md).
 # reliability = Admiralty A–F. Secrets referenced by env var name only.
 sources:
-  adsb_lol:        {domain: air,    reliability: B, latency_s: 5,     base: "https://api.adsb.lol",             auth: none,            rps: 1,   phase: 1, verified: true}
-  adsb_fi:         {domain: air,    reliability: B, latency_s: 5,     base: "https://opendata.adsb.fi/api",     auth: none,            rps: 1,   phase: 1, verified: true}
-  airplanes_live:  {domain: air,    reliability: B, latency_s: 5,     base: "https://api.airplanes.live",       auth: none,            rps: 1,   phase: 1, verified: false, enabled: false}  # task 005: access now by approval (contact@airplanes.live)
+  adsb_lol:        {uses_aois: true, domain: air,    reliability: B, latency_s: 5,     base: "https://api.adsb.lol",             auth: none,            rps: 1,   phase: 1, verified: true}
+  adsb_fi:         {uses_aois: true, domain: air,    reliability: B, latency_s: 5,     base: "https://opendata.adsb.fi/api",     auth: none,            rps: 1,   phase: 1, verified: true}
+  airplanes_live:  {uses_aois: true, domain: air,    reliability: B, latency_s: 5,     base: "https://api.airplanes.live",       auth: none,            rps: 1,   phase: 1, verified: false, enabled: false}  # task 005: access now by approval (contact@airplanes.live)
   adsb_lol_history: {domain: air,    reliability: B, latency_s: 86400, base: "https://github.com/adsblol",       auth: none,                      phase: 1, verified: true}
   opensky:         {domain: air,    reliability: B, latency_s: 10,    base: "https://opensky-network.org/api",  auth: OPENSKY_CLIENT_ID, phase: 1, verified: false}
   gpsjam:          {domain: air,    reliability: B, latency_s: 86400, base: "https://gpsjam.org",               auth: none,                      phase: 1, verified: true}
   faa_nms_notam:   {domain: air,    reliability: A, latency_s: 300,   base: "https://nms.aim.faa.gov",          auth: FAA_NMS_KEY, auth_secret: FAA_NMS_SECRET, impl: "heimdall.ingest.faa_nms:build", poll_s: 300, phase: 2, verified: false}
-  aisstream:       {domain: sea,    reliability: B, latency_s: 5,     base: "wss://stream.aisstream.io/v0/stream", auth: AISSTREAM_KEY, impl: "heimdall.ingest.ais:build", poll_s: 0, message_types: [PositionReport, StandardClassBPositionReport, ExtendedClassBPositionReport, ShipStaticData, StaticDataReport], min_interval_s: 10, phase: 2, verified: false}
-  gfw:             {domain: sea,    reliability: B, latency_s: 86400, base: "https://gateway.api.globalfishingwatch.org/v3", auth: GFW_TOKEN, impl: "heimdall.ingest.gfw:build", poll_s: 21600, datasets: [gaps, loitering, encounters], lookback_days: 3, sar: false, phase: 2, verified: false}
+  aisstream:       {uses_aois: true, domain: sea,    reliability: B, latency_s: 5,     base: "wss://stream.aisstream.io/v0/stream", auth: AISSTREAM_KEY, impl: "heimdall.ingest.ais:build", poll_s: 0, message_types: [PositionReport, StandardClassBPositionReport, ExtendedClassBPositionReport, ShipStaticData, StaticDataReport], min_interval_s: 10, phase: 2, verified: false}
+  gfw:             {uses_aois: true, domain: sea,    reliability: B, latency_s: 86400, base: "https://gateway.api.globalfishingwatch.org/v3", auth: GFW_TOKEN, impl: "heimdall.ingest.gfw:build", poll_s: 21600, datasets: [gaps, loitering, encounters], lookback_days: 3, sar: false, phase: 2, verified: false}
   nga_msi:         {domain: sea,    reliability: A, latency_s: 3600,  base: "https://msi.nga.mil/api",          auth: none, impl: "heimdall.ingest.nga_msi:build", poll_s: 3600, phase: 2, verified: false}
   china_msa:       {domain: sea,    reliability: B, latency_s: 3600,  base: "https://www.msa.gov.cn",           auth: none, impl: "heimdall.ingest.china_msa:build", poll_s: 3600, phase: 2, verified: false, enabled: false}  # task 005/009: geo-blocked (403) outside China; parser ships tested
   firms:           {domain: space,  reliability: A, latency_s: 10800, base: "https://firms.modaps.eosdis.nasa.gov/api", auth: FIRMS_MAP_KEY,  phase: 3, verified: false}
