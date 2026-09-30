@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import pyarrow as pa
 from pydantic import BaseModel
 
 from heimdall.adapters.alert_ref import format_ref, parse_ref, ref_day
@@ -58,6 +59,15 @@ def _sql_type(annotation: Any) -> str:
     return "VARCHAR"
 
 
+_ARROW = {
+    "TIMESTAMP": pa.timestamp("us"),
+    "VARCHAR": pa.string(),
+    "BOOLEAN": pa.bool_(),
+    "DOUBLE": pa.float64(),
+    "BIGINT": pa.int64(),
+}
+
+
 class _Table:
     """Column layout derived from a pydantic model, so schema and insert never drift."""
 
@@ -85,6 +95,15 @@ class _Table:
                 v = json.dumps(v, default=str)
             out.append(v)
         return out
+
+    def to_arrow(self, rows: Sequence[BaseModel]) -> pa.Table:
+        """Columnar batch for bulk insert (one Arrow table instead of N parameter rows)."""
+        cols: dict[str, list[Any]] = {c: [] for c in self.cols}
+        for m in rows:
+            for c, v in zip(self.cols, self.to_row(m), strict=True):
+                cols[c].append(v)
+        schema = pa.schema([(c, _ARROW[self.types[c]]) for c in self.cols])
+        return pa.table(cols, schema=schema)
 
     def from_row(self, row: Sequence[Any]) -> Any:
         d: dict[str, Any] = {}
@@ -154,12 +173,34 @@ class DuckDBStore:
         with self._lock:
             return self._con.execute(sql, list(params)).fetchall()
 
+    def _read(self, sql: str, params: Sequence[Any] = ()) -> list[tuple[Any, ...]]:
+        """Read on a private cursor so API reads never wait for the writer lock (026a)."""
+        cur = self._con.cursor()
+        try:
+            return cur.execute(sql, list(params)).fetchall()
+        finally:
+            cur.close()
+
     def _insert(self, t: _Table, rows: Sequence[BaseModel]) -> int:
         if not rows:
             return 0
-        with self._lock:
-            self._con.executemany(t.insert_sql(), [t.to_row(r) for r in rows])
+        self._bulk(t, rows)
         return len(rows)
+
+    def _bulk(self, t: _Table, rows: Sequence[BaseModel]) -> None:
+        """INSERT ... SELECT from a registered Arrow table (026a: ~50x faster than executemany).
+
+        Called with the write lock held or not: the Arrow build happens outside the lock.
+        """
+        tbl = t.to_arrow(rows)
+        with self._lock:
+            name = f"_batch_{t.name}"
+            self._con.register(name, tbl)
+            try:
+                cols = ", ".join(t.cols)
+                self._con.execute(f"INSERT INTO {t.name} ({cols}) SELECT {cols} FROM {name}")
+            finally:
+                self._con.unregister(name)
 
     def _window(
         self,
@@ -172,7 +213,7 @@ class DuckDBStore:
         sql = (
             f"SELECT {', '.join(t.cols)} FROM {t.name} WHERE ts >= ? AND ts < ? {extra} ORDER BY ts"
         )
-        rows = self._exec(sql, [_to_db(start), _to_db(end), *extra_params])
+        rows = self._read(sql, [_to_db(start), _to_db(end), *extra_params])
         return [t.from_row(r) for r in rows]
 
     def _filters(
@@ -226,13 +267,41 @@ class DuckDBStore:
                 n += len(r)
         return n
 
+    def purge_hot(self, obs_before: datetime, events_before: datetime | None = None) -> int:
+        """Retention (026a): drop aircraft/vessel rows older than `obs_before` and events older
+        than `events_before`. The lake keeps everything; this only bounds the hot store."""
+        n = 0
+        with self._lock:
+            for t, cut in (
+                ("aircraft", obs_before),
+                ("vessels", obs_before),
+                ("events", events_before),
+            ):
+                if cut is None:
+                    continue
+                r = self._con.execute(
+                    f"DELETE FROM {t} WHERE ts < ? RETURNING 1", [_to_db(cut)]
+                ).fetchall()
+                n += len(r)
+        return n
+
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
         if not rows:
             return 0
         latest = {r.id: r for r in rows}  # last write wins, also within the batch
-        with self._lock:  # delete-by-id + insert atomically (ADR-004)
-            self._con.executemany("DELETE FROM events WHERE id = ?", [[i] for i in latest])
-            self._con.executemany(_EVT.insert_sql(), [_EVT.to_row(r) for r in latest.values()])
+        tbl = _EVT.to_arrow(list(latest.values()))
+        with self._lock:  # delete-by-id + insert atomically (ADR-004); readers see either state
+            self._con.execute("BEGIN")
+            try:
+                self._con.executemany("DELETE FROM events WHERE id = ?", [[i] for i in latest])
+                self._con.register("_batch_events", tbl)
+                cols = ", ".join(_EVT.cols)
+                self._con.execute(f"INSERT INTO events ({cols}) SELECT {cols} FROM _batch_events")
+                self._con.unregister("_batch_events")
+                self._con.execute("COMMIT")
+            except Exception:
+                self._con.execute("ROLLBACK")
+                raise
         return len(latest)
 
     def aircraft_window(

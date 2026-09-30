@@ -252,7 +252,13 @@ class Writer:
             self.flush()
 
 
-async def janitor_loop(lake: Lake, store: Store, retention_days: int) -> None:
+async def janitor_loop(
+    lake: Lake,
+    store: Store,
+    retention_days: int,
+    hot_h: float | None = None,
+    hot_events_h: float | None = None,
+) -> None:
     """024g: drop display-only global data older than `retention_days`; AOI data is untouched."""
     while True:
         try:
@@ -263,6 +269,13 @@ async def janitor_loop(lake: Lake, store: Store, retention_days: int) -> None:
             n_rows = await asyncio.to_thread(fn, cutoff) if fn else 0
             if n_files or n_rows:
                 log.info("janitor_global", lake_dirs=n_files, store_rows=n_rows)
+            hot = getattr(store, "purge_hot", None)
+            if hot is not None and hot_h is not None:  # 026a: bound the hot store
+                now = datetime.now(UTC)
+                ev = now - timedelta(hours=hot_events_h) if hot_events_h else None
+                n_hot = await asyncio.to_thread(hot, now - timedelta(hours=hot_h), ev)
+                if n_hot:
+                    log.info("janitor_hot", store_rows=n_hot)
         except Exception as e:  # housekeeping must never take the runtime down
             log.warning("janitor_failed", error=f"{type(e).__name__}: {e}")
         await asyncio.sleep(JANITOR_S)
@@ -379,7 +392,15 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     tasks = [
         asyncio.create_task(writer.consume()),
         asyncio.create_task(writer.flush_loop()),
-        asyncio.create_task(janitor_loop(lake, store, cfg.storage.global_retention_days)),
+        asyncio.create_task(
+            janitor_loop(
+                lake,
+                store,
+                cfg.storage.global_retention_days,
+                cfg.storage.hot_retention_h,
+                cfg.storage.hot_retention_events_h,
+            )
+        ),
         asyncio.create_task(health_loop(lambda: manager.connectors, store)),
         asyncio.create_task(tick_loop(store, cfg, step_min)),
     ]

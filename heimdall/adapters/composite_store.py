@@ -53,6 +53,10 @@ class CompositeStore:
         fn = getattr(self.read, "purge_global", None)
         return int(fn(before)) if fn else 0
 
+    def purge_hot(self, obs_before: datetime, events_before: datetime | None = None) -> int:
+        fn = getattr(self.read, "purge_hot", None)
+        return int(fn(obs_before, events_before)) if fn else 0
+
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
         return self.read.insert_events(rows)
 
