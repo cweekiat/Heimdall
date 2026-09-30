@@ -35,7 +35,7 @@ Optional API keys are needed from Phase 2 onward:
 cp env.example .env           # then fill in only the keys you have; never commit .env
 ```
 
-Phase 1 needs **no keys**: adsb.lol, adsb.fi and airplanes.live are free and keyless.
+Phase 1 needs **no keys**: adsb.lol and adsb.fi are free and keyless. airplanes.live now grants access by approval only, so it is off (`enabled: false` in `config/sources.yaml`) until you have it.
 
 ## 2. Run
 

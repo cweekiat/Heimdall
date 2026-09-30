@@ -26,6 +26,8 @@ def build_connectors(
         if key not in cfg or (enabled is not None and key not in enabled):
             continue
         c = cfg[key]
+        if c.get("enabled", True) is False:  # e.g. provider requires approval we don't have yet
+            continue
         rps = float(c.get("rps", 1))
         if rps <= 0:
             raise ValueError(f"sources.{key}.rps must be > 0, got {rps}")

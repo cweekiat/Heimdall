@@ -53,6 +53,16 @@ def test_rps_must_be_positive() -> None:
         build_connectors(Settings(), src)
 
 
+def test_disabled_source_is_skipped() -> None:
+    src = {
+        "sources": {
+            "adsb_lol": {"base": "https://api.adsb.lol", "rps": 1},
+            "airplanes_live": {"base": "https://api.airplanes.live", "rps": 1, "enabled": False},
+        }
+    }
+    assert [c.name for c in build_connectors(Settings(), src)] == ["adsb_lol"]
+
+
 def test_sliding_counter_expires() -> None:
     t = [0.0]
     c = SlidingCounter(3600, clock=lambda: t[0])

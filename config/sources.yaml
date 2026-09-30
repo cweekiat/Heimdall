@@ -3,7 +3,7 @@
 sources:
   adsb_lol:        {domain: air,    reliability: B, latency_s: 5,     base: "https://api.adsb.lol",             auth: none,            rps: 1,   phase: 1, verified: true}
   adsb_fi:         {domain: air,    reliability: B, latency_s: 5,     base: "https://opendata.adsb.fi/api",     auth: none,            rps: 1,   phase: 1, verified: true}
-  airplanes_live:  {domain: air,    reliability: B, latency_s: 5,     base: "https://api.airplanes.live",       auth: none,            rps: 1,   phase: 1, verified: false}
+  airplanes_live:  {domain: air,    reliability: B, latency_s: 5,     base: "https://api.airplanes.live",       auth: none,            rps: 1,   phase: 1, verified: false, enabled: false}  # task 005: access now by approval (contact@airplanes.live)
   adsb_lol_history:{domain: air,    reliability: B, latency_s: 86400, base: "https://github.com/adsblol",       auth: none,                      phase: 1, verified: true}
   opensky:         {domain: air,    reliability: B, latency_s: 10,    base: "https://opensky-network.org/api",  auth: OPENSKY_CLIENT_ID, phase: 1, verified: false}
   gpsjam:          {domain: air,    reliability: B, latency_s: 86400, base: "https://gpsjam.org",               auth: none,                      phase: 1, verified: true}
