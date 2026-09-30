@@ -1,0 +1,6 @@
+{"type":"FeatureCollection","truncated":false,"layer":"thermal","aoi":"myanmar","hours":24,"features":[
+{"type":"Feature","id":"firms|N20|2026-09-30T02:10|20.9000|96.1000","geometry":{"type":"Point","coordinates":[96.1,20.9]},"properties":{"kind":"thermal","source":"firms","ts":"2026-09-30T02:10:00+00:00","valid_from":null,"valid_to":null,"value":42.5,"satellite":"N20","instrument":"VIIRS","confidence":"high","daynight":"N"}},
+{"type":"Feature","id":"firms|N21|2026-09-30T02:12|20.7000|96.3000","geometry":{"type":"Point","coordinates":[96.3,20.7]},"properties":{"kind":"thermal","source":"firms","ts":"2026-09-30T02:12:00+00:00","valid_from":null,"valid_to":null,"value":3.1,"satellite":"N21","instrument":"VIIRS","confidence":"low","daynight":"N"}},
+{"type":"Feature","id":"bad","geometry":null,"properties":{"kind":"thermal","source":"firms","ts":"2026-09-30T02:12:00+00:00","valid_from":null,"valid_to":null,"value":null}},
+{"nonsense":true}
+]}

@@ -25,6 +25,7 @@ import { Sources } from "./sources";
 import { Areas } from "./areas";
 import { Traffic } from "./traffic";
 import { Notices } from "./notices";
+import { P3Layers } from "./p3layers";
 import { filters, mountFilters, onFilters } from "./filters";
 import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, hasSavedGeometry, isOpen, openWindow, placeWindow, toggleWindow, winRect } from "./wm";
 
@@ -368,9 +369,12 @@ async function boot(): Promise<void> {
     wireMapExtras(ops);
     const traffic = new Traffic(ops, $("mapwrap"));
     const notices = new Notices(ops);
-    ops.extraLayers = (tool, zoom) => [...notices.layers(tool), ...traffic.layers(tool, zoom)];
+    const p3 = new P3Layers(ops, $("mapwrap"));
+    p3.aois = () => state.aois.map((a) => a.name);
+    p3.hasOutageAlert = (aoi) => state.alerts.some((a) => a.kind === "outage" && a.aoi === aoi && ["new", "acknowledged", "under_review"].includes(a.status));
+    ops.extraLayers = (tool, zoom) => [...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom)];
     const filterBox = h("div", { class: "filters" });
-    const refreshFilters = mountFilters(filterBox, { counts: traffic.getCounts, sources: () => sourcesWin.list });
+    const refreshFilters = mountFilters(filterBox, { counts: traffic.getCounts, sources: () => sourcesWin.list, extra: () => p3.chipList() });
     traffic.onCounts = refreshFilters;
     sourcesWin.onChange = () => {
       traffic.setSources(sourcesWin.list);
@@ -395,6 +399,7 @@ async function boot(): Promise<void> {
     void sourcesWin.refresh().then(() => {
       traffic.start();
       void notices.refresh();
+      p3.start();
     });
     setInterval(() => void notices.refresh(), 300_000);
     setInterval(() => void sourcesWin.refresh(), 60_000);

@@ -1233,3 +1233,10 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
 .md-table { overflow-x: auto; margin: 0 0 10px; }
 .md table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
 .md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+
+/* P3 satellite layers (023b) */
+.p3-notice { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 4; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font-size: 12px; max-width: 80%; }
+.p3-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.p3-chip { font-size: 11px; padding: 2px 6px; }
+.ctx h3 { margin: 10px 0 4px; }
+.ctx .ctx-link { font-family: inherit; cursor: pointer; }

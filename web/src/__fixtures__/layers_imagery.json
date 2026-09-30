@@ -1,0 +1,4 @@
+{"type":"FeatureCollection","truncated":true,"layer":"imagery","aoi":"myanmar","hours":24,"features":[
+{"type":"Feature","id":"stac|s1","geometry":{"type":"Polygon","coordinates":[[[95,20],[97,20],[97,22],[95,22],[95,20]]]},"properties":{"kind":"imagery_footprint","source":"stac","ts":"2026-09-30T00:00:00+00:00","valid_from":"2026-09-30T00:00:00+00:00","valid_to":null,"value":null,"platform":"sentinel-1a","collection":"sentinel-1-grd","cloud_cover":null,"url":"https://stac.example.invalid/items/s1"}},
+{"type":"Feature","id":"stac|s2","geometry":{"type":"Polygon","coordinates":[[[96,19],[98,19],[98,21],[96,21],[96,19]]]},"properties":{"kind":"imagery_footprint","source":"stac","ts":"2026-09-29T04:00:00+00:00","valid_from":"2026-09-29T04:00:00+00:00","valid_to":null,"value":38,"platform":"sentinel-2b","collection":"sentinel-2-l2a","cloud_cover":38,"url":"https://stac.example.invalid/items/s2"}}
+]}
