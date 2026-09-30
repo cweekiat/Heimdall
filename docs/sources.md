@@ -751,29 +751,24 @@ Unauthenticated GETs from this machine:
 
 ---
 
-## Planned sources (ADR-008), unverified
-Filled in by source-scout (tasks 032 and 035) before any connector is built. Each needs the user's approval of its host.
+## Spectrum sources (ADR-008), checked live 2026-10-01
+All connectors emit GeoEvents with `domain: spectrum`. HF spots are mapped at the great-circle midpoint of each path
+(the ionospheric reflection region), aggregated per 10-min bin, amateur band and 2° cell inside the Indo-Pacific box
+`[60, -20, 160, 50]`. Tests: `tests/unit/test_spectrum_connectors.py` (fixtures recorded from these calls).
 
-### cygnss (P5)
-NASA CYGNSS GNSS-reflectometry constellation. L1 data includes the receiver noise floor; a rise indicates L1
-interference seen from orbit (±38° latitude, covers SE Asia). Access: NASA PO.DAAC with the Earthdata token. Latency
-about a day. To verify: mission still delivering, product and field names, file sizes.
+| Source key | Endpoint | Auth | Live result (2026-10-01) | Event kind |
+|---|---|---|---|---|
+| wspr_live | `https://db1.wspr.live/?query=<SQL>` (ClickHouse, `wspr.rx`) | none | ~333k spots/h global, data minutes old; server-side aggregation → ~1.9k rows/h in box, 0.09 s; one poll = 403 events | `hf_spots` |
+| pskreporter | `https://retrieve.pskreporter.info/query?flowStartSeconds=-900&rronly=1&noactive=1&lastseqno=N` (XML) | none | ~1.5k reports per query globally, 23 bins in box; ≤ 1 query / 5 min (provider rule). MQTT feed (`mqtt.pskreporter.info` 1883–1886) unreachable through the egress proxy | `hf_spots` |
+| satnogs | `https://network.satnogs.org/api/observations/?start=&end=` (cursor `Link: rel=next`), `/api/stations/` daily | none | ~240 observations/h global (10 pages); 50 active stations in box; one poll (3 h) = 110 in-region passes | `sat_observation` |
+| sentinel1_rfi | Planetary Computer STAC `collections/sentinel-1-grd/items` + free SAS token `api/sas/v1/token/sentinel-1-grd`; asset `schema-product-<pol>` = `annotation/rfi/rfi-*.xml` (~12 KB) | none | 16 scenes / 3 days over the AOIs; one with RFI detected over northern Myanmar (29 Sep, 30 % noise reports flagged, burst power ratio 18.7) | `sar_rfi` |
+| smap_rfi | CMR `search/granules.json?short_name=SPL1BTB_NRT&bounding_box=` → NSIDC Earthdata Cloud `.h5` (~40 MB) | EARTHDATA_TOKEN | CMR search OK: 8 granules in 12 h, NRT ~3 h. Download **not verified**: token not set. Field names/RFI bit per L1B spec; check with `scripts/smap_inspect.py` | `l_band_rfi` |
+| smos | ESA SMOS dissemination | ESA EO account | **Blocked**: CMR collection `SMOS_Open_V7` lists no files; data only behind ESA login. Registered disabled, no connector | – |
 
-### smap_rfi (P5)
-NASA SMAP L-band (1.41 GHz) radiometer brightness-temperature products with RFI flags → a map of L-band emitters and
-its changes. Access: NSIDC DAAC with the Earthdata token. To verify: which level (L1B/L1C) carries usable RFI flags,
-NRT latency, file sizes.
-
-### wspr_live (P6)
-Public ClickHouse database of WSPR spots (`https://db1.wspr.live/`, SQL over HTTP GET, no key): time, tx/rx callsign
-and grid, frequency, SNR, drift. To verify: rate/usage policy, latency, query limits.
-
-### pskreporter_mqtt (P6)
-Live PSK Reporter spots over MQTT (`mqtt.pskreporter.info`), instead of the REST query API (one query per ~5 min).
-To verify: topic layout, message rate, usage terms.
-
-### kiwisdr_dir (P6)
-KiwiSDR public receiver directory (`rx.kiwisdr.com`). Directory only: per-receiver location and published SNR
-figures as a global HF noise-floor sample. **No connections to individual receivers** (volunteer slots). To verify:
-fields, update frequency, terms.
-
+Gotchas
+- WSPR: keep aggregation server-side; raw spots are ~300k/h. Very long paths (>12,000 km) are excluded because their
+  midpoint is ambiguous.
+- PSK Reporter: callsigns are never stored; only counts and locator-derived positions. XML with DOCTYPE/ENTITY is rejected.
+- SatNOGS: status `unknown` becomes good/bad/failed after vetting; re-polling a 3 h window upserts the new status.
+- Sentinel-1: only the RFI XML assets on `*.blob.core.windows.net` are fetched (no imagery; user decision 2026-09-30).
+- SMAP: rasters are reduced to per-H3-r4 counts and deleted (ADR-007 s2); the token goes only in the Authorization header.
