@@ -109,7 +109,9 @@ class NoticeConnector:
         try:
             events = await self._fetch()
         except SourceMaintenance:
-            self.client.breaker.failure()  # count towards the circuit breaker
+            # a 200 with a wrong body resets the client's breaker; keep our own consecutive count
+            self.client.breaker.failures = self._consec_fail
+            self.client.breaker.failure()
             self._record_error("SourceMaintenance", "down", "source maintenance")
             return []
         except Unauthorized:

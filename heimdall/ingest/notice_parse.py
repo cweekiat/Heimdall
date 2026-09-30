@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Pure parsing helpers for navigational warnings and NOTAMs (no I/O).
 
 All input text is UNTRUSTED data. It is parsed with bounded regexes only; it is never evaluated,
@@ -305,7 +306,8 @@ def centroid(geometry: Mapping[str, Any] | None) -> tuple[float, float] | None:
     """(lat, lon) mean of the outer vertices (fine for the small areas notices describe)."""
     if not geometry:
         return None
-    t, c = geometry.get("type"), geometry.get("coordinates")
+    t = geometry.get("type")
+    c: Any = geometry.get("coordinates")
     try:
         if t == "Point":
             return float(c[1]), float(c[0])
@@ -324,7 +326,8 @@ def centroid(geometry: Mapping[str, Any] | None) -> tuple[float, float] | None:
 
 
 def _rings(geometry: Mapping[str, Any]) -> list[list[list[float]]]:
-    t, c = geometry.get("type"), geometry.get("coordinates")
+    t = geometry.get("type")
+    c: Any = geometry.get("coordinates")
     if t == "Polygon":
         return [c[0]]
     if t == "MultiPolygon":
@@ -338,7 +341,8 @@ def covering_cells(
     """H3 cells covering the geometry; None if it would exceed `cap` (-> parse_status too_large)."""
     if not geometry:
         return []
-    t, c = geometry.get("type"), geometry.get("coordinates")
+    t = geometry.get("type")
+    c: Any = geometry.get("coordinates")
     cells: set[str] = set()
     try:
         if t == "Point":

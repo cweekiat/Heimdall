@@ -1,7 +1,7 @@
 """China MSA navigation warnings (航行警告): listing page -> detail pages -> area GeoEvents.
 
 The site geo-blocks non-China IPs (HTTP 403 -> status=down, detail "geo-blocked"); ship disabled in
-config/sources.yaml. No translation: attrs.lang="zh". Only same-host links taken from the listing page
+config/sources.yaml. No translation: attrs.lang="zh". Only same-host links from the listing page
 are fetched; URLs inside notice text are never followed.
 """
 

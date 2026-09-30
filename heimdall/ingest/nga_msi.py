@@ -110,7 +110,7 @@ class NgaMsiConnector(NoticeConnector):
             rules=self.rules,
             validity=validity,
             status="cancelled" if cancelled else "active",
-            attrs={"nav_area": make_ref(area), "authority": make_ref(row.get("authority"))},
+            attrs={"nav_area": make_ref(area)},
         )
 
 

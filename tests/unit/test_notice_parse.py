@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 from __future__ import annotations
 
 import time
@@ -68,7 +69,7 @@ def test_out_of_range_rejected(text: str) -> None:
 
 
 def test_polygon_closed_and_ccw() -> None:
-    text = "AREA BOUNDED BY 18-10N 109-30E, 17-20N 109-30E, 17-20N 110-30E, 18-10N 110-30E"  # given clockwise
+    text = "AREA BOUNDED BY 18-10N 109-30E, 17-20N 109-30E, 17-20N 110-30E, 18-10N 110-30E"
     geom, status = parse_shape(text)
     assert status == "ok" and geom and geom["type"] == "Polygon"
     ring = geom["coordinates"][0]
