@@ -169,6 +169,7 @@ class P3Windows:
     thermal: Sequence[GeoEvent] = ()  # detector window + baseline history in one list
     outage: Sequence[GeoEvent] = ()
     night: Sequence[GeoEvent] = ()
+    context: Sequence[GeoEvent] = ()  # confounders/observability for fusion (ADR-007, task 022b)
 
 
 def events_window(
@@ -196,6 +197,12 @@ def _p3_windows(
             store, ["outage_signal", "outage_annotation"], timedelta(hours=o_h), now
         ),
         night=events_window(store, ["night_lights"], timedelta(days=n_days), now),
+        # weather/Kp for confounders; footprints and overpasses (+/- horizon) for observability
+        context=store.events_window(
+            now - timedelta(days=2),
+            now + timedelta(hours=48),
+            ["weather", "space_weather", "imagery_footprint", "overpass"],
+        ),
     )
 
 
@@ -424,6 +431,7 @@ def run_aoi(
         aoi=aoi.name,
         control=aoi.role == "control",
         notices=events,
+        context_events=p3.context if p3 is not None else None,
     )
     for e in evs:
         store.upsert_evidence(e)
