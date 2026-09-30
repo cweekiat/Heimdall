@@ -113,6 +113,8 @@ def test_composite_overlay_notes_and_shelve_expiry(tmp_path: Path) -> None:
     # a pipeline upsert must not cancel the shelve
     a4 = main.get_alert("alert-4")
     assert a4 is not None
+    main.upsert_alert(a4.model_copy(update={"status": S.NEW}))  # pipeline write path
+    assert c.get("/api/alerts/alert-4").json()["alert"]["status"] == "shelved"
     assert comp._shelved_until.get("alert-4") is not None
     later = datetime.now(UTC) + timedelta(hours=2)
     comp._now = lambda: later
@@ -167,3 +169,27 @@ def test_aoi_summary(client: TestClient) -> None:
     client.post("/api/alerts/alert-2/status", json={"status": "dismissed", "reason": "x"})
     rows = {r["name"]: r for r in client.get("/api/aois/summary").json()}
     assert rows["south_china_sea"]["open_by_kind"] == {"mil_orbit": 1}
+
+
+def test_no_override_is_cached_and_invalidated_by_feedback() -> None:
+    from datetime import UTC, datetime
+
+    from heimdall.adapters.composite_store import CompositeStore
+    from heimdall.adapters.memory_store import MemoryStore
+    from heimdall.schemas import Feedback
+
+    main, analyst = MemoryStore(), MemoryStore()
+    comp = CompositeStore(main, analyst)
+    calls = {"n": 0}
+    orig = analyst.notes_for
+
+    def counting(alert_id: str):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        return orig(alert_id)
+
+    analyst.notes_for = counting  # type: ignore[method-assign]
+    assert comp._override("a1") is None
+    assert comp._override("a1") is None
+    assert calls["n"] == 1  # second read served from the no-override cache
+    comp.add_feedback(Feedback(alert_id="a1", verdict="dismiss", ts=datetime.now(UTC)))
+    assert comp._override("a1") is not None

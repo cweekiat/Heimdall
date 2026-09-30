@@ -41,6 +41,7 @@ class CompositeStore:
         self.analyst = analyst
         self._now: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
         self._overrides: dict[str, AlertStatus] = {}
+        self._no_override: set[str] = set()  # cached "no notes/feedback" to avoid N+1 lookups
         self._shelved_until: dict[str, datetime] = {}
 
     # ---- pure reads / pipeline-owned data: main store
@@ -94,6 +95,8 @@ class CompositeStore:
     # ---- alerts: pipeline alert + analyst status override
     def _override(self, alert_id: str) -> AlertStatus | None:
         """Latest analyst status for the alert; an expired shelve returns to acknowledged."""
+        if alert_id in self._no_override:
+            return None
         if alert_id not in self._overrides:
             latest = [n for n in self.analyst.notes_for(alert_id) if n.status_to is not None]
             if latest:
@@ -104,6 +107,7 @@ class CompositeStore:
             else:
                 fbs = self.analyst.feedback_for(alert_id)
                 if not fbs:
+                    self._no_override.add(alert_id)
                     return None
                 verdict = max(fbs, key=lambda f: f.ts).verdict
                 self._overrides[alert_id] = (
@@ -154,10 +158,14 @@ class CompositeStore:
     # ---- analyst loop: analyst store
     def add_feedback(self, fb: Feedback) -> None:
         self.analyst.add_feedback(fb)
+        # invalidate so the next read re-derives (notes still take precedence over feedback)
+        self._no_override.discard(fb.alert_id)
+        self._overrides.pop(fb.alert_id, None)
 
     def add_note(self, note: AnalystNote) -> None:
         self.analyst.add_note(note)
         if note.status_to is not None:
+            self._no_override.discard(note.alert_id)
             self._overrides[note.alert_id] = note.status_to
             if note.shelve_until:
                 self._shelved_until[note.alert_id] = note.shelve_until
