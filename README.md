@@ -134,6 +134,8 @@ appear live for the area you are looking at; click one for its card, or use Laye
 only, an altitude band, ship types, or just things involved in alerts. **Data sources** shows what is
 collecting and lets you switch a source on or off. Warnings and NOTAMs appear as hatched areas.
 
+New here? The console offers a guided tour on first visit (relaunch it from the `?` icon), and [docs/walkthrough.md](docs/walkthrough.md) walks the same monitor, triage, verify, decide, log workflow in prose.
+
 The full API and UI reference is in [docs/ui.md](docs/ui.md).
 
 ## 4. Configure

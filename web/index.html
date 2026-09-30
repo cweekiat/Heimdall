@@ -7,9 +7,9 @@
   </head>
   <body>
     <main id="mapwrap" aria-label="Operational map">
-      <div id="map"></div>
+      <div id="map" data-tour="map"></div>
       <div id="mapctl" aria-label="Map controls"></div>
-      <div id="legend"></div>
+      <div id="legend" data-tour="legend"></div>
       <div id="readout" aria-live="off"></div>
     </main>
     <header id="statusbar" aria-label="Status strip">
@@ -21,7 +21,7 @@
       <span id="sb-fresh" aria-label="Data source health"></span>
       <span id="sb-tools"></span>
     </header>
-    <nav id="toolbar" aria-label="Windows"></nav>
+    <nav id="toolbar" data-tour="toolbar" aria-label="Windows"></nav>
     <div id="toast" hidden role="alert"></div>
     <div id="hidden-hosts" hidden>
       <div id="board" aria-label="Areas"></div>

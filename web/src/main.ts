@@ -14,6 +14,7 @@ import { setMode } from "./theme/palette";
 import { alertTitle, aoiName, CORROBORATION_LABEL, setAois, sourceLabel, T, truthLabel } from "./labels";
 import type { OpsMap } from "./map";
 import { showHelp, showShift } from "./overlays";
+import { maybeAutoStartTour } from "./tour/overlay";
 import { PRIORITY, renderQueue, visibleAlerts } from "./panels";
 import { patch, refreshAll, refreshHealth, selectAlert, state, subscribe, triage, upsertAlert } from "./store";
 import { renderTimeline } from "./timeline";
@@ -329,6 +330,7 @@ async function boot(): Promise<void> {
     const aois = await api.aois();
     setAois(aois);
     patch({ aois });
+    setTimeout(maybeAutoStartTour, 600);
     const [{ OpsMap: OpsMapCls, legend }, ui] = await Promise.all([import("./map"), api.uiConfig()]);
     ops = new OpsMapCls($("map"), theme === "light" ? "light" : "dark", ui.basemap, ui.overlays, (id) => void selectAlert(id, false));
     $("legend").replaceChildren(legend());

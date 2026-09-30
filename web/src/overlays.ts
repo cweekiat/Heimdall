@@ -2,10 +2,11 @@
 import type { Alert } from "./api";
 import { fmtTime, h } from "./dom";
 import type { IconName } from "./icons";
-import { createWindow, EDGE_LEFT, EDGE_TOP, getBody, openWindow } from "./wm";
+import { createWindow, EDGE_LEFT, EDGE_TOP, closeWindow, getBody, openWindow } from "./wm";
 import { aoiName, CORROBORATION_LABEL, kindLabel, SOURCE_LABEL, T, truthLabel } from "./labels";
 import { PRIORITY, STATUS_LABEL } from "./panels";
 import { state } from "./store";
+import { startTour } from "./tour/overlay";
 
 export const SHORTCUTS: [string, string][] = [
   ["/", "Search alerts"],
@@ -57,6 +58,7 @@ export function showHelp(): void {
     "help",
     T.help,
     "help",
+    h("button", { type: "button", class: "tour-start", onclick: () => { closeWindow("help"); startTour(); } }, "Take the guided tour"),
     h("h2", {}, "Keyboard shortcuts"),
     dl(SHORTCUTS),
     h("h2", {}, "Reading the map"),
