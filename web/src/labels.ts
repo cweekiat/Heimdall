@@ -75,6 +75,8 @@ export const T = {
   timeline: "Timeline",
   shift: "Shift report",
   help: "Help",
+  about: "About",
+  clearAll: "Clear all alerts",
   search: "Search alerts",
   theme: "Change colour theme",
   resetLayout: "Reset window layout",

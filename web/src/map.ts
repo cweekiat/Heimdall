@@ -79,7 +79,7 @@ export class OpsMap {
   private container!: HTMLElement;
   private hintEl: HTMLElement | null = null;
   private soon = new Throttle(() => this.render(), 2);
-  private overlay = new MapboxOverlay({ interleaved: false, layers: [] });
+  private overlay = new MapboxOverlay({ interleaved: false, layers: [], pickingRadius: 8 });
   state: MapState = {
     alerts: [],
     cells: [],

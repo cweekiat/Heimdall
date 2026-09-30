@@ -253,6 +253,31 @@ def create_app(
             "note": note.model_dump(mode="json"),
         }
 
+    @app.post("/api/alerts/clear")
+    def clear_alerts() -> dict[str, int]:
+        """Expire every open alert (not a verdict: DISMISSED stays analyst-only). Audited per alert."""
+        open_states = [
+            AlertStatus.NEW,
+            AlertStatus.ACKNOWLEDGED,
+            AlertStatus.UNDER_REVIEW,
+            AlertStatus.SHELVED,
+        ]
+        now = _now()
+        n = 0
+        for a in st.list_alerts(limit=1000, status=open_states):
+            st.record_status_change(
+                AnalystNote(
+                    id=uuid.uuid4().hex,
+                    alert_id=a.id,
+                    ts=now,
+                    kind="status",
+                    text="cleared by user",
+                    status_to=AlertStatus.EXPIRED,
+                )
+            )
+            n += 1
+        return {"cleared": n}
+
     @app.get("/api/alerts/{alert_id}/notes")
     def get_notes(alert_id: str) -> list[AnalystNote]:
         need_alert(alert_id)

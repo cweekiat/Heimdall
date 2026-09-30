@@ -14,6 +14,7 @@ import { setMode } from "./theme/palette";
 import { alertTitle, aoiName, CORROBORATION_LABEL, setAois, sourceLabel, T, truthLabel } from "./labels";
 import type { OpsMap } from "./map";
 import { showHelp, showShift } from "./overlays";
+import { showAbout } from "./about";
 import { maybeAutoStartTour } from "./tour/overlay";
 import { PRIORITY, renderQueue, visibleAlerts } from "./panels";
 import { patch, refreshAll, refreshHealth, selectAlert, state, subscribe, triage, upsertAlert } from "./store";
@@ -79,6 +80,7 @@ const winToggles: Record<string, () => void> = {
   t: () => toggleWindow("timeline"),
   h: shiftTool("shift", () => showShift()),
   "?": shiftTool("help", showHelp),
+  i: shiftTool("about", showAbout),
 };
 const tools: Tool[] = [
   { id: "queue", icon: "alerts", label: T.alerts, key: "q", toggle: winToggles.q! },
@@ -90,6 +92,7 @@ const tools: Tool[] = [
   { id: "timeline", icon: "timeline", label: T.timeline, key: "t", toggle: winToggles.t! },
   { id: "shift", icon: "shift", label: T.shift, key: "h", toggle: winToggles.h! },
   { id: "help", icon: "help", label: T.help, key: "?", toggle: winToggles["?"]! },
+  { id: "about", icon: "about", label: T.about, key: "i", toggle: winToggles.i! },
 ];
 mountToolbar($("toolbar"), tools);
 installKeys(winToggles);

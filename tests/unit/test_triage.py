@@ -200,3 +200,14 @@ def test_no_override_is_cached_and_invalidated_by_feedback() -> None:
     assert calls["n"] == 1  # second read served from the no-override cache
     comp.add_feedback(Feedback(alert_id="a1", verdict="dismiss", ts=datetime.now(UTC)))
     assert comp._override("a1") is not None
+
+
+def test_clear_all_expires_open_alerts_with_audit(client: TestClient, store: MemoryStore) -> None:
+    ids = [a.id for a in store.list_alerts()]
+    assert ids
+    r = client.post("/api/alerts/clear")
+    assert r.status_code == 200
+    assert r.json()["cleared"] >= 1
+    assert all(a.status == S.EXPIRED for a in store.list_alerts() if a.id in ids)
+    assert store.notes_for(ids[0])[-1].text == "cleared by user"
+    assert client.post("/api/alerts/clear").json() == {"cleared": 0}

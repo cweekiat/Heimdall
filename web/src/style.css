@@ -1210,3 +1210,26 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
   z-index: 20;
   pointer-events: none;
 }
+
+/* clear-all (024) */
+.clear-all { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.clear-all.confirm span { flex: 1 1 100%; }
+.btn-clear { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.btn-clear:disabled { opacity: 0.5; cursor: default; }
+.btn-clear.danger { border-color: var(--sev-high); color: var(--sev-high); font-weight: 600; }
+/* about window (024) */
+.about-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.about-tab { padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: inherit; cursor: pointer; }
+.about-tab[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; }
+.md { line-height: 1.55; max-width: 70ch; }
+.md h2 { font-size: 1.25em; margin: 0 0 8px; }
+.md h3 { font-size: 1.1em; margin: 16px 0 6px; }
+.md h4, .md h5 { font-size: 1em; margin: 12px 0 4px; }
+.md p, .md ul, .md ol { margin: 0 0 10px; }
+.md ul, .md ol { padding-left: 22px; }
+.md code { padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, currentColor 12%, transparent); font-size: 0.92em; }
+.md a { color: var(--accent); }
+.md blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--accent); }
+.md-table { overflow-x: auto; margin: 0 0 10px; }
+.md table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }

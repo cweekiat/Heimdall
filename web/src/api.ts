@@ -275,6 +275,7 @@ const post = <T>(path: string, body?: unknown) =>
   });
 
 export const api = {
+  clearAlerts: () => post<{ cleared: number }>("/api/alerts/clear"),
   alerts: () => req<Alert[]>("/api/alerts"),
   alert: (id: string) => req<AlertDetail>(`/api/alerts/${encodeURIComponent(id)}`),
   cells: () => req<Cell[]>("/api/cells?res=4"),

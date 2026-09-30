@@ -1,7 +1,7 @@
 // Icon registry: only the lucide icons we use are imported (tree-shaken). ISC licence.
 import {
   Activity, Ban, Box, Compass, Bell, ChartLine, Check, CircleDashed, CircleDot, CircleHelp, Clock, Crosshair, Database, Eye, FileText, Focus,
-  Gauge, Globe, Hourglass, Layers, LayoutGrid, ListChecks, ListFilter, Maximize2, Minus, Pencil, Pentagon, Plane, Plus, Radio, RotateCcw,
+  Gauge, Globe, Hourglass, Info, Trash2, Layers, LayoutGrid, ListChecks, ListFilter, Maximize2, Minus, Pencil, Pentagon, Plane, Plus, Radio, RotateCcw,
   Ruler, Search, Ship, ShieldAlert, StickyNote, SunMoon, TriangleAlert, Undo2, Waypoints, X, Zap, createElement,
 } from "lucide";
 import type { IconNode } from "lucide";
@@ -12,7 +12,7 @@ const ICONS = {
   measure: Ruler, ring: CircleDot, reset: RotateCcw, activity: Activity, ack: Check, review: Eye, confirm: ShieldAlert, dismiss: Ban,
   shelve: Hourglass, note: Pencil, warn: TriangleAlert, plane: Plane, ship: Ship, radio: Radio, gps: Crosshair, coverage: Gauge,
   clock: Clock, area: Globe, seen: Zap, follow: Focus, undo: Undo2, waypoints: Waypoints, notice: StickyNote, dashed: CircleDashed,
-  draw: Pentagon, filter: ListFilter, cube: Box, compass: Compass,
+  about: Info, trash: Trash2, draw: Pentagon, filter: ListFilter, cube: Box, compass: Compass,
 } satisfies Record<string, IconNode>;
 
 export type IconName = keyof typeof ICONS;
