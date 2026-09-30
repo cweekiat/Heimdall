@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from heimdall.config import Settings, sources
-from heimdall.ingest.adsb import AdsbAggregatorConnector
+from heimdall.ingest.adsb import AdsbAggregatorConnector, sweep_grid
 from heimdall.ingest.http import RateLimitedClient
 from heimdall.logging import get_logger
 from heimdall.ports import Connector
@@ -68,6 +68,18 @@ def _load_impl(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connecto
     return conn
 
 
+def _sweep_kw(sw: Any) -> dict[str, Any]:
+    """`gnss_sweep: {enabled, every, spacing_km, lat: [min, max], backoff}` -> connector kwargs."""
+    if not isinstance(sw, Mapping) or not sw.get("enabled", False):
+        return {}
+    lat = sw.get("lat", [-50, 70])
+    return {
+        "sweep": sweep_grid(float(sw.get("spacing_km", 700)), float(lat[0]), float(lat[1])),
+        "sweep_every": int(sw.get("every", 2)),
+        "sweep_backoff": int(sw.get("backoff", 12)),
+    }
+
+
 def build_connectors(
     settings: Settings, src: dict[str, Any] | None = None, enabled: set[str] | None = None
 ) -> list[Connector]:
@@ -93,6 +105,7 @@ def build_connectors(
                 reliability=SourceReliability(c.get("reliability", "B")),
                 expected_latency_s=int(c.get("latency_s", 5)),
                 client=RateLimitedClient(key, rps=rps),
+                **_sweep_kw(c.get("gnss_sweep")),
             )
         )
     for key, c in cfg.items():

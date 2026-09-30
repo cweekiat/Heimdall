@@ -2,7 +2,7 @@
 # reliability = Admiralty A–F. Secrets referenced by env var name only.
 sources:
   adsb_lol:        {uses_aois: true, domain: air,    reliability: B, latency_s: 5,     base: "https://api.adsb.lol",             auth: none,            rps: 0.5, phase: 1, verified: true}  # 0.5: 1 rps drew HTTP 429s on 2026-09-30 once empty AOIs stopped idling
-  adsb_fi:         {uses_aois: true, domain: air,    reliability: B, latency_s: 5,     base: "https://opendata.adsb.fi/api",     auth: none,            rps: 1,   phase: 1, verified: true}
+  adsb_fi:         {uses_aois: true, domain: air,    reliability: B, latency_s: 5,     base: "https://opendata.adsb.fi/api",     auth: none,            rps: 1,   phase: 1, verified: true, gnss_sweep: {enabled: true, every: 2, spacing_km: 700, lat: [-50, 70], backoff: 12}}  # 031 global GNSS map: 1 world-sweep point per 2 AOI polls (stays within 1 rps); empty points skipped 12 passes
   adsb_lol_history: {domain: air,    reliability: B, latency_s: 86400, base: "https://github.com/adsblol",       auth: none,                      phase: 1, verified: true}
   opensky:         {domain: air,    reliability: B, latency_s: 10,    base: "https://opensky-network.org/api",  auth: OPENSKY_CLIENT_ID, phase: 1, verified: false}
   # 024g: worldwide display-only aircraft (4 credits/call, 4000/day => >= 86.4 s). Enabled by keys.

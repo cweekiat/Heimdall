@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Callable, Sequence
@@ -45,6 +46,33 @@ class SlidingCounter:
         return self._total
 
 
+def sweep_grid(
+    spacing_km: float = 700.0, lat_min: float = -50.0, lat_max: float = 70.0, radius_nm: float = 250
+) -> list[AOI]:
+    """World sweep points on a hex-like grid (rows `spacing * sqrt(3)/2` apart, alternate rows
+    offset by half). A 250 NM (463 km) circle covers a hex cell up to 802 km spacing."""
+    out: list[AOI] = []
+    dlat = spacing_km * math.sqrt(3) / 2 / 111.2
+    row, lat = 0, lat_min
+    while lat <= lat_max:
+        km_per_deg = 111.2 * max(0.2, math.cos(math.radians(lat)))
+        dlon = spacing_km / km_per_deg
+        lon = -180.0 + (dlon / 2 if row % 2 else 0.0)
+        while lon < 180.0:
+            out.append(
+                AOI(
+                    name=f"sweep:{len(out)}",
+                    lat=round(lat, 2),
+                    lon=round(lon, 2),
+                    radius_nm=radius_nm,
+                )
+            )
+            lon += dlon
+        lat += dlat
+        row += 1
+    return out
+
+
 class AdsbAggregatorConnector:
     """One connector per provider (adsb_lol / adsb_fi), own rate limit.
 
@@ -66,6 +94,9 @@ class AdsbAggregatorConnector:
         expected_latency_s: int = 5,
         client: RateLimitedClient | None = None,
         idle_sleep_s: float = 5.0,
+        sweep: Sequence[AOI] = (),
+        sweep_every: int = 2,
+        sweep_backoff: int = 12,
     ) -> None:
         self.name = name
         self.provider = provider or name.replace("_", ".")
@@ -77,6 +108,15 @@ class AdsbAggregatorConnector:
         self.client = client or RateLimitedClient(name, rps=rps)
         self.idle_sleep_s = idle_sleep_s
         self._i = 0
+        # GNSS world sweep (task 031, global map): after every `sweep_every` AOI polls, one sweep
+        # point. Rows are marked is_global (display + lake only, never AOI detectors). A point
+        # that returns no aircraft is skipped for `sweep_backoff` passes (oceans, poles).
+        self.sweep = list(sweep)
+        self.sweep_every = max(1, sweep_every)
+        self.sweep_backoff = sweep_backoff
+        self._j = 0  # sweep position
+        self._pass = 0  # completed sweep passes
+        self._skip_until: dict[int, int] = {}
         self._stop = False
         # health bookkeeping (read by heimdall.run)
         self.last_ok: datetime | None = None
@@ -105,12 +145,34 @@ class AdsbAggregatorConnector:
             fetched_at = datetime.fromtimestamp(now, UTC)
         return parse_readsb_v2(payload, self.provider, fetched_at)
 
+    def _next_sweep(self) -> tuple[int, AOI] | None:
+        for _ in range(len(self.sweep)):
+            k = self._j % len(self.sweep)
+            self._j += 1
+            if k == len(self.sweep) - 1:
+                self._pass += 1
+            if self._skip_until.get(k, -1) <= self._pass:
+                return k, self.sweep[k]
+        return None
+
     async def poll_once(self) -> list[AircraftObs]:
-        """Fetch the next AOI in the round-robin; never raises for source errors."""
+        """Fetch the next AOI in the round-robin (or a sweep point); never raises."""
+        if not self.aois and not self.sweep:
+            return []
+        self._i += 1
+        if self.sweep and (not self.aois or self._i % (self.sweep_every + 1) == 0):
+            nxt = self._next_sweep()
+            if nxt is not None:
+                k, pt = nxt
+                obs = await self._poll(pt)
+                if not obs:
+                    self._skip_until[k] = self._pass + self.sweep_backoff
+                return [o.model_copy(update={"is_global": True}) for o in obs]
         if not self.aois:
             return []
-        aoi = self.aois[self._i % len(self.aois)]
-        self._i += 1
+        return await self._poll(self.aois[self._i % len(self.aois)])
+
+    async def _poll(self, aoi: AOI) -> list[AircraftObs]:
         try:
             obs, dropped = await self.fetch_aoi(aoi)
         except httpx.HTTPStatusError as e:

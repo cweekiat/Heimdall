@@ -39,18 +39,24 @@ class GnssLake:
     def __init__(self, lake_dir: str | Path) -> None:
         self.root = Path(lake_dir)
 
+    DATASETS = ("aircraft", "global/aircraft")  # AOI feeds + world sweep (OpenSky rows lack NIC)
+
     def _hour_dirs(self, start: datetime, end: datetime) -> list[Path]:
         out: list[Path] = []
-        t = start.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
-        while t < end:
-            d = self.root / "aircraft" / f"date={t.date().isoformat()}" / f"hour={t.hour:02d}"
-            if d.is_dir() and any(d.glob("*.parquet")):
-                out.append(d)
-            t += timedelta(hours=1)
+        for ds in self.DATASETS:
+            t = start.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+            while t < end:
+                d = self.root / ds / f"date={t.date().isoformat()}" / f"hour={t.hour:02d}"
+                if d.is_dir() and any(d.glob("*.parquet")):
+                    out.append(d)
+                t += timedelta(hours=1)
         return out
 
     def hours_with_data(self, start: datetime, end: datetime) -> int:
-        return len(self._hour_dirs(start, end))
+        """Hours with AOI-feed data (the completeness measure)."""
+        return len(
+            {d.name + d.parent.name for d in self._hour_dirs(start, end) if "global" not in d.parts}
+        )
 
     def counts(
         self, start: datetime, end: datetime, nic_below: int = 7, nacp_below: int = 8
