@@ -209,19 +209,20 @@ def tick(
         source_grades = (
             grades_from_sources(_config.sources()) if source_grades is None else source_grades
         )
-    det = settings.detectors
+    dets = {a.name: settings.detectors_for(a) for a in settings.aois}  # per-AOI overrides
     lookback = max(
         float(det.get(k, {}).get("window_min", d))
+        + float(det.get("jamming", {}).get("step_min", 5))
+        for det in [settings.detectors, *dets.values()]
         for k, d in (("jamming", 30), ("spoofing", 30), ("orbit", 75))
     )
-    step = float(det.get("jamming", {}).get("step_min", 5))
-    obs_all = store.aircraft_window(now - timedelta(minutes=lookback + step), now)
+    obs_all = store.aircraft_window(now - timedelta(minutes=lookback), now)
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
         obs = [
             o for o in obs_all if within_radius_nm(o.lat, o.lon, aoi.lat, aoi.lon, aoi.radius_nm)
         ]
-        r = run_aoi(store, aoi, obs, det, now, playbook, source_grades)
+        r = run_aoi(store, aoi, obs, dets[aoi.name], now, playbook, source_grades)
         total.evidence += r.evidence
         total.alerts += r.alerts
         total.metrics += r.metrics

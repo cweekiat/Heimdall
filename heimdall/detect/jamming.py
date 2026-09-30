@@ -36,7 +36,7 @@ from heimdall.detect.common import (
 from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "jamming"
-VERSION = "jamming-1.0.0"
+VERSION = "jamming-1.1.0"
 METRIC = "jam_ratio"  # baseline metric key recorded per cell by the pipeline
 
 DEFAULTS: dict[str, Any] = {
@@ -54,6 +54,7 @@ DEFAULTS: dict[str, Any] = {
     "baseline_min_samples": 288,
     "full_coverage_aircraft": 15,
     "single_provider_factor": 0.8,
+    "confidence_cap": 1.0,  # < 1 for sparse-traffic profiles (lower min_aircraft)
 }
 
 
@@ -245,6 +246,9 @@ def detect(
         if n_prov <= 1:
             conf *= c["single_provider_factor"]
             gaps.append("single provider: no cross-aggregator confirmation")
+        if conf > c["confidence_cap"]:
+            conf = c["confidence_cap"]
+            gaps.append(f"sparse-traffic profile: confidence capped at {c['confidence_cap']}")
         if not has_baseline:
             gaps.append(f"no baseline: {len(hist)} < {c['baseline_min_samples']} samples")
         if st.n_observed > st.total:

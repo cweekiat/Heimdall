@@ -9,7 +9,7 @@ for cell-level jamming); detectors take a keyword `aoi`. Every Evidence also car
 anomaly, used for persistence. Every threshold below is a key in `config/config.yaml`; defaults are in
 each module's `DEFAULTS`. Shared helpers: `heimdall/detect/common.py`, `heimdall/geo.py`.
 
-## GNSS jamming (detect/jamming.py, `jamming-1.0.0`)
+## GNSS jamming (detect/jamming.py, `jamming-1.1.0`)
 Scope: airborne (`on_ground=false`) **true ADS-B** reports (`src_type ∈ {adsb_icao, adsb_icao_nt}`).
 Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `coverage.n_observed`.
 
@@ -30,7 +30,12 @@ Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `cove
   < 3 aircraft). Features `emitter_lat/lon`, `ellipse_major_km/minor_km/angle_deg`.
 * Provider agreement = mean over bad aircraft of (#providers whose own reports make it bad /
   #providers that saw it).
-* Coverage confidence = min(1, total / 15) × agreement × (0.8 if only one provider).
+* Coverage confidence = min(`confidence_cap`, min(1, total / 15) × agreement × (0.8 if only one
+  provider)). `confidence_cap` defaults to 1 (no cap); sparse-traffic AOI profiles lower it
+  (gap "confidence capped"), so severity = score × confidence cannot reach HIGH on thin data.
+* **Per-AOI overrides** (1.1.0): an AOI may carry `detectors: {jamming: {...}}` in config.yaml,
+  merged key-by-key over the global `detectors` block (`Settings.detectors_for`). The pipeline's
+  observation pull covers the longest window (+ one step) of any AOI.
 * Records: one RecordRef per (bad aircraft, provider whose *own* reports make it bad), i.e. only
   anomaly-showing providers. Anomaly span = first..last degraded report of the bad aircraft.
 * Score = min(1, R' / (3 × ratio_alert)).

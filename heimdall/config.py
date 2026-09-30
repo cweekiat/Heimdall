@@ -21,6 +21,8 @@ class AOI(BaseModel):
     lon: float
     radius_nm: float
     label: str | None = None  # display name for the UI
+    # per-AOI detector overrides merged over `detectors` (e.g. a sparse-traffic jamming profile)
+    detectors: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class StorageCfg(BaseModel):
@@ -51,6 +53,13 @@ class Settings(BaseModel):
 
     def aoi(self, name: str) -> AOI:
         return next(a for a in self.aois if a.name == name)
+
+    def detectors_for(self, aoi: AOI) -> dict[str, dict[str, Any]]:
+        """Global detector config with the AOI's per-detector overrides merged on top."""
+        out = {k: dict(v) for k, v in self.detectors.items()}
+        for k, v in aoi.detectors.items():
+            out[k] = {**out.get(k, {}), **v}
+        return out
 
 
 def _load_yaml(name: str) -> dict[str, Any]:
