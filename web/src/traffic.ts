@@ -22,10 +22,11 @@ const AIR_MS = 5000;
 const SEA_MS = 30000;
 const DECLUTTER_ZOOM = 5;
 
-// ---- sprite atlas, generated in code (white masks, tinted per feature by deck)
+// ---- sprite atlas, generated in code (white masks, tinted per feature by deck). Passed as a
+// canvas, not a data: URL, because deck would fetch() the URL and CSP connect-src blocks data:.
 const TILE = 64;
 const NAMES = ["plane", "diamond", "arrow", "dot"] as const;
-function atlas(): string {
+function atlas(): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = TILE * NAMES.length;
   c.height = TILE;
@@ -86,7 +87,7 @@ function atlas(): string {
     g.arc(0, 0, 14, 0, Math.PI * 2);
     g.fill();
   });
-  return c.toDataURL("image/png");
+  return c;
 }
 const MAPPING = Object.fromEntries(NAMES.map((n, i) => [n, { x: i * TILE, y: 0, width: TILE, height: TILE, mask: true, anchorY: TILE / 2 }]));
 
@@ -154,7 +155,8 @@ export class Traffic {
   private moveTimer = 0;
   private tip: HTMLElement;
   private card: HTMLElement;
-  private readonly icons = atlas();
+  // deck accepts an image source at runtime; its typings only list string | Texture.
+  private readonly icons = atlas() as unknown as string;
   onCounts: () => void = () => undefined;
 
   constructor(
