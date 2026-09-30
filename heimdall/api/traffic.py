@@ -31,6 +31,8 @@ DENSITY_BELOW_ZOOM = 5.0  # below this the API returns H3 density cells, not pos
 def density_res(zoom: float) -> int:
     """H3 resolution for density hexes: r3 (~60 km) < z2.5, r4 (~22 km) < z4, r5 (~8.5 km) above."""
     return 3 if zoom < 2.5 else 4 if zoom < 4 else 5
+
+
 NOTICE_KINDS = ["nav_warning", "notam"]
 NOTICE_LOOKBACK = timedelta(days=30)
 TEXT_MAX = 2000
