@@ -1,10 +1,10 @@
 // AOI board: one card per area of interest. Click = fly to AOI + filter the queue.
 import { ago, fmtNum, h } from "./dom";
-import { aoiName, kindLabel } from "./labels";
+import { aoiName, coverageLabel, kindLabel, T } from "./labels";
 import { sparkline } from "./panels";
 import { selectAoi, state } from "./store";
 
-const SEV_ICON: Record<string, string> = { critical: "▲▲ P1", high: "▲ P2", medium: "■ P3", low: "● P4", info: "● P4" };
+const SEV_ICON: Record<string, string> = { critical: "▲▲ Critical", high: "▲ High", medium: "■ Medium", low: "● Low", info: "● Low" };
 
 const expanded = new Set<string>();
 
@@ -32,9 +32,9 @@ export function renderBoard(root: HTMLElement): void {
             h(
               "div",
               { class: "note" },
-              `degraded ${fmtNum(s.ratio_now === null ? null : s.ratio_now * 100, 1)}% now vs 14 d median ${fmtNum(s.ratio_median === null ? null : s.ratio_median * 100, 1)}%`,
+              `${fmtNum(s.ratio_now === null ? null : s.ratio_now * 100, 1)}% of aircraft affected now (normal ${fmtNum(s.ratio_median === null ? null : s.ratio_median * 100, 1)}%)`,
             ),
-          open && h("div", { class: "note" }, `coverage ${fmtNum(s.coverage, 0)} ac/h · ${kinds || "no open alerts"} · changed ${ago(s.last_change)}`),
+          open && h("div", { class: "note" }, `${T.dataCoverage(coverageLabel((s.coverage ?? 0) / 40))} · ${kinds || "no open alerts"} · changed ${ago(s.last_change)}`),
         ),
         h(
           "button",
@@ -52,6 +52,6 @@ export function renderBoard(root: HTMLElement): void {
         ),
       );
     }),
-    ...(state.summary.length ? [] : [h("div", { class: "empty" }, "No AOI data.")]),
+    ...(state.summary.length ? [] : [h("div", { class: "empty" }, "No area data yet.")]),
   );
 }

@@ -1,23 +1,25 @@
 // Global keyboard map. Ignored while typing in a field (except Esc).
 import { openTriage } from "./inspector";
-import { closeModal, modalOpen, showHelp } from "./overlays";
+import { showHelp } from "./overlays";
 import { visibleAlerts } from "./panels";
 import { patch, selectAlert, selectAoi, state, triage } from "./store";
-import { toggleTimeline, togglePlay } from "./timeline";
+import { togglePlay } from "./timeline";
+import { closeFocused, openWindow } from "./wm";
 
-export function installKeys(showPanel: (p: string) => void): void {
+/** `windows` maps a shortcut key to a window toggle (wired in main.ts). */
+export function installKeys(windows: Record<string, () => void>): void {
   let cursor = -1;
   document.addEventListener("keydown", (e) => {
     const t = e.target as HTMLElement;
     const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
     if (e.key === "Escape") {
-      if (closeModal()) return;
       if (typing) return void t.blur();
+      if (closeFocused()) return;
       if (state.selectedEntity) return patch({ selectedEntity: null });
       if (state.selected) patch({ selected: null, detail: null, tracks: [] });
       return;
     }
-    if (typing || e.ctrlKey || e.metaKey || e.altKey || modalOpen()) return;
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
     const list = visibleAlerts();
     const sel = state.selected;
     const move = (d: number): void => {
@@ -35,6 +37,7 @@ export function installKeys(showPanel: (p: string) => void): void {
     switch (e.key) {
       case "/": {
         e.preventDefault();
+        openWindow("queue");
         document.getElementById("q")?.focus();
         break;
       }
@@ -44,7 +47,7 @@ export function installKeys(showPanel: (p: string) => void): void {
         const a = sel ?? list[Math.max(0, cursor)]?.id;
         if (a) {
           void selectAlert(a);
-          showPanel("detail");
+          openWindow("inspector");
         }
         break;
       }
@@ -59,11 +62,13 @@ export function installKeys(showPanel: (p: string) => void): void {
         if (a && a.lat !== null && a.lon !== null) patch({ fly: { lat: a.lat, lon: a.lon, n: Date.now() } });
         break;
       }
-      case "l": document.querySelector<HTMLButtonElement>("#layers > button")?.click(); break;
-      case "t": toggleTimeline(document.getElementById("timeline")!); break;
       case " ": e.preventDefault(); togglePlay(); break;
       case "?": showHelp(); break;
       default:
+        if (windows[e.key]) {
+          windows[e.key]!();
+          break;
+        }
         if (/^[1-5]$/.test(e.key)) {
           const s = state.summary[Number(e.key) - 1];
           if (s) selectAoi(s.name);

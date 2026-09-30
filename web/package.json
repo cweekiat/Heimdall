@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && node scripts/check-words.mjs",
+    "check:words": "node scripts/check-words.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "@deck.gl/layers": "^9.4.0",
     "@deck.gl/mapbox": "^9.4.0",
     "h3-js": "^4.5.0",
+    "lucide": "^1.49.0",
     "maplibre-gl": "^6.11.2"
   },
   "devDependencies": {

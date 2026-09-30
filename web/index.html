@@ -5,46 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Heimdall</title>
   </head>
-  <body data-panel="map">
-    <header id="statusbar" aria-label="Status bar">
-      <strong class="brand">HEIMDALL</strong>
-      <span id="osint" title="Public sources only; alerts are unverified until corroborated">PUBLIC-SOURCE OSINT</span>
-      <span id="clock" aria-label="UTC time"></span>
-      <span id="sb-chips" aria-label="Areas of interest"></span>
-      <span id="sb-counts" aria-label="Open alerts by priority"></span>
-      <span id="sb-fresh" aria-label="Data freshness"></span>
-      <span class="sb-spacer"></span>
-      <button id="rail-toggle" aria-label="Toggle left rail" title="Toggle left rail">Rail</button>
-      <button id="summary-btn" title="Shift summary">Shift</button>
-      <button id="help-btn" title="Help (?)">?</button>
-      <span id="live" class="pill" title="SSE stream">offline</span>
-      <button id="theme" aria-label="Cycle theme (dark / light / high contrast)">Theme</button>
-      <nav id="tabs" aria-label="Views">
-        <button data-panel="queue">Queue</button>
-        <button data-panel="map">Map</button>
-        <button data-panel="detail">Alert</button>
-        <button data-panel="health">Data health</button>
-      </nav>
-    </header>
-    <div id="banner" hidden role="alert"></div>
-    <main id="app">
-      <aside id="rail" aria-label="AOI board and alert queue">
-        <div id="board" aria-label="Areas of interest"></div>
-        <div id="divider" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize board and queue"></div>
-        <div id="queue"></div>
-      </aside>
-      <section id="mapwrap" aria-label="Operational map">
-        <div id="map"></div>
-        <div id="mapctl"></div>
-        <div id="legend"></div>
-        <div id="layers"></div>
-        <div id="readout" aria-live="off"></div>
-      </section>
-      <aside id="inspector" aria-label="Inspector"></aside>
-      <section id="health" aria-label="Data health"></section>
+  <body>
+    <main id="mapwrap" aria-label="Operational map">
+      <div id="map"></div>
+      <div id="mapctl" aria-label="Map controls"></div>
+      <div id="legend"></div>
+      <div id="readout" aria-live="off"></div>
     </main>
-    <section id="timeline" aria-label="Timeline"></section>
-    <div id="modal" class="modal" hidden></div>
+    <header id="statusbar" aria-label="Status strip">
+      <strong class="brand" id="brand">HEIMDALL</strong>
+      <span id="clock" aria-label="UTC time"></span>
+      <span id="live" class="live-dot" role="status" aria-label="Offline"></span>
+      <span class="sb-spacer"></span>
+      <span id="sb-counts" aria-label="Open alerts by priority"></span>
+      <span id="sb-fresh" aria-label="Data source health"></span>
+      <span id="sb-tools"></span>
+    </header>
+    <nav id="toolbar" aria-label="Windows"></nav>
+    <div id="toast" hidden role="alert"></div>
+    <div id="hidden-hosts" hidden>
+      <div id="board" aria-label="Areas"></div>
+      <div id="queue"></div>
+      <div id="inspector" aria-label="Alert details"></div>
+      <div id="timeline" aria-label="Timeline"></div>
+      <div id="health"></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

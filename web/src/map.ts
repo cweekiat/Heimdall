@@ -8,6 +8,7 @@ import type { Provider } from "./basemap";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
 import { h } from "./dom";
+import { kindLabel } from "./labels";
 import { haversineNm } from "./geoutil";
 
 type RGBA = [number, number, number, number];
@@ -154,6 +155,10 @@ export class OpsMap {
     if (this.state.tool === "ring" && p.length > 1) return `Range ring: radius ${haversineNm(p[0]!, p[1]!).toFixed(1)} nm`;
     if (this.state.tool !== "none") return this.state.tool === "ring" ? "Range ring: click centre, then radius point" : "Measure: click points";
     return "";
+  }
+
+  zoomBy(d: number): void {
+    this.map.easeTo({ zoom: this.map.getZoom() + d, duration: 200 });
   }
 
   zoom(): number {
@@ -336,13 +341,13 @@ export function legend(): HTMLElement {
   return h(
     "div",
     {},
-    h("div", {}, "Degraded GNSS ratio", sw(GREEN, "<2%"), sw(AMBER, "2-10%"), sw(RED, ">10%")),
+    h("div", {}, "Aircraft affected", sw(GREEN, "<2%"), sw(AMBER, "2-10%"), sw(RED, ">10%")),
     h(
       "div",
       {},
       "Alerts",
-      ...["gnss_jamming", "gnss_spoofing", "mil_orbit", "composite"].map((k) => sw(KIND_COLOR[k]!, k.replace("_", " "))),
+      ...["gnss_jamming", "gnss_spoofing", "mil_orbit", "composite"].map((k) => sw(KIND_COLOR[k]!, kindLabel(k))),
     ),
-    h("div", {}, "Coverage", h("i", { class: "sw", style: "background:rgba(150,150,150,.5);outline:1px solid #ccc" }), "grey outline = <3 quality aircraft (no data is not no activity)"),
+    h("div", {}, "Coverage", h("i", { class: "sw", style: "background:rgba(150,150,150,.5);outline:1px solid #ccc" }), "grey outline = too little data (no data is not no activity)"),
   );
 }
