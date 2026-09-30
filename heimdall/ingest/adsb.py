@@ -17,7 +17,7 @@ from heimdall.geo import haversine_km
 from heimdall.ingest.http import CircuitOpenError, RateLimitedClient
 from heimdall.ingest.readsb import parse_readsb_v2
 from heimdall.logging import DROPPED, RECORDS_IN, get_logger
-from heimdall.schemas import AircraftObs, Domain, SourceReliability
+from heimdall.schemas import AircraftObs, Domain, SourceHealth, SourceReliability
 
 log = get_logger("heimdall.adsb")
 
@@ -127,6 +127,25 @@ class AdsbAggregatorConnector:
         if dropped:
             DROPPED.labels(self.name).inc(dropped)
         return obs
+
+    def health(self) -> SourceHealth:
+        total = self.n_ok + self.n_err
+        h = SourceHealth(
+            source=self.name,
+            domain=self.domain,
+            reliability=self.reliability,
+            last_ok=self.last_ok,
+            last_error=self.last_error,
+            last_error_at=self.last_error_at,
+            records_last_hour=self.records_hour.total(),
+            error_rate=self.n_err / total if total else 0.0,
+            expected_latency_s=self.expected_latency_s,
+        )
+        if self.last_error_at is not None and (
+            self.last_ok is None or self.last_error_at >= self.last_ok
+        ):
+            h.status, h.detail = "degraded", self.last_error
+        return h
 
     async def stream(self) -> AsyncIterator[Sequence[BaseModel]]:
         while not self._stop:
