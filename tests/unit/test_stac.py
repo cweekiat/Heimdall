@@ -92,7 +92,7 @@ async def test_poll_posts_search_and_never_fetches_assets() -> None:
         "stac|S2B_47QNB_20250602_0_L2A",
     }
     body = json.loads(route.calls.last.request.content)
-    assert body["collections"] == ["sentinel-2-l2a", "sentinel-1-grd"]
+    assert body["collections"] == ["sentinel-1-grd"]
     assert body["datetime"] == "2025-05-24T00:00:00Z/2025-06-03T00:00:00Z"
     w, s, e, n = body["bbox"]
     assert w < 96.5 < e and s < 20.5 < n

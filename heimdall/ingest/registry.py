@@ -21,7 +21,6 @@ log = get_logger("heimdall.registry")
 ADSB_PROVIDERS: dict[str, tuple[str, str]] = {
     "adsb_lol": ("adsb.lol", "/v2/point/{lat}/{lon}/{radius}"),
     "adsb_fi": ("adsb.fi", "/v2/lat/{lat}/lon/{lon}/dist/{radius}"),
-    "airplanes_live": ("airplanes.live", "/v2/point/{lat}/{lon}/{radius}"),
 }
 
 

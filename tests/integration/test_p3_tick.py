@@ -1,4 +1,4 @@
-"""P3 pipeline wiring (task 022a): thermal/outage/night-lights per tick, overpasses, key gating."""
+"""P3 pipeline wiring (task 022a): thermal per tick, overpasses, key gating."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from heimdall.ingest.celestrak import parse_gp
 from heimdall.ingest.registry import build_connectors
 from heimdall.pipeline import tick, update_overpasses
 from heimdall.schemas import KEY_CONNECTORS, AlertKind
-from tests.synthetic import outage as syn_out
 from tests.synthetic import thermal as syn_th
 from tests.unit.fakes import FakeStore
 from tests.unit.test_fusion import GRADES, PB
@@ -36,9 +35,9 @@ def _tick(store: FakeStore, cfg: Settings, now: datetime):  # type: ignore[no-un
 
 
 def test_detectors_registered() -> None:
-    assert {"thermal", "outage", "night_lights"} <= set(DETECTORS)
+    assert "thermal" in set(DETECTORS)
+    assert not {"outage", "night_lights"} & set(DETECTORS)  # removed in 027 (ADR-008)
     assert DETECTORS["thermal"].kind == AlertKind.THERMAL
-    assert DETECTORS["outage"].kind == DETECTORS["night_lights"].kind == AlertKind.OUTAGE
 
 
 def test_thermal_cluster_needs_two_windows() -> None:
@@ -57,33 +56,6 @@ def test_thermal_cluster_needs_two_windows() -> None:
     assert len(alerts) == 1
     cell4 = h3_cell(SCS.lat, SCS.lon, 4)
     assert store.metric_history(cell4, "firms_detections", NOW - timedelta(days=1))
-
-
-def test_ioda_drop_alerts_and_cloudflare_alone_does_not() -> None:
-    cfg = _cfg(MM)
-    store = FakeStore()
-    store.insert_events(syn_out.ioda_drop())
-    r1 = _tick(store, cfg, NOW)
-    assert [e.persistence for e in r1.evidence if e.kind == AlertKind.OUTAGE] == [1]
-    r2 = _tick(store, cfg, NOW + timedelta(minutes=5))
-    assert [e.persistence for e in r2.evidence if e.kind == AlertKind.OUTAGE] == [2]
-    assert [a.kind for a in r2.alerts] == [AlertKind.OUTAGE]
-
-    cf = FakeStore()
-    cf.insert_events([syn_out.annotation()])
-    for m in (0, 5):
-        r = _tick(cf, cfg, NOW + timedelta(minutes=m))
-        assert not [e for e in r.evidence if e.kind == AlertKind.OUTAGE] and r.alerts == []
-
-
-def test_night_lights_drop_becomes_outage_evidence_and_metric() -> None:
-    store, cfg = FakeStore(), _cfg(MM)
-    store.insert_events(syn_out.city_dark(nights=3))
-    r = _tick(store, cfg, NOW)
-    (e,) = [x for x in r.evidence if x.kind == AlertKind.OUTAGE]
-    assert e.detector == "night_lights" and e.persistence == 3
-    got = store.metric_history(e.h3_cell or "", "night_lights_mean", NOW - timedelta(days=60))
-    assert got
 
 
 def test_overpasses_upserted_without_duplicates() -> None:
@@ -120,13 +92,13 @@ def test_overpasses_upserted_without_duplicates() -> None:
 def test_keys_listed_unset_and_sources_need_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    for name in ("FIRMS_MAP_KEY", "CLOUDFLARE_RADAR_TOKEN", "EARTHDATA_TOKEN"):
+    for name in ("FIRMS_MAP_KEY", "EARTHDATA_TOKEN"):
         assert name in KEY_CONNECTORS
         monkeypatch.delenv(name, raising=False)
     status = {k.name: k for k in FileSecretStore(tmp_path / "keys.json").status()}
-    for name in ("FIRMS_MAP_KEY", "CLOUDFLARE_RADAR_TOKEN", "EARTHDATA_TOKEN"):
+    for name in ("FIRMS_MAP_KEY", "EARTHDATA_TOKEN"):
         assert not status[name].is_set
-    keyed = {"firms", "cloudflare_radar", "black_marble"}
+    keyed = {"firms"}
     conns = build_connectors(settings(), sources(), enabled=keyed)
     assert {c.name for c in conns} == keyed
     assert {c.name for c in conns if c.health().status == "needs_key"} == keyed
@@ -136,11 +108,7 @@ def test_keys_listed_unset_and_sources_need_key(
 
 def test_p3_connectors_have_impl() -> None:
     cfg = sources()["sources"]
-    for k in ("firms", "open_meteo", "swpc", "ioda", "cloudflare_radar", "black_marble", "stac"):
+    for k in ("firms", "open_meteo", "swpc", "stac"):
         assert cfg[k]["impl"] == f"heimdall.ingest.{k}:build"
-    conns = build_connectors(settings(), sources(), enabled={"open_meteo", "swpc", "ioda"})
-    assert {c.name: c.health().status for c in conns} == {
-        "open_meteo": "ok",
-        "swpc": "ok",
-        "ioda": "ok",
-    }
+    conns = build_connectors(settings(), sources(), enabled={"open_meteo", "swpc"})
+    assert {c.name: c.health().status for c in conns} == {"open_meteo": "ok", "swpc": "ok"}

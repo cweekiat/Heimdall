@@ -47,7 +47,10 @@ def env(tmp_path: Path) -> Iterator[tuple[TestClient, FakeSources, Path]]:
     src = FakeSources()
     path = tmp_path / "state" / "aois.json"
     svc = AoiService(
-        FileAoiStore(path), s, src, {"adsb_lol": {"uses_aois": True}, "gfw": {"uses_aois": True}}
+        FileAoiStore(path),
+        s,
+        src,
+        {"adsb_lol": {"uses_aois": True}, "adsb_fi": {"uses_aois": True}},
     )
     app = create_app(MemoryStore(), playbook={}, allowed_hosts=HOSTS, aoi_service=svc)
     yield TestClient(app, client=("127.0.0.1", 5000)), src, path
@@ -59,7 +62,7 @@ def test_create_list_patch_delete_and_runtime(env: tuple[TestClient, FakeSources
     r = c.post("/api/aois/user", json=CIRCLE, headers=LOCAL)
     assert r.status_code == 201
     uid = r.json()["id"]
-    assert src.restarted == ["adsb_lol", "gfw"]
+    assert src.restarted == ["adsb_lol", "adsb_fi"]
     rt = [a for a in c.get("/api/aois").json() if a["origin"] == "user"]
     assert rt[0]["name"] == uid and rt[0]["label"] == "Harbour Watch"
     assert path.exists()

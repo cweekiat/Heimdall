@@ -192,7 +192,7 @@ def test_admiralty_reliability_best_supported() -> None:
     assert r(["unknown.src"], GRADES) == "F"
     assert r([], GRADES) == "F"
     assert r(["adsb.lol", "faa-nms-notam"], GRADES) == "A"
-    assert admiralty.source_key("airplanes.live") == "airplanes_live"
+    assert admiralty.source_key("adsb.fi") == "adsb_fi"
 
 
 def test_weak_single_domain_is_c4() -> None:

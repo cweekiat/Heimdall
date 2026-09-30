@@ -20,27 +20,12 @@ from heimdall.schemas import GeoEvent
 # layer -> event kinds served
 LAYER_KINDS: dict[str, list[str]] = {
     "thermal": ["thermal"],
-    "outage": ["outage_signal", "outage_annotation"],
-    "night_lights": ["night_lights"],
     "imagery": ["imagery_footprint"],
     "overpass": ["overpass"],
 }
 # explicit per-kind attr whitelist (ADR-007 table); anything else is dropped
 ATTRS: dict[str, tuple[str, ...]] = {
     "thermal": ("satellite", "instrument", "confidence", "daynight"),
-    "outage_signal": ("entity_type", "entity_code", "datasource", "observed", "baseline", "level"),
-    "outage_annotation": ("location", "asn", "scope", "outage_type"),
-    "night_lights": (
-        "h3_r4",
-        "date",
-        "product",
-        "n_valid",
-        "n_total",
-        "valid_frac",
-        "cloud_frac",
-        "median",
-        "p90",
-    ),
     "imagery_footprint": (
         "collection",
         "platform",
@@ -138,7 +123,7 @@ def layers_router(st: Store) -> APIRouter:
         if layer not in LAYER_KINDS:
             raise HTTPException(404, "unknown layer")
         cfg = config.settings().api.layers
-        h = hours if hours is not None else (168 if layer == "night_lights" else 24)
+        h = hours if hours is not None else 24
         if not 1 <= h <= cfg.max_hours:
             raise HTTPException(422, f"hours must be 1..{cfg.max_hours}")
         every = aoi == "all"  # 026a: one request for all AOIs; features carry properties.aoi

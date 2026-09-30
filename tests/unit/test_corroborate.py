@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from heimdall.fuse.corroborate import cross_source, family_index, family_of
 from heimdall.geo import h3_cell
@@ -87,26 +87,10 @@ def test_orbit_near_jamming_is_same_family_support() -> None:
     assert idx["j1"] == {"adsb"} and idx["o1"] == {"adsb"}
 
 
-def test_ais_gap_gfw_gap_sar_and_loitering() -> None:
-    t0 = datetime(2026, 10, 1, 7, 0, tzinfo=UTC)
-    t1 = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
-    gap = mk(
-        AlertKind.AIS_GAP,
-        "g1",
-        5.0,
-        105.0,
-        src="aisstream",
-        end=t1,
-        entities=["111000001"],
-        features={"anomaly_first_ts": t0.timestamp(), "anomaly_last_ts": t1.timestamp()},
-    )
-    out = cross_source([gap], [gap], events())["g1"]
-    assert sup(out) == {"gfw-gap-1", "sar-1"}  # not the other MMSI's gap
-    assert {c.evidence_id for c in out if c.relation == "context"} == {"gfw-loiter-1"}
-    other = gap.model_copy(update={"id": "g2", "entities": ["424242"]})
-    assert sup(cross_source([other], [other], events())["g2"]) == {"sar-1"}
+def test_ais_gap_gets_no_notice_support_and_families() -> None:
+    gap = mk(AlertKind.AIS_GAP, "g1", 5.0, 105.0, src="aisstream", entities=["111000001"])
+    assert sup(cross_source([gap], [gap], events())["g1"]) == set()
     idx = family_index([gap], events())
-    assert idx["gfw-gap-1"] == {"gfw"} and idx["sar-1"] == {"sar"}
     assert idx["nga-exercise-1"] == {"notice"} and family_of("aisstream") == "ais"
 
 

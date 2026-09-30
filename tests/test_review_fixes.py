@@ -57,7 +57,7 @@ def test_disabled_source_is_skipped() -> None:
     src = {
         "sources": {
             "adsb_lol": {"base": "https://api.adsb.lol", "rps": 1},
-            "airplanes_live": {"base": "https://api.airplanes.live", "rps": 1, "enabled": False},
+            "adsb_fi": {"base": "https://api.airplanes.live", "rps": 1, "enabled": False},
         }
     }
     assert [c.name for c in build_connectors(Settings(), src)] == ["adsb_lol"]

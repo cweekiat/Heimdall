@@ -13,7 +13,6 @@ import pytest
 import respx
 
 from heimdall.config import Settings
-from heimdall.ingest.china_msa import ChinaMsaConnector
 from heimdall.ingest.http import RateLimitedClient
 from heimdall.ingest.nga_msi import NgaMsiConnector
 from heimdall.ingest.notice_base import load_warnings_cfg
@@ -22,7 +21,6 @@ from heimdall.schemas import GeoEvent
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures"
 RULES = load_warnings_cfg()["categories"]
-MSA = "https://www.msa.gov.cn"
 REF_OK = re.compile(r"^[A-Z0-9/ -]{0,40}$")
 
 
@@ -87,35 +85,6 @@ async def test_injection_json_is_inert_and_no_extra_http() -> None:
     assert route.call_count == 1  # the evil URL in the text was never requested
     assert dict(os.environ) == env_before and Settings().model_dump() == settings_before
     assert Settings().model_dump() == settings_before
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_injection_html_is_inert_and_links_not_followed() -> None:
-    listing = (
-        '<a href="/msacncms_wap/pages/info_detail.do?id=INJ1">jp</a>'
-        '<a href="https://evil.example/click">x</a>'
-        '<a href="//evil.example/info_detail.do?id=X">y</a>'
-    )
-    lst = respx.get(f"{MSA}/msacncms_wap/pages/info_warn.do").mock(
-        return_value=httpx.Response(200, text=listing)
-    )
-    det = respx.get(f"{MSA}/msacncms_wap/pages/info_detail.do", params={"id": "INJ1"}).mock(
-        return_value=httpx.Response(200, text=(FIX / "notices/injection.html").read_text())
-    )
-    c = ChinaMsaConnector(
-        MSA, {"sansha": "CH1"}, RULES, client=_client("china_msa"), sleep=_nosleep
-    )
-    t0 = time.perf_counter()
-    events = await c.poll_once()
-    assert time.perf_counter() - t0 < 1.0
-    assert lst.called and det.called
-    assert respx.calls.call_count == 2  # nothing else (unmatched routes would raise)
-    assert len(events) == 1
-    e = events[0]
-    _assert_inert(e)
-    assert "fetch(" not in (e.text or "") and "alert(1)" not in (e.text or "")
-    assert e.attrs["category"] == "military_exercise" and e.geometry
 
 
 def test_pathological_input_bounded() -> None:

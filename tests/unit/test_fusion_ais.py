@@ -17,7 +17,7 @@ from tests.unit.test_fusion import GRADES, NOW, PB, ev
 from tests.unit.test_warning_area import events
 
 CELL = mk(AlertKind.GNSS_JAMMING, "x", JAM_LAT, JAM_LON).h3_cell
-GR = {**GRADES, "nga_msi": "A", "aisstream": "B", "gfw": "B"}
+GR = {**GRADES, "nga_msi": "A", "aisstream": "B"}
 
 
 def jam(**kw: object) -> object:
@@ -128,7 +128,7 @@ def _settings() -> Settings:
     )
 
 
-def test_pipeline_ais_gap_alert_after_two_ticks_with_gfw_corroboration() -> None:
+def test_pipeline_ais_gap_alert_after_two_ticks() -> None:
     store = FakeStore()
     store.insert_vessels(V.dark_gap_covered())
     store.insert_events(events())
@@ -138,8 +138,7 @@ def test_pipeline_ais_gap_alert_after_two_ticks_with_gfw_corroboration() -> None
     assert len(g1) == 1 and g1[0].persistence == 1 and r1.alerts == []
     r2 = tick(store, cfg, V.GAP_NOW + timedelta(minutes=5), playbook=PB, source_grades=GR)
     (a,) = [x for x in r2.alerts if x.kind == AlertKind.AIS_GAP]
-    assert a.aoi == "scs" and a.corroboration_status == "corroborated"
-    assert "gfw-gap-1" in {c.evidence_id for c in a.corroborations if c.relation == "supports"}
+    assert a.aoi == "scs"
     assert store.metric_history(g1[0].h3_cell or "", AIS_METRIC, V.GAP_NOW - timedelta(days=1))
 
 

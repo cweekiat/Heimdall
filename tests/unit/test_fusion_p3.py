@@ -4,20 +4,17 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from heimdall.config import AOI
-from heimdall.detect.outage import detect as detect_outage
 from heimdall.fuse import admiralty
 from heimdall.fuse.corroborate import cross_source, family_of
 from heimdall.fuse.fusion import fuse
 from heimdall.geo import h3_cell
 from heimdall.schemas import AlertKind, Coverage, Evidence, RecordRef, Severity
 from tests.synthetic import context as ctx
-from tests.synthetic import outage as outsyn
 from tests.synthetic.generators import T0
 from tests.unit.test_warning_area import events
 
 NOW = T0 + timedelta(minutes=30)
-GRADES = {"adsb_lol": "B", "ioda": "B", "black_marble": "A", "firms": "A"}
+GRADES = {"adsb_lol": "B", "firms": "A"}
 JAM_LAT, JAM_LON = 12.5, 113.5  # inside the notices of tests.unit.test_warning_area
 
 
@@ -53,19 +50,6 @@ def mk(
     )
 
 
-def lights(ident: str, lat: float, lon: float) -> Evidence:
-    return mk(
-        AlertKind.OUTAGE,
-        ident,
-        lat,
-        lon,
-        src="black_marble",
-        detector="night_lights",
-        days_back=2,
-        features={"worst_ratio": 0.2, "n_dropped_nights": 3, "imagery_lag_days": 2},
-    )
-
-
 def sup(cs: list, kinds: bool = False) -> set[str]:  # type: ignore[type-arg]
     return {c.evidence_id for c in cs if c.relation == "supports"}
 
@@ -85,36 +69,13 @@ def test_thermal_and_jamming_support_each_other() -> None:
     assert sup(out["j1"]) == {"t1"} and sup(out["t1"]) == {"j1"} and sup(out["t2"]) == set()
 
 
-def test_thermal_supported_and_outage_context_from_covering_notice() -> None:
+def test_thermal_supported_from_covering_notice() -> None:
     hot = mk(AlertKind.THERMAL, "t1", JAM_LAT, JAM_LON, src="firms", res=6)
     assert {"nga-exercise-1"} <= sup(cross_source([hot], [hot], events())["t1"])
-    dark = mk(AlertKind.OUTAGE, "o1", JAM_LAT, JAM_LON, src="ioda")
-    got = cross_source([dark], [dark], events())["o1"]
-    assert sup(got) == set()
-    assert "nga-exercise-1" in {c.evidence_id for c in got if c.relation == "context"}
-
-
-def test_ioda_outage_and_night_lights_support_each_other() -> None:
-    io = mk(AlertKind.OUTAGE, "o1", 21.9, 95.9, src="ioda")
-    nl = lights("o2", 22.0, 95.9)  # ~11 km
-    far = lights("o3", 23.5, 95.9)
-    out = cross_source([io, nl, far], [io, nl, far], [])
-    assert sup(out["o1"]) == {"o2"} and sup(out["o2"]) == {"o1"} and sup(out["o3"]) == set()
-    io2 = mk(AlertKind.OUTAGE, "o4", 21.95, 95.9, src="ioda")  # two IODA outages: not independent
-    assert sup(cross_source([io, io2], [io, io2], [])["o1"]) == set()
-
-
-def test_outage_and_thermal_in_same_r4_support() -> None:
-    io = mk(AlertKind.OUTAGE, "o1", 21.9, 95.9, src="ioda")
-    hot = mk(AlertKind.THERMAL, "t1", 21.9, 95.9, src="firms", res=6)
-    other = mk(AlertKind.THERMAL, "t2", 24.9, 95.9, src="firms", res=6)
-    out = cross_source([io, hot, other], [io, hot, other], [])
-    assert sup(out["o1"]) == {"t1"} and sup(out["t1"]) == {"o1"} and sup(out["t2"]) == set()
 
 
 def test_p3_families_and_context_family_not_counted() -> None:
-    assert family_of("firms") == "thermal" and family_of("black_marble") == "night_lights"
-    assert family_of("ioda") == "ioda" and family_of("cloudflare_radar") == "cloudflare"
+    assert family_of("firms") == "thermal"
     for k in ("open_meteo", "swpc", "celestrak", "stac"):
         assert family_of(k) == "context"
     lead = mk(AlertKind.GNSS_JAMMING, "j", 25.0, 96.0)
@@ -130,27 +91,8 @@ def test_p3_families_and_context_family_not_counted() -> None:
 # ------------------------------------------------------------------ fusion
 
 
-def test_ioda_plus_night_lights_is_corroborated_and_improves_credibility() -> None:
-    io = mk(
-        AlertKind.OUTAGE,
-        "o1",
-        21.9,
-        95.9,
-        src="ioda",
-        features={"n_datasources": 2, "duration_h": 3, "min_ratio": 0.2},
-    )
-    nl = lights("o2", 22.1, 95.9)
-    assert io.h3_cell != nl.h3_cell
-    alone = next(a for a in fuse([io], [], NOW, None, {}, GRADES) if a.evidence_ids == ["o1"])
-    both = next(a for a in fuse([io, nl], [], NOW, None, {}, GRADES) if a.evidence_ids == ["o1"])
-    assert alone.corroboration_status == "uncorroborated"
-    assert both.corroboration_status == "corroborated"
-    assert both.admiralty.credibility == alone.admiralty.credibility - 1
-    assert {s.family for s in both.sources} == {"ioda", "night_lights"}
-
-
 def test_stac_and_overpass_context_never_corroborate() -> None:
-    io = mk(AlertKind.OUTAGE, "o1", 5.0, 105.0, src="ioda")
+    io = mk(AlertKind.THERMAL, "o1", 5.0, 105.0, src="firms", res=6)
     fp = ctx.footprint(NOW - timedelta(hours=3))
     op = ctx.overpass(NOW + timedelta(hours=5))
     alone = fuse([io], [], NOW, None, {}, GRADES)[0]
@@ -207,11 +149,6 @@ def test_thermal_near_jamming_supports_and_control_cap_holds() -> None:
 
 
 def test_injection_text_never_reaches_summary_or_notes() -> None:
-    aoi = AOI(name="myanmar", lat=20.5, lon=96.5, radius_nm=250)
-    evs = detect_outage([*outsyn.ioda_drop(), outsyn.annotation()], {}, outsyn.NOW, aoi=aoi)
-    (o,) = evs
-    o = o.model_copy(update={"persistence": 2})
-    (a,) = fuse([o], [], outsyn.NOW, None, {}, GRADES, context_events=[ctx.footprint(outsyn.NOW)])
-    dump = a.model_dump_json()
-    assert outsyn.INJECTION not in dump and ctx.INJECTION not in dump
-    assert a.summary.startswith("Internet outage")
+    hot = mk(AlertKind.THERMAL, "t1", 5.0, 105.0, src="firms", res=6)
+    (a,) = fuse([hot], [], NOW, None, {}, GRADES, context_events=[ctx.footprint(NOW)])
+    assert ctx.INJECTION not in a.model_dump_json()

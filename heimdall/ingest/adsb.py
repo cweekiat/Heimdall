@@ -46,7 +46,7 @@ class SlidingCounter:
 
 
 class AdsbAggregatorConnector:
-    """One connector per provider (adsb_lol / adsb_fi / airplanes_live), own rate limit.
+    """One connector per provider (adsb_lol / adsb_fi), own rate limit.
 
     `path_template` uses {lat}, {lon}, {radius}. Round-robins the configured AOIs.
     """

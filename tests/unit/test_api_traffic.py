@@ -58,7 +58,7 @@ def store() -> MemoryStore:
                 ship_type=71,
                 sog=9.0,
             ),
-            VesselObs(ts=NOW - timedelta(seconds=10), mmsi=2, provider="gfw", lat=4, lon=4),
+            VesselObs(ts=NOW - timedelta(seconds=10), mmsi=2, provider="other_ais", lat=4, lon=4),
         ]
     )
     return s
@@ -188,7 +188,7 @@ def test_actions_board_and_sources_demo() -> None:
     assert {a["status"] for a in c.get("/api/actions?status=proposed").json()} == {"proposed"}
     st = {s["key"]: s for s in c.get("/api/sources").json()}
     assert {s["status"] for s in st.values()} >= {"ok", "degraded", "needs_key", "off"}
-    on = c.post("/api/sources/china_msa", json={"enabled": True}).json()
+    on = c.post("/api/sources/firms", json={"enabled": True}).json()
     assert on["enabled"] and on["status"] == "ok"
     assert c.post("/api/sources/nope", json={"enabled": True}).status_code == 404
 

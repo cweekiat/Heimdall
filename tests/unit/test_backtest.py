@@ -167,7 +167,7 @@ def test_per_aoi_detector_overrides_merge() -> None:
 
 def test_sources_yaml_parses() -> None:
     grades = grades_from_sources(config.sources())
-    assert grades["adsb_lol_history"] == "B" and "cloudflare_radar" in grades
+    assert grades["adsb_lol_history"] == "B" and "firms" in grades
 
 
 # --------------------------------------------------------------------------- scoring

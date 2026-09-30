@@ -280,7 +280,7 @@ _P3_AOIS = {
 
 
 def _seed_p3(store: Store, now: datetime) -> None:
-    """Synthetic ADR-007 events (thermal, outage, lights, imagery, overpass) + context notes."""
+    """Synthetic ADR-007 events (thermal, imagery, overpass) + context notes."""
     rnd = random.Random(23)
     out: list[GeoEvent] = []
     for aoi, (clat, clon) in _P3_AOIS.items():
@@ -307,32 +307,8 @@ def _seed_p3(store: Store, now: datetime) -> None:
                     },
                 )
             )
-        cell = h3.latlng_to_cell(clat, clon, 4)
-        for k, c in enumerate(h3.grid_disk(cell, 2)):
-            ring = [[lo, la] for la, lo in h3.cell_to_boundary(c)]
-            ratio = 0.35 if k % 7 == 0 else round(rnd.uniform(0.85, 1.15), 2)
-            out.append(
-                GeoEvent(
-                    id=f"black_marble|VNP46A2|{(now - timedelta(days=3)).date()}|{c}",
-                    ts=now - timedelta(days=3),
-                    source="black_marble",
-                    domain=Domain.SPACE,
-                    kind="night_lights",
-                    geometry={"type": "Polygon", "coordinates": [[*ring, ring[0]]]},
-                    value=round(5 * ratio, 2),
-                    attrs={
-                        "role": "signal",
-                        "h3_r4": c,
-                        "date": str((now - timedelta(days=3)).date()),
-                        "product": "VNP46A2",
-                        "median": 5.0,
-                        "valid_frac": 0.8,
-                        "cloud_frac": 0.1,
-                    },
-                )
-            )
         for k, (plat, coll) in enumerate(
-            (("sentinel-1a", "sentinel-1-grd"), ("sentinel-2b", "sentinel-2-l2a"))
+            (("sentinel-1a", "sentinel-1-grd"), ("sentinel-1c", "sentinel-1-grd"))
         ):
             d = 1.2
             la, lo = clat + k * 0.4 - 0.4, clon + k * 0.6 - 0.3
@@ -376,34 +352,13 @@ def _seed_p3(store: Store, now: datetime) -> None:
                     attrs={
                         "role": "context",
                         "norad_id": 40697 + k,
-                        "sat_name": "SENTINEL-2A" if k % 2 else "SENTINEL-1A",
-                        "sensor": "MSI" if k % 2 else "C-SAR",
+                        "sat_name": "SUOMI NPP" if k % 2 else "SENTINEL-1A",
+                        "sensor": "VIIRS" if k % 2 else "C-SAR",
                         "aoi": aoi,
                         "max_elev_deg": 55.0 + k,
                     },
                 )
             )
-    out.append(
-        GeoEvent(
-            id="ioda|country|MM|demo",
-            ts=now - timedelta(hours=2),
-            source="ioda",
-            domain=Domain.CYBER,
-            kind="outage_signal",
-            lat=21.9,
-            lon=96.1,
-            value=0.42,
-            attrs={
-                "role": "signal",
-                "entity_type": "region",
-                "entity_code": "MM-MDY",
-                "datasource": "bgp",
-                "observed": 420.0,
-                "baseline": 1000.0,
-                "level": "warning",
-            },
-        )
-    )
     store.insert_events(out)
     for aid, note, factor in (
         ("alert-0", "Cloud cover 85% over the cell; confidence lowered x0.8", 0.8),
@@ -697,9 +652,8 @@ class DemoSources:
         ("adsb_fi", "adsb.fi", Domain.AIR, "degraded", "HTTP 429 (rate limited)"),
         ("aisstream", "AISStream", Domain.SEA, "needs_key", "Add AISSTREAM_KEY to .env"),
         ("nga_msi", "NGA warnings", Domain.SEA, "ok", None),
+        ("firms", "NASA FIRMS", Domain.SPACE, "off", None),
         ("faa_nms_notam", "FAA NOTAMs", Domain.AIR, "needs_key", "Add FAA_NMS_KEY to .env"),
-        ("china_msa", "China MSA warnings", Domain.SEA, "off", None),
-        ("gfw", "Global Fishing Watch", Domain.SEA, "down", "unauthorized"),
         (
             "opensky_global",
             "OpenSky (global)",

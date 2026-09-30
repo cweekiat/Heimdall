@@ -6,7 +6,6 @@ non-China IPs during task 005; FAA NMS needs approval). They follow the document
 and must be replaced by recordings when access exists.
 
 - `nga_msi/broadcast_warn_hydropac.json` — handcrafted; shape `{"broadcast-warn": [...]}` per NGA MSI docs.
-- `china_msa/list_sansha.html`, `detail_exercise.html`, `detail_circle.html` — handcrafted; page structure assumed.
 - `faa_nms/notams_sample.json` — handcrafted; GeoJSON-like `items[].properties.coreNOTAMData.notam` (assumed).
 - `notices/injection.html`, `notices/injection.json` — adversarial (script tag, "ignore previous
   instructions", links, ~100 KB coordinate-like string). Generated once; inert data for untrusted-text tests.

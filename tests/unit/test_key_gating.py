@@ -13,7 +13,7 @@ from heimdall.config import Settings, settings, sources
 from heimdall.ingest.registry import build_connectors
 from heimdall.ports import Connector
 
-CASES = [("aisstream", "AISSTREAM_KEY"), ("gfw", "GFW_TOKEN")]
+CASES = [("aisstream", "AISSTREAM_KEY"), ("firms", "FIRMS_MAP_KEY")]
 
 
 def _build(name: str) -> Connector:
@@ -72,4 +72,4 @@ def test_present_key_is_not_needs_key_and_never_in_health(
 
 def test_registry_builds_both_from_default_sources() -> None:
     names = [c.name for c in build_connectors(Settings(), sources())]
-    assert "aisstream" in names and "gfw" in names
+    assert "aisstream" in names and "firms" in names

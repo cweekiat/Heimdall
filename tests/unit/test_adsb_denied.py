@@ -22,7 +22,7 @@ def test_403_stops_polling_and_reports_needs_key() -> None:
     client = RateLimitedClient("t", rps=1000, transport=httpx.MockTransport(handler))
     aoi = AOI(name="x", lat=1.0, lon=100.0, radius_nm=100)
     conn = AdsbAggregatorConnector(
-        "airplanes_live",
+        "adsb_fi",
         "https://api.example",
         "/v2/point/{lat}/{lon}/{radius}",
         [aoi],

@@ -55,13 +55,6 @@ nga_msi:
     "11": "NAVAREA XI"  # China-issued (Far East) rebroadcast
   max_per_area: 200
 
-china_msa:
-  # Channel ids (info_warn.do?channelId=...) per regional MSA office. The Sansha id is the one recorded in
-  # docs/sources.md (task 005); others are placeholders to be filled once a non-geo-blocked route exists.
-  channels:
-    sansha: "9C219298-B27F-460E-995A-99401B3FF6AF"
-  list_path: "/msacncms_wap/pages/info_warn.do"
-  max_details_per_poll: 20
 
 faa_nms:
   # FIRs by AOI. Baltic FIRs are the calibration control. Endpoints are unverified (FAA approval needed).
