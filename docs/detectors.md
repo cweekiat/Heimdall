@@ -170,6 +170,82 @@ are never read; only `attrs.ref` (re-sanitised to `[A-Z0-9/ -]`, 40 chars), sour
 url and times enter Evidence. Partial geometry (no_geometry/too_large/partial) -> centroid match,
 confidence 0.6.
 
+## Thermal anomalies (detect/thermal.py, `thermal-1.0.0`, ADR-007, task 021a)
+Input: FIRMS `thermal` GeoEvents (value = FRP MW, `attrs.confidence`, `attrs.satellite`); `text`/`title`
+never read. Window = `window_h` (24 h) aligned to the hour. `detect(events, baseline_events, cfg, now, *, aoi)`.
+1. Keep confidence in `min_confidence` (nominal, high) and inside the AOI radius. Low-confidence pixels
+   are dropped for rules and baselines.
+2. **Static mask**: r8 cell with detections (any confidence) on >= `static_days` (10) distinct UTC days of
+   the `baseline_days` (60) before the window -> events in it are dropped; the r4 Evidence gets gap
+   "static heat source masked: N detections". If everything is masked there is no Evidence, hence no gap.
+3. Cluster per r6 cell: T1 `n >= min_detections` (3); T2 `sum FRP >= frp_min_mw` (50);
+   T3 `ratio = N_r4_window / (B + 1) >= ratio_min` (3), with B = mean unmasked detections per day in the r4
+   cell over the baseline (`count / min(baseline_days, max(history_days, 1))`). **Fire = (T1 or T2) and T3.**
+   `+1` keeps a quiet cell from dividing by ~0: 3 fresh detections need a ratio of 3 -> B <= 0. With 5
+   detections B up to 0.67/day still fires.
+4. Coverage: `n_observed` = distinct passes (satellite, 10-min bin) in the cluster;
+   `confidence = min(1, passes / expected_passes)` (4). `n_quality` = high-confidence detections.
+   History length is estimated from the earliest baseline event in the feed; shorter than `baseline_days`
+   -> gap "short baseline: ..." and score capped at 0.6.
+5. `score = clamp(ratio / (2 ratio_min)) * coverage_confidence`. Records: up to 50 FIRMS event ids
+   (strongest FRP first). Counterfactual: "would not fire with < 3 detections or ratio < 3".
+Known limits: pixel jitter across r8 boundaries can leak a flare (T3 ratio is the backstop); no land
+cover mask (crop burning suppressed only via the baseline); persistence is fusion's (>= 2 windows);
+priors, not backtested (calibrate on the FIRMS archive, task 016).
+
+## Internet outage (detect/outage.py, `outage-1.0.0`, ADR-007, task 021b)
+`detect(events, cfg, now, *, aoi)` over IODA `outage_signal` (value = observed/baseline; recomputed from
+attrs if None) and Cloudflare `outage_annotation` GeoEvents, window `window_h` (6 h). Entity =
+`entity_type:entity_code`, located at the mean event lat/lon and required within AOI radius +
+`aoi_margin_km` (100).
+* **O1**: in one time bin >= `min_datasources` (2) datasources have ratio <= `drop_ratio_max` (0.7).
+  Different bins do not add up, so a single-datasource blip is silent.
+* **O2**: an active annotation (`valid_from < window_end`, `valid_to` None or >= window_start) with
+  `attrs.location == entity_code`. Supporting; fires alone only if `annotation_alone` (default false),
+  then keyed `annotation:<loc>` and requiring the annotation to carry lat/lon.
+* Score = clamp(1 - min_ratio) (+0.15 with O2); 0.3 for annotation-only. Features `min_ratio`,
+  `n_datasources`, `duration_h` (first to last qualifying bin + 5 min), `annotation_active`.
+* Coverage: `n_observed` = datasources with data, `confidence = with_data / len(datasources)`; gap
+  "datasource missing: <name>". `geometry` None. `title`/`text` are never read; `attrs.location` is
+  re-sanitised to `[A-Za-z0-9_-]`.
+
+## Night-lights drop (detect/night_lights.py, `night-lights-1.0.0`, ADR-007, task 021b)
+Per r4 cell, nightly `night_lights` events (mean radiance of clean pixels, `attrs.date`, `valid_frac`).
+Valid night: N3 `valid_frac >= min_valid_frac` (0.5); invalid nights are skipped everywhere. Forward pass:
+B = median of the last `baseline_nights` (30) *clean* (not-dropped) valid nights, needing >=
+`min_history_nights` (5); a night is dropped iff N1 `B >= min_baseline_radiance` (5.0) and N2
+`value / B <= drop_ratio_max` (0.5). Dropped nights do not enter the baseline; a non-dropped night resets
+the run. Fire iff the run ends on the latest reported night (which must be valid) and N4 run length >=
+`min_nights` (2), and the latest night is <= `max_lag_days` (10) old. Emits `OUTAGE` with
+`night_lights_ratio` (latest), `worst_ratio`, `baseline_radiance`, `n_dropped_nights`, gap "imagery lag: N
+days" (+ excluded nights, short baseline). Score = (1 - worst_ratio) * min(1, run / (2 min_nights));
+coverage confidence = min(1, clean nights / baseline_nights) * mean valid_frac. Window = first dropped
+night 00:00Z to latest night + 1 d (stable id while the run start is unchanged). Cloudy or unlit cells
+produce nothing (the "gap only" case has no Evidence to attach to). Known limits: a permanent change keeps
+alerting; snow, moonlight and lunar-phase effects are handled only by upstream pixel masking. Priors, not
+backtested (2021 Myanmar / Baltic control).
+
+## Confounders and observability (fuse/confounders.py, fuse/observability.py, ADR-007 s.4-5, task 021c)
+Pure helpers; they never create Evidence, never raise severity or change Admiralty. Config lives at
+`detectors.fusion.confounders` / `.observability`. 022b wires them into fusion.
+`assess(ev, context, cfg) -> (factor, notes, gaps)`. Context matches when
+`window_start - max_age_h <= ts <= window_end` (6 h; live Open-Meteo forecast + `past_days`, SWPC Kp).
+* GNSS_JAMMING: max Kp in the context; Kp >= 7 -> x0.5, elif Kp >= 5 -> x0.8 (tiers do not stack).
+  Equatorial scintillation: |lat| <= 20 and local solar time (UTC hour at window midpoint + lon/15) in
+  [19, 2) -> x0.85; needs no context event. No `space_weather` in range -> gap "space weather context
+  unavailable (lag)".
+* OUTAGE: weather within `storm_km` (50) with `weather_code` in {95, 96, 99} -> x0.7; for
+  `detector == "night_lights"` mean cloud_cover >= 80 -> x0.5. AIS_GAP: max wind >= 20 m/s -> x0.9.
+  No nearby weather -> gap "weather context unavailable (lag)". Other kinds -> (1, [], []).
+* factor = clamp(product, min_factor 0.3, 1); each single factor clamped to <= 1; NaN/inf/non-numeric
+  attrs ignored. Notes are templates over numbers ("Kp 6.0 (G2) during window"), relation `context`;
+  `text`/`title`/`url` are never read.
+`observability(ev, context, now, cfg)`: `imagery_footprint` events with `ts` within +/- 48 h of the
+evidence window whose polygon contains the evidence point (or vertex-overlaps its geometry; planar) ->
+note "Sentinel-2 scene acquired 12 h before ... ; cloud cover 35 %" (S2 only); then the next 3
+`overpass` events (start >= now, same AOI when both name one). Metadata only: assets, thumbnails and
+urls are never referenced. Context kinds never count as corroborating families.
+
 ## Fusion v0 (fuse/fusion.py) and Admiralty (fuse/admiralty.py)
 1. **Persistence gate** (set by the pipeline). Windows are 30 min at a 5-min step, so counting
    triggered windows would make one short burst "persist" for 6 windows. Per subject
