@@ -152,7 +152,9 @@ class SourceManager:
                 reliability=rel,
             )
         task = self._tasks.get(key)
-        if task is not None and task.done():
+        h = conn.health()
+        # a pump that ended because the source needs a key (or was refused access) is not a crash
+        if task is not None and task.done() and h.status != "needs_key":
             return SourceState(
                 key=key,
                 label=label,
@@ -162,7 +164,6 @@ class SourceManager:
                 detail="pump task stopped; toggle to restart",
                 reliability=rel,
             )
-        h = conn.health()
         return SourceState(
             key=key,
             label=label,
