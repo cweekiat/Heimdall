@@ -4,7 +4,8 @@ import { ago, fmtTime, h } from "./dom";
 import { css } from "./theme/palette";
 import { explainBlock } from "./explain";
 import { alertTitle, aoiName, confidenceLabel, CORROBORATION_LABEL, kindLabel, PRIORITY_WORD, SOURCE_LABEL, T, truthLabel } from "./labels";
-import { patch, selectAlert, state, triage } from "./store";
+import { api } from "./api";
+import { patch, refreshAll, selectAlert, state, triage } from "./store";
 
 const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 export const priority = (a: Alert): number => SEV_RANK[a.severity]! * a.confidence;
@@ -191,6 +192,7 @@ export function renderQueue(root: HTMLElement): void {
       h("button", { id: "bulk-ack", onclick: () => void bulkAck() }, "Acknowledge selected"),
     ),
     list,
+    clearControl(root),
   );
   renderQueueList(list);
 }
@@ -250,4 +252,50 @@ function renderQueueList(list: HTMLElement): void {
     }
   }
   list.replaceChildren(...nodes);
+}
+
+// Two-step in-page confirmation (no window.confirm). Clearing expires alerts; it is not a verdict.
+let confirming = false;
+let clearMsg = "";
+
+function clearControl(root: HTMLElement): HTMLElement {
+  const total = state.alerts.filter((a) => ["new", "acknowledged", "under_review", "shelved"].includes(a.status)).length;
+  const redraw = (): void => renderQueue(root);
+  if (!confirming) {
+    return h(
+      "div",
+      { class: "clear-all" },
+      h("button", { type: "button", class: "btn-clear", disabled: total === 0, onclick: () => { confirming = true; clearMsg = ""; redraw(); } }, `${T.clearAll} (${total})`),
+      clearMsg && h("span", { class: "note", role: "status" }, clearMsg),
+    );
+  }
+  return h(
+    "div",
+    { class: "clear-all confirm", role: "alertdialog", "aria-label": T.clearAll },
+    h("span", {}, `Clear ${total} open alerts? They are marked expired, not dismissed, and the change is logged.`),
+    h(
+      "button",
+      {
+        type: "button",
+        class: "btn-clear danger",
+        onclick: () => {
+          void api.clearAlerts().then(
+            async (r) => {
+              confirming = false;
+              clearMsg = `Cleared ${r.cleared} alerts.`;
+              await refreshAll();
+              redraw();
+            },
+            () => {
+              confirming = false;
+              clearMsg = "Could not clear alerts.";
+              redraw();
+            },
+          );
+        },
+      },
+      "Yes, clear all",
+    ),
+    h("button", { type: "button", class: "btn-clear", onclick: () => { confirming = false; redraw(); } }, "Cancel"),
+  );
 }

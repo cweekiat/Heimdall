@@ -2,8 +2,7 @@
 import { ago, fmtNum, h } from "./dom";
 import { aoiName, coverageLabel, kindLabel, T } from "./labels";
 import { sparkline } from "./panels";
-import { api } from "./api";
-import { refreshAll, selectAoi, state } from "./store";
+import { selectAoi, state } from "./store";
 
 const SEV_ICON: Record<string, string> = { critical: "▲▲ Critical", high: "▲ High", medium: "■ Medium", low: "● Low", info: "● Low" };
 
@@ -54,52 +53,5 @@ export function renderBoard(root: HTMLElement): void {
       );
     }),
     ...(state.summary.length ? [] : [h("div", { class: "empty" }, "No area data yet.")]),
-    clearControl(root),
-  );
-}
-
-// Two-step in-page confirmation (no window.confirm). Clearing expires alerts; it is not a verdict.
-let confirming = false;
-let clearMsg = "";
-
-function clearControl(root: HTMLElement): HTMLElement {
-  const total = state.alerts.filter((a) => ["new", "acknowledged", "under_review", "shelved"].includes(a.status)).length;
-  const redraw = (): void => renderBoard(root);
-  if (!confirming) {
-    return h(
-      "div",
-      { class: "clear-all" },
-      h("button", { type: "button", class: "btn-clear", disabled: total === 0, onclick: () => { confirming = true; clearMsg = ""; redraw(); } }, `${T.clearAll} (${total})`),
-      clearMsg && h("span", { class: "note", role: "status" }, clearMsg),
-    );
-  }
-  return h(
-    "div",
-    { class: "clear-all confirm", role: "alertdialog", "aria-label": T.clearAll },
-    h("span", {}, `Clear ${total} open alerts? They are marked expired, not dismissed, and the change is logged.`),
-    h(
-      "button",
-      {
-        type: "button",
-        class: "btn-clear danger",
-        onclick: () => {
-          void api.clearAlerts().then(
-            async (r) => {
-              confirming = false;
-              clearMsg = `Cleared ${r.cleared} alerts.`;
-              await refreshAll();
-              redraw();
-            },
-            () => {
-              confirming = false;
-              clearMsg = "Could not clear alerts.";
-              redraw();
-            },
-          );
-        },
-      },
-      "Yes, clear all",
-    ),
-    h("button", { type: "button", class: "btn-clear", onclick: () => { confirming = false; redraw(); } }, "Cancel"),
   );
 }
