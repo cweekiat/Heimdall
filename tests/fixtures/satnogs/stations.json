@@ -1,0 +1,66 @@
+[
+ {
+  "id": 1,
+  "lat": 38.01697,
+  "lng": 23.7314,
+  "altitude": 104,
+  "last_seen": "2022-10-05T12:49:26Z",
+  "status": "Offline"
+ },
+ {
+  "id": 2,
+  "lat": 39.236,
+  "lng": -86.305,
+  "altitude": 280,
+  "last_seen": "2025-07-29T22:39:46Z",
+  "status": "Offline"
+ },
+ {
+  "id": 4,
+  "lat": 38.024,
+  "lng": 23.733,
+  "altitude": 150,
+  "last_seen": "2026-09-30T16:10:17Z",
+  "status": "Testing"
+ },
+ {
+  "id": 5,
+  "lat": 47.058979,
+  "lng": 15.460038,
+  "altitude": 330,
+  "last_seen": "2025-03-24T10:09:13Z",
+  "status": "Offline"
+ },
+ {
+  "id": 6,
+  "lat": 38.048,
+  "lng": 23.739,
+  "altitude": 104,
+  "last_seen": "2026-09-30T16:10:16Z",
+  "status": "Testing"
+ },
+ {
+  "id": 8,
+  "lat": 38.022,
+  "lng": 23.828,
+  "altitude": 208,
+  "last_seen": "2020-06-12T04:26:04Z",
+  "status": "Offline"
+ },
+ {
+  "id": 9,
+  "lat": 35.501,
+  "lng": 24.011,
+  "altitude": 82,
+  "last_seen": "2026-03-17T12:59:03Z",
+  "status": "Offline"
+ },
+ {
+  "id": 10,
+  "lat": 37.956,
+  "lng": 23.765,
+  "altitude": 183,
+  "last_seen": "2025-08-01T16:25:39Z",
+  "status": "Offline"
+ }
+]

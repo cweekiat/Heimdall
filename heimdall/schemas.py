@@ -19,6 +19,7 @@ class Domain(StrEnum):
     SPACE = "space"
     CYBER = "cyber"
     EVENTS = "events"
+    SPECTRUM = "spectrum"  # RF receiver networks: HF spots, satellite RF/RFI (ADR-008)
 
 
 class SourceReliability(StrEnum):
@@ -366,7 +367,7 @@ KEY_CONNECTORS: dict[str, str] = dict(
         ("OPENSKY_CLIENT_ID", "opensky_global"),
         ("OPENSKY_CLIENT_SECRET", "opensky_global"),
         ("FIRMS_MAP_KEY", "firms"),
-        ("EARTHDATA_TOKEN", "earthdata"),  # task 019: NASA Earthdata bearer token (LAADS)
+        ("EARTHDATA_TOKEN", "smap_rfi"),  # NASA Earthdata bearer token (SMAP via NSIDC cloud)
     ]
 )
 
