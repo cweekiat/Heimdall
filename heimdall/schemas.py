@@ -275,3 +275,6 @@ class SourceHealth(BaseModel):
     records_last_hour: int = 0
     error_rate: float = 0.0
     expected_latency_s: int = 0
+    # ADR-004: "needs_key" = env key absent (no requests made); detail names env vars, never values
+    status: Literal["ok", "degraded", "down", "needs_key", "disabled"] = "ok"
+    detail: str | None = None
