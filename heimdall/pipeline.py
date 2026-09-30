@@ -19,6 +19,7 @@ from heimdall.detect import (
     ais_spoofing,
     jamming,
     orbit,
+    spectrum_state,
     spoofing,
     thermal,
     warning_area,
@@ -81,6 +82,8 @@ def persistence_key(aoi: str, ev: Evidence) -> str:
         return f"{aoi}|{ev.kind}|mmsi:{ev.entities[0]}"
     if ev.kind == AlertKind.THERMAL:
         return f"{aoi}|{ev.kind}|r6:{ev.h3_cell}"
+    if ev.kind == AlertKind.SPECTRUM_ANOMALY and ev.bands:
+        return f"{aoi}|{ev.kind}|band:{ev.bands[0]}"
     return f"{aoi}|{ev.kind}|cell:{ev.h3_cell}"
 
 
@@ -300,6 +303,56 @@ def _p3_evidence(
     return evs
 
 
+def spectrum_windows(store: Store, now: datetime) -> list[GeoEvent]:
+    """Spectrum events each band indicator needs, one read per kind with its own look-back."""
+    out: list[GeoEvent] = []
+    for kind, span in spectrum_state.EVENT_WINDOWS.items():
+        out += store.events_window(now - span, now + timedelta(minutes=5), [kind])
+    return out
+
+
+def spectrum_step(
+    store: Store,
+    aoi: AOI,
+    obs: Sequence[AircraftObs],
+    vessels: Sequence[VesselObs],
+    events: Sequence[GeoEvent],
+    detectors: Mapping[str, dict[str, Any]],
+    now: datetime,
+    res: TickResult,
+) -> list[Evidence]:
+    """033/034: band indicators -> metric history -> state; anomalous bands -> Evidence."""
+    cfg = dict(detectors.get("spectrum_state", {}))
+    jcfg = detectors.get("jamming", {})
+    days = float(cfg.get("baseline_days", spectrum_state.DEFAULTS["baseline_days"]))
+    step = float(jcfg.get("step_min", 5))
+    window = align_window(now, 60, step)
+    inds = spectrum_state.compute_indicators(
+        aoi, obs, vessels, events, now,
+        int(jcfg.get("nic_bad_below", 7)), int(jcfg.get("nacp_bad_below", 8)),
+    )  # fmt: skip
+    out: list[Evidence] = []
+    for band, ind in inds.items():
+        key = f"{aoi.name}|{band.value}"
+        hist = store.metric_history(key, spectrum_state.METRIC, now - timedelta(days=days))
+        past = [(ts, v) for ts, v in hist if ts < window[0]]
+        st = spectrum_state.assess(
+            aoi.name,
+            ind,
+            spectrum_state.history_for(band, past, now),
+            cfg,
+            spectrum_state.natural_explanations(band, events, now),
+        )
+        if ind.value is not None and ind.n >= int(spectrum_state.INDICATORS[band]["min_n"]):
+            store.record_metric(key, spectrum_state.METRIC, window[1], float(ind.value))
+            store.record_metric(key, spectrum_state.N_METRIC, window[1], float(ind.n))
+            res.metrics += 2
+        ev = spectrum_state.evidence(st, aoi, now, window, cfg)
+        if ev is not None:
+            out.append(ev)
+    return _assign_tick_persistence(store, aoi.name, out, timedelta(minutes=step))
+
+
 def run_aoi(
     store: Store,
     aoi: AOI,
@@ -313,6 +366,7 @@ def run_aoi(
     vessels_all: Sequence[VesselObs] | None = None,
     gaps: Sequence[dict[str, Any]] | None = None,
     p3: P3Windows | None = None,
+    spectrum_events: Sequence[GeoEvent] | None = None,
 ) -> TickResult:
     """One AOI step. `vessels`: AIS window for the AOI; `vessels_all`: the unfiltered AIS window
     for dark-gap detection (ships leaving the AOI keep reporting outside it; a gap belongs to the
@@ -358,6 +412,8 @@ def run_aoi(
     evs = _assign_persistence(store, aoi.name, [*jam, *spoof, *orb, *ais_sp, *ais_gp, *warn], step)
     if p3 is not None:
         evs += _p3_evidence(store, aoi, p3, detectors, now, res)
+    if spectrum_events is not None:
+        evs += spectrum_step(store, aoi, obs, vessels, spectrum_events, detectors, now, res)
 
     min_ac = int(jcfg.get("min_aircraft", 5))
     for cell, st in stats.items():
@@ -477,8 +533,11 @@ def tick(
     )
     events_all = [
         e
-        for e in store.events_window(now - timedelta(days=notice_days), now)
-        if e.kind not in warning_area.NOTICE_KINDS or warning_area.is_active(e, now)
+        # notices only: spectrum sources add ~2k events/h; a kind-less 30-day read loads them all
+        for e in store.events_window(
+            now - timedelta(days=notice_days), now, list(warning_area.NOTICE_KINDS)
+        )
+        if warning_area.is_active(e, now)
     ]
     gaps_by_aoi = _assign_gaps(settings.aois, dets, ves_all, now)
     if sources_cfg is None:
@@ -487,6 +546,7 @@ def tick(
         sources_cfg = _config.sources().get("sources", {})
     update_overpasses(store, settings.aois, sources_cfg.get("celestrak", {}), now)
     p3 = _p3_windows(store, dets, now)
+    spec_events = spectrum_windows(store, now)
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
         obs = [o for o in obs_all if aoi.contains(o.lat, o.lon)]
@@ -504,6 +564,7 @@ def tick(
             vessels_all=ves_all,
             gaps=gaps_by_aoi[aoi.name],
             p3=p3,
+            spectrum_events=spec_events,
         )
         total.evidence += r.evidence
         total.alerts += r.alerts

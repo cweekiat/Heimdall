@@ -46,6 +46,7 @@ class Band(StrEnum):
     L_1090 = "l_1090"
     L1_GNSS = "l1_gnss"
     L_1400 = "l_1400"
+    SAT_DOWNLINK = "sat_downlink"  # VHF/UHF/S satellite downlinks heard by SatNOGS stations
     C_SAR = "c_sar"
     NONE = "none"
 
@@ -68,6 +69,7 @@ class AlertKind(StrEnum):
     OUTAGE = "outage"  # legacy (027, ADR-008): nothing produces it; kept so stored alerts load
     EVENT_SURGE = "event_surge"
     WARNING_AREA = "warning_area"
+    SPECTRUM_ANOMALY = "spectrum_anomaly"  # 034: band indicator far from its baseline (ADR-008)
     COMPOSITE = "composite"
 
 

@@ -28,6 +28,7 @@ from heimdall.api.basemap import basemap_router
 from heimdall.api.gnss import gnss_router
 from heimdall.api.keys import keys_router
 from heimdall.api.layers import layers_router
+from heimdall.api.spectrum import spectrum_router
 from heimdall.api.traffic import traffic_router
 from heimdall.fuse.fusion import ACTIVE
 from heimdall.gnss_service import GnssService, StoreGnssService
@@ -517,6 +518,7 @@ def create_app(
     app.include_router(traffic_router(st, index=live))
     app.include_router(gnss_router(gnss or StoreGnssService(st, config.settings().detectors)))
     app.include_router(layers_router(st))
+    app.include_router(spectrum_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(
         aois_router(

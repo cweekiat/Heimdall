@@ -168,8 +168,16 @@ detectors:
     refresh_min: 15         # rolling last-24 h recompute (~2 s per day of lake data, measured 2026-10-01)
     min_hours_complete: 22  # fewer hourly lake partitions -> day flagged incomplete
     backfill_days: 7
+  spectrum_state:           # 033/034: per-AOI band indicators vs own history. Priors, not backtested (ADR-008)
+    baseline_days: 14
+    min_samples: 288        # 1 day of 5-min ticks before any state but "learning"
+    min_samples_hourly: 36  # HF: same-UTC-hour samples (3 days)
+    elevated_z: 2.0
+    anomalous_z: 3.0
+    confidence_cap: 0.6     # experimental single band stays <= medium severity
+    explained_factor: 0.5   # confidence x0.5 when space weather could explain it
   fusion:
-    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2}  # CLAUDE.md: >= 2 windows; ais_*, thermal prior, not backtested
+    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2, spectrum_anomaly: 3}  # CLAUDE.md: >= 2 windows; ais_*, thermal prior, not backtested
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior
     strong_score: 0.6         # Admiralty credibility 3 (single family strong & persistent) vs 4
     expire_after_min: 60      # open alerts with no fresh evidence for 60 min expire
@@ -185,6 +193,11 @@ detectors:
       nga_msi: notice
       faa_nms_notam: notice
       firms: thermal        # ADR-007 s.6. Prior, not backtested
+      wspr_live: hf_amateur  # 034: WSPR and PSK Reporter share many amateur stations -> one family
+      pskreporter: hf_amateur
+      satnogs: satnogs
+      sentinel1_rfi: sar
+      smap_rfi: radiometer
       open_meteo: context   # context sources never count as families
       swpc: context
       celestrak: context

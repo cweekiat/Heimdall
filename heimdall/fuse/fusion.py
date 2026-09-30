@@ -284,6 +284,12 @@ def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: s
             f"{_f(lead, 'sum_frp_mw'):.0f} MW over {_f(lead, 'n_passes'):.0f} satellite passes; "
             f"{pers}; {cov}."
         )
+    if kind == AlertKind.SPECTRUM_ANOMALY:
+        parts = [r.description for e in group for r in e.rules[:1]]
+        return (
+            f"Unexplained change in {len(group)} band indicator(s) over this area: "
+            f"{'; '.join(parts)}; {pers}; {cov}. Experimental: it never names an emitter."
+        )
     return f"{kind} in H3 {cell}: {len(group)} evidence items; {pers}; {cov}."
 
 
@@ -296,6 +302,7 @@ _TITLES = {
     AlertKind.AIS_GAP: "AIS dark gap",
     AlertKind.THERMAL: "Unusual fire activity",
     AlertKind.OUTAGE: "Connectivity or power outage",
+    AlertKind.SPECTRUM_ANOMALY: "Spectrum anomaly",
 }
 
 
@@ -387,6 +394,9 @@ def fuse(
             conf = min(e.coverage.confidence for e in group)
         else:
             sev = severity_for(lead.score, lead.coverage.confidence, c)
+            if kind == AlertKind.SPECTRUM_ANOMALY and len({b for e in group for b in e.bands}) < 2:
+                # ADR-008 s4: one experimental band alone is never more than medium
+                sev = min(sev, Severity.MEDIUM, key=_SEV_ORDER.index)
             conf = lead.coverage.confidence
         if control:
             sev = Severity.INFO
