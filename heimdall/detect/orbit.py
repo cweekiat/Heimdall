@@ -214,7 +214,10 @@ def detect(
         by_prov: dict[str, list[AircraftObs]] = defaultdict(list)
         for o in sorted(raw_by_hex[h], key=lambda o: o.ts):
             by_prov[o.provider].append(o)
-        showing = [p for p in providers if len(by_prov[p]) >= c["min_points"] / 2] or providers
+        # fallback: only providers that contributed fixes to the de-duplicated track itself
+        showing = [p for p in providers if len(by_prov[p]) >= c["min_points"] / 2] or sorted(
+            {o.provider for o in fixes}
+        )
         feats = {k: v for k, v in f.items() if k not in ("centroid_lat", "centroid_lon")}
         feats.update(
             {

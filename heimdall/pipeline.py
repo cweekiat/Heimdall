@@ -176,7 +176,11 @@ def run_aoi(
     written: list[Alert] = []
     for a in alerts:
         # ADR-003: re-read immediately before upsert; never overwrite analyst-owned fields
-        merged = apply_evidence_update(store.get_alert(a.id), a)
+        merged = apply_evidence_update(
+            store.get_alert(a.id),
+            a,
+            expire_before=now - timedelta(minutes=float(fcfg.get("expire_after_min", 60))),
+        )
         store.upsert_alert(merged)
         written.append(merged)
     alerts = written

@@ -234,3 +234,70 @@ def test_spoofing_records_only_providers_reporting_the_jump() -> None:
     pre = [o.model_copy(update={"provider": "adsb.fi"}) for o in spoofed[:30]]
     (e,) = spoofing.detect(spoofed + pre, {}, T0 + timedelta(minutes=30))
     assert {r.source for r in e.records} == {"adsb.lol"}
+
+
+# --------------------------------------------------------------------------- re-review 2
+
+
+def test_spoofing_records_keep_anchor_and_mlat_truth_fix() -> None:
+    from heimdall.detect import spoofing
+    from heimdall.detect.common import record_id
+    from tests.synthetic.generators import mlat_vs_adsb, teleport_spoof
+
+    now = T0 + timedelta(minutes=30)
+    (e,) = spoofing.detect(teleport_spoof(), {}, now)
+    s = spoofing.aircraft_signals(teleport_spoof(), {}, now)["c00001"]
+    assert s.anchor is not None and s.displaced is not None
+    ids = {r.id for r in e.records}
+    assert record_id(s.anchor) in ids and record_id(s.displaced) in ids  # cited by counterfactual
+    assert len(ids) == len(e.records)  # de-duplicated
+    (m,) = spoofing.detect(mlat_vs_adsb(offset_km=20.0), {}, now)
+    assert {r.source for r in m.records} == {"adsb.lol", "adsb.fi"}
+    sm = spoofing.aircraft_signals(mlat_vs_adsb(offset_km=20.0), {}, now)["c00004"]
+    assert sm.anchor is not None and sm.anchor.src_type == "mlat"
+    assert record_id(sm.anchor) in {r.id for r in m.records}
+
+
+def test_orbit_fallback_only_track_providers() -> None:
+    from heimdall.detect import orbit
+    from tests.synthetic.generators import circle_orbit
+
+    base = circle_orbit(dt_s=150)  # 30 fixes -> no provider reaches min_points/2 = 10
+    provs = ["adsb.lol", "adsb.fi", "airplanes.live", "opensky"]
+    track = [o.model_copy(update={"provider": provs[i % 4]}) for i, o in enumerate(base)]
+    # 'zz.rogue' only duplicates timestamps and loses de-duplication (provider-name order)
+    rogue = [o.model_copy(update={"provider": "zz.rogue"}) for o in base[:3]]
+    (e,) = orbit.detect(track + rogue, {"mil_types": ["E3TF"]}, T0 + timedelta(minutes=75), None)
+    assert {r.source for r in e.records} == set(provs)
+    assert "zz.rogue" in e.coverage.providers
+
+
+def test_expiry_skipped_when_alert_refreshed_between_list_and_upsert() -> None:
+    (a,) = fuse([ev()], [], NOW, None, PB, GRADES)
+    later = NOW + timedelta(minutes=120)
+    (x,) = fuse([], [a], later, None, PB, GRADES)  # fusion saw a stale snapshot
+    assert x.status == AlertStatus.EXPIRED
+    refreshed = a.model_copy(update={"last_seen": later, "summary": "fresh"})
+    horizon = later - timedelta(minutes=60)
+    m = apply_evidence_update(refreshed, x, expire_before=horizon)
+    assert m.status == AlertStatus.NEW and m.summary == "fresh"
+    assert apply_evidence_update(a, x, expire_before=horizon).status == AlertStatus.EXPIRED
+
+
+def test_single_jump_anomalous_span_capped_below_one_step() -> None:
+    from heimdall.detect import spoofing
+    from tests.synthetic.generators import teleport_spoof
+
+    now = T0 + timedelta(minutes=30)
+    (e,) = spoofing.detect(teleport_spoof(minutes=20), {}, now)  # displaced for 10 min
+    assert e.features["anomaly_last_ts"] - e.features["anomaly_first_ts"] < 300
+    # jump out and back 2 min later: span ends where the track re-converges
+    out_back = [
+        o
+        if o.ts < T0 + timedelta(minutes=12)
+        else o.model_copy(update={"lat": o.lat - 1.3490, "h3_r4": "", "h3_r6": ""})
+        for o in teleport_spoof(minutes=20)
+    ]
+    s = spoofing.aircraft_signals(out_back, {}, now)["c00001"]
+    span = max(o.ts for o in s.anomalous) - min(o.ts for o in s.anomalous)
+    assert span < timedelta(minutes=2)

@@ -54,6 +54,7 @@ detectors:
     step_min: 5
     speed_pair_max_s: 30      # |v_calc-gs| only on pairs <= 30 s (chord error < 10% in a 3 deg/s turn)
     persist_pairs: 2          # S1 must persist >= 2 pairs; single out-and-back fixes are glitches
+    s1_span_cap_s: 300        # one jump's anomalous span < 1 step (5 min): a lone jump cannot reach persistence 2
     alt_norm_min_aircraft: 3  # S2 regional norm = median over >= 3 aircraft in the r4 cell
     mlat_max_dt_s: 10
     mlat_min_pairs: 2         # one MLAT outlier is not enough

@@ -60,9 +60,16 @@ then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
 * **Alert** if #signals ≥ `min_signals` (2) or S3 fired. Location = last good fix before the jump
   (S1), else the MLAT position (S3), else the first divergent / clustered fix.
 * Score = max(0.5 if S3, min(1, #signals / 4)). Confidence = min(1, n_fixes / 20) × (0.8 if single provider).
-* Anomalous fixes = S1 fixes after the first jump, S2 divergent fixes, S3 ADS-B+MLAT pair fixes,
-  S4 first fix of each hit bin (fired signals only). Records: first fix per provider whose own
-  report reproduces an anomalous fix (same src type, |Δt| ≤ 2 s, ≤ 1 km).
+* Anomalous fixes = S1: flagged pairs alternate open/close (jump out, jump back); each opening
+  jump contributes the displaced segment from the jump until the track re-converges (the closing
+  flagged pair) **and** with ts − t_jump < `s1_span_cap_s` (300 s, strictly
+  under one step), so a single jump — even one whose displaced track continues all window — can
+  never span a full persistence step on its own; S2 divergent fixes; S3 ADS-B+MLAT pair fixes;
+  S4 first fix of each hit bin (fired signals only).
+* Records: showing providers = providers whose own report reproduces an anomalous fix (same src
+  type, |Δt| ≤ 2 s, ≤ 1 km); records = their first matching fix ∪ context records (S1 pre-jump
+  anchor + first displaced fix, S3 ADS-B + MLAT truth fix) whose provider is a showing provider,
+  de-duplicated. Reliability uses only these sources.
 
 ## Military orbit (detect/orbit.py, `orbit-1.0.0`)
 Military = `mil` flag or type in `mil_types`. All source types (MLAT allowed). Window 75 min.
@@ -80,7 +87,7 @@ else bearing from previous fix.
 * Score = 0.4 + 0.3·novelty + 0.3·clip((laps − 1)/2, 0, 1), laps = cum_turn/360.
 * Confidence = min(1, n_points / 40) × (0.8 if > 50 % MLAT fixes).
 * Records: first and last fix of each provider with ≥ min_points/2 raw fixes of the track (else
-  all contributing providers). Anomaly span = first..last resampled fix.
+  the providers of the de-duplicated track fixes only). Anomaly span = first..last resampled fix.
 * `jam_evidence`: distance from centroid to nearest jamming Evidence → features `jam_distance_km`,
   `near_jamming` (≤ `jam_proximity_km` 100) and informational rule `near_jamming`.
 
@@ -117,7 +124,10 @@ else bearing from previous fix.
    5 contradicted; 6 no evidence.
 7. Summary is a template over Evidence features (no LLM). `recommended_actions` = playbook ids
    whose `applies_to` contains the kind or "*".
-8. NEW alerts without fresh Evidence for `expire_after_min` (60) → EXPIRED. Alerts in an analyst
+8. NEW alerts without fresh Evidence for `expire_after_min` (60) → EXPIRED. At upsert the
+   pipeline re-reads the alert and expires it only if the stored copy is still NEW, its last_seen
+   is < now − expire_after_min and not newer than the snapshot fusion saw (a refresh between
+   list and upsert wins); expiry never copies stale evidence fields. Alerts in an analyst
    status never expire automatically.
 
 ## Pipeline (pipeline.py)

@@ -21,7 +21,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from heimdall.detect.common import (
@@ -49,6 +49,7 @@ DEFAULTS: dict[str, Any] = {
     "teleport_kt": 1323,
     "speed_diff_kt": 150,
     "persist_pairs": 2,
+    "s1_span_cap_s": 300,
     "alt_divergence_ft": 1000,
     "alt_min_fixes": 2,
     "alt_min_frac": 0.5,
@@ -147,7 +148,16 @@ def _s1(fixes: list[AircraftObs], c: dict[str, Any], sig: AircraftSignals) -> No
         sig.fired["S1"] = True
         sig.anchor, sig.displaced = a, b
         sig.records += [a, b]
-        sig.anomalous += clean[k0 + 1 :]
+        # anomalous span of each jump: the displaced segment until the track re-converges (next
+        # flagged pair) and strictly shorter than `s1_span_cap_s`, so one jump alone can never
+        # span a full persistence step
+        cap = timedelta(seconds=c["s1_span_cap_s"])
+        # flags alternate: odd flags open a displaced segment, the next flag closes it (jump back)
+        for i in range(0, len(flagged), 2):
+            k = flagged[i]
+            stop = flagged[i + 1] + 1 if i + 1 < len(flagged) else len(clean)
+            t_jump = clean[k + 1].ts
+            sig.anomalous += [o for o in clean[k + 1 : stop] if o.ts - t_jump < cap]
         after = [o.nic for o in clean[k0 + 1 :] if o.nic is not None]
         if after:
             sig.features["nic_median_anomalous"] = median([float(n) for n in after])
@@ -438,7 +448,16 @@ def detect(
             if "jump_km" in f and s.fired["S1"]
             else "."
         )
-        recs = showing_records(s)
+        shown = showing_records(s)
+        show_prov = {o.provider for o in shown}
+        # context records (S1 pre-jump anchor, S3 MLAT truth fix) kept when their provider also
+        # shows the anomaly; de-duplicated by record id
+        recs = list(
+            {
+                record_id(o) + o.provider: o
+                for o in [*shown, *(o for o in s.records if o.provider in show_prov)]
+            }.values()
+        )[:40]
         evs.append(
             Evidence(
                 id=evidence_id(AlertKind.GNSS_SPOOFING.value, cell, h, start, aoi),

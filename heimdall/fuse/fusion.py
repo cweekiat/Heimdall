@@ -302,23 +302,31 @@ def fuse(
 
 
 def apply_evidence_update(
-    current: Alert | None, update: Alert, max_evidence_ids: int = DEFAULTS["max_evidence_ids"]
+    current: Alert | None,
+    update: Alert,
+    max_evidence_ids: int = DEFAULTS["max_evidence_ids"],
+    expire_before: datetime | None = None,
 ) -> Alert:
     """Merge a fusion result into the alert as currently stored (re-read just before upsert).
 
     Only EVIDENCE_FIELDS are taken from `update`; analyst-owned fields (status, title, actions,
     first_seen) keep the stored value. The one status transition the pipeline may make is
-    NEW -> EXPIRED, and only if the stored alert is still NEW.
+    NEW -> EXPIRED, and only if the *re-read* alert is still NEW and still stale: its last_seen is
+    < `expire_before` (the staleness horizon) and not newer than the snapshot fusion expired. An
+    expiry never copies the snapshot's evidence fields over a fresher stored alert.
     """
     if current is None:
         return update
+    if update.status == AlertStatus.EXPIRED:
+        stale = current.last_seen <= update.last_seen and (
+            expire_before is None or current.last_seen < expire_before
+        )
+        if current.status == AlertStatus.NEW and stale:
+            return current.model_copy(update={"status": AlertStatus.EXPIRED})
+        return current
     fields: dict[str, Any] = {f: getattr(update, f) for f in EVIDENCE_FIELDS}
     fields["evidence_ids"] = list(dict.fromkeys([*current.evidence_ids, *update.evidence_ids]))[
         -max_evidence_ids:
     ]
     fields["last_seen"] = max(current.last_seen, update.last_seen)
-    if update.status == AlertStatus.EXPIRED and current.status == AlertStatus.NEW:
-        fields["status"] = AlertStatus.EXPIRED
-    if update.status == AlertStatus.EXPIRED and current.status != AlertStatus.NEW:
-        return current  # stale-expiry only applies to untouched NEW alerts
     return current.model_copy(update=fields)
