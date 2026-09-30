@@ -287,6 +287,15 @@ const post = <T>(path: string, body?: unknown) =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
+export interface TrafficOpts {
+  since?: number;
+  compact?: boolean;
+  signal?: AbortSignal;
+}
+/** since= and fmt=compact are only sent when asked for; servers that predate them ignore both. */
+const trafficUrl = (kind: string, maxAge: number, bbox: string, sources: string[], zoom: number, o: TrafficOpts): string =>
+  `/api/traffic/${kind}?bbox=${bbox}&zoom=${zoom.toFixed(2)}&max_age_s=${maxAge}${sources.length ? `&sources=${sources.join(",")}` : ""}${o.since !== undefined ? `&since=${o.since}` : ""}${o.compact ? "&fmt=compact" : ""}`;
+
 export const api = {
   clearAlerts: () => post<{ cleared: number }>("/api/alerts/clear"),
   alerts: () => req<Alert[]>("/api/alerts"),
@@ -332,16 +341,16 @@ export const api = {
     }),
   deleteKey: (name: string) => req<{ deleted: boolean }>(`/api/keys/${encodeURIComponent(name)}`, { method: "DELETE" }),
   setSource: (key: string, enabled: boolean) => post<SourceState>(`/api/sources/${encodeURIComponent(key)}`, { enabled }),
-  air: (bbox: string, sources: string[], zoom: number) =>
-    req<TrafficResp<AirProps>>(`/api/traffic/air?bbox=${bbox}&zoom=${zoom.toFixed(2)}&max_age_s=60${sources.length ? `&sources=${sources.join(",")}` : ""}`),
-  sea: (bbox: string, sources: string[], zoom: number) =>
-    req<TrafficResp<SeaProps>>(`/api/traffic/sea?bbox=${bbox}&zoom=${zoom.toFixed(2)}&max_age_s=900${sources.length ? `&sources=${sources.join(",")}` : ""}`),
+  air: (bbox: string, sources: string[], zoom: number, o: TrafficOpts = {}) =>
+    req<unknown>(trafficUrl("air", 60, bbox, sources, zoom, o), { signal: o.signal }),
+  sea: (bbox: string, sources: string[], zoom: number, o: TrafficOpts = {}) =>
+    req<unknown>(trafficUrl("sea", 900, bbox, sources, zoom, o), { signal: o.signal }),
   airTrail: (hex: string) => req<GeoFeature>(`/api/traffic/air/${encodeURIComponent(hex)}/trail?min=30`),
   seaTrail: (mmsi: number) => req<GeoFeature>(`/api/traffic/sea/${mmsi}/trail?min=120`),
   notices: () => req<FC<NoticeProps>>("/api/notices"),
   /** P3 layer for one area (GeoJSON, see docs/tasks/023a). Parsed by p3model.parseLayer. */
-  layer: (layer: string, aoi: string, hours?: number) =>
-    req<unknown>(`/api/layers/${encodeURIComponent(layer)}?aoi=${encodeURIComponent(aoi)}${hours ? `&hours=${hours}` : ""}`),
+  layer: (layer: string, aoi: string, hours?: number, signal?: AbortSignal) =>
+    req<unknown>(`/api/layers/${encodeURIComponent(layer)}?aoi=${encodeURIComponent(aoi)}${hours ? `&hours=${hours}` : ""}`, { signal }),
   board: (sinceH = 72) => req<BoardAction[]>(`/api/actions?since_h=${sinceH}`),
   reject: (actionKey: string) => post<ActionRec>(`/api/actions/${encodeURIComponent(actionKey)}/reject`),
 };

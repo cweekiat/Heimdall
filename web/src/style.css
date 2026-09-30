@@ -1240,3 +1240,5 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
 .p3-chip { font-size: 11px; padding: 2px 6px; }
 .ctx h3 { margin: 10px 0 4px; }
 .ctx .ctx-link { font-family: inherit; cursor: pointer; }
+.traffic-notice { top: 44px; }
+.coverage-note { margin: 6px 0 0; font-size: 11px; line-height: 1.35; }
