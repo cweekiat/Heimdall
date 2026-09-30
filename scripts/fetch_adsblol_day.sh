@@ -31,7 +31,18 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/adsblol-${DATE}.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT   # the raw archive never outlives the script
 
 echo "listing releases of ${REPO} ..."
-curl -fsSL -m 60 "https://api.github.com/repos/${REPO}/releases?per_page=100" -o "$WORK/releases.json"
+# a year has ~365+ releases: page through them (100 per page) and merge into one JSON list
+echo "[]" >"$WORK/releases.json"
+for page in 1 2 3 4 5 6 7 8; do
+  curl -fsSL -m 60 "https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}" -o "$WORK/page.json"
+  python3 - "$WORK/releases.json" "$WORK/page.json" <<'PY' || break
+import json, sys
+acc, page = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
+if not page:
+    sys.exit(1)  # no more pages
+json.dump(acc + page, open(sys.argv[1], "w"))
+PY
+done
 # emit "<name> <url>" lines for the matching release's assets (empty if none matches)
 python3 - "$WORK/releases.json" "$PREFIX" >"$WORK/assets.txt" <<'PY'
 import json, sys
@@ -42,8 +53,13 @@ match.sort(key=lambda r: r["tag_name"])  # -0 before -1 ...; take the first (pro
 if match:
     for a in match[0]["assets"]:
         print(a["name"], a["browser_download_url"])
+else:
+    tags = sorted(r["tag_name"] for r in rels)
+    print(f"{len(tags)} releases listed; nearest tags:", file=sys.stderr)
+    near = [t for t in tags if t[:9] == prefix[:9]] or tags[:5]
+    print("  " + "\n  ".join(near[:10]), file=sys.stderr)
 PY
-[[ -s "$WORK/assets.txt" ]] || { echo "no release with tag prefix ${PREFIX} in ${REPO} (first 100 only)" >&2; exit 3; }
+[[ -s "$WORK/assets.txt" ]] || { echo "no release with tag prefix ${PREFIX} in ${REPO} " >&2; exit 3; }
 grep -E '\.tar\.a[a-z]( |$)' "$WORK/assets.txt" >"$WORK/parts.txt" \
   || { echo "no '.tar.a?' assets in release:"; cat "$WORK/assets.txt"; exit 3; } >&2
 
