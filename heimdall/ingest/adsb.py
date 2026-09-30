@@ -87,6 +87,7 @@ class AdsbAggregatorConnector:
         self.n_records = 0
         self.records_hour = SlidingCounter()
         self.n_dropped = 0
+        self.denied: str | None = None  # set on HTTP 401/403: stop polling until restarted
 
     def url_for(self, aoi: AOI) -> str:
         radius = min(aoi.radius_nm, MAX_RADIUS_NM)
@@ -112,13 +113,18 @@ class AdsbAggregatorConnector:
         self._i += 1
         try:
             obs, dropped = await self.fetch_aoi(aoi)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (401, 403):
+                self.denied = (
+                    f"access denied (HTTP {e.response.status_code}): provider needs approval "
+                    "or a key; polling stopped"
+                )
+                log.warning("access_denied", source=self.name, status=e.response.status_code)
+            return self._failed(aoi, e)
         except (httpx.HTTPError, CircuitOpenError, ValueError) as e:
-            self.n_err += 1
-            self.last_error = f"{type(e).__name__}: {e}"[:200]
-            self.last_error_at = datetime.now(UTC)
-            log.warning("fetch_failed", source=self.name, aoi=aoi.name, error=self.last_error)
-            return []
+            return self._failed(aoi, e)
         self.n_ok += 1
+
         self.last_ok = datetime.now(UTC)
         self.n_records += len(obs)
         self.records_hour.add(len(obs))
@@ -127,6 +133,13 @@ class AdsbAggregatorConnector:
         if dropped:
             DROPPED.labels(self.name).inc(dropped)
         return obs
+
+    def _failed(self, aoi: AOI, e: Exception) -> list[AircraftObs]:
+        self.n_err += 1
+        self.last_error = f"{type(e).__name__}: {e}"[:200]
+        self.last_error_at = datetime.now(UTC)
+        log.warning("fetch_failed", source=self.name, aoi=aoi.name, error=self.last_error)
+        return []
 
     def health(self) -> SourceHealth:
         total = self.n_ok + self.n_err
@@ -145,10 +158,12 @@ class AdsbAggregatorConnector:
             self.last_ok is None or self.last_error_at >= self.last_ok
         ):
             h.status, h.detail = "degraded", self.last_error
+        if self.denied:
+            h.status, h.detail = "needs_key", self.denied
         return h
 
     async def stream(self) -> AsyncIterator[Sequence[BaseModel]]:
-        while not self._stop:
+        while not self._stop and not self.denied:
             n_err = self.n_err
             obs = await self.poll_once()
             if obs:
