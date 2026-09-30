@@ -163,6 +163,31 @@ the jamming Evidence); set `aoi` + persistence; record `jam_ratio` per cell with
 alerts. `record_metric` is an upsert on (key, metric, ts), so re-running the same tick is
 idempotent (same ids, metrics not duplicated, persistence not inflated).
 
+## Backtest (heimdall/backtest, task 006)
+`python -m heimdall.backtest --aoi A --date D --traces DIR [--gpsjam CSV] [--refs FILE]` ->
+`reports/backtest-A-D.md`. Offline and deterministic (no wall clock; sorted output).
+* **Traces** (`traces.py`): readsb `globe_history` per-aircraft JSON (gzip by magic bytes),
+  rows `[dt, lat, lon, alt|"ground", gs, track, flags, vrate, detail, type, alt_geom, geom_rate]`;
+  flags&8 = alt is geometric, flags&4 = vrate geometric. NIC/NACp only from the row's `detail`
+  object; rows without it are *unknown* (no forward fill). src_type = row[9] | detail.type | other.
+  Provider `history` (-> sources key adsb_lol_history).
+* **Replay** (`replay.py`): obs in the AOI radius -> `ReplayStore` (MemoryStore + bisect time index,
+  metric upsert) -> `pipeline.tick` every 5 min over the UTC day. `raised_at[alert]` = first tick
+  at which the alert existed.
+* **Scoring** (`score.py`): GPSJam day CSV (hex, count_good_aircraft, count_bad_aircraft; finer
+  cells summed to r4). R_g = max(0, bad-1)/(good+bad); red > 0.10, yellow (0.02, 0.10], green
+  else, gray if good+bad < min. Per r4 cell in the AOI our day = alert | evidence_only | quiet |
+  not_observed. Binary scores with positive prediction = alert: *red* (truth red) and *yellow+*
+  (truth yellow or red); gray / no-GPSJam cells excluded. P, R, F1 (undefined -> none).
+* **Sweep**: ratio_alert {0.05, 0.08, 0.10, 0.15} x min_aircraft {3, 5, 8}; ratio_clear scaled by
+  the configured ratio_clear/ratio_alert. Recommendation = max of (F1 red, P red, F1 yellow+,
+  ratio_alert, min_aircraft) (ties -> more conservative); "keep" unless it beats the current
+  config on the first three. The report also replays the sparse profile below.
+* **Lead time**: per reference time, first matching alert time (raised_at, else first_seen) in
+  [ref - 24 h, ref + 6 h]; lead = ref - alert time (> 0 = early).
+* **Sparse-region profile (proposed, not applied)**: per-AOI `detectors: {jamming: {window_min:
+  60, min_aircraft: 3, confidence_cap: 0.5}}` for SE Asia AOIs.
+
 ## Calibration status
 All thresholds are literature/GPSJam priors, **not yet backtested** (Baltic control run pending
 in P1). Most sensitive: `ratio_alert`/`mad_floor` (jamming), `speed_diff_kt` (spoofing S1 on
