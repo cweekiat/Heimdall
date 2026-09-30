@@ -120,6 +120,12 @@ A dismissed alert stays quiet for the rest of that episode. It re-alerts only if
 - **Counterfactual** tells you what would clear the alert, e.g. "clears if ratio < 0.06".
 - **Actions** come only from the allow-listed [config/playbook.yaml](config/playbook.yaml). Approving one records it and runs nothing external.
 
+**Windows and live traffic.** The map is the whole screen; the toolbar on the left opens floating windows
+(Alerts `q`, Areas `b`, Layers & filters `l`, Data sources `u`, Actions `x`, Timeline `t`). Aircraft and ships
+appear live for the area you are looking at; click one for its card, or use Layers & filters to show military
+only, an altitude band, ship types, or just things involved in alerts. **Data sources** shows what is
+collecting and lets you switch a source on or off. Warnings and NOTAMs appear as hatched areas.
+
 The full API and UI reference is in [docs/ui.md](docs/ui.md).
 
 ## 4. Configure
