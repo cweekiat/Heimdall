@@ -228,7 +228,9 @@ def detect(
             rules.append(
                 RuleResult(
                     rule="hysteresis_hold",
-                    description="Alert already active; kept until the share drops below the clear level",
+                    description=(
+                        "Alert already active; kept until the share drops below the clear level"
+                    ),
                     value=1.0,
                     threshold=1.0,
                     op="==",
