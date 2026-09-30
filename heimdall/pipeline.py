@@ -20,7 +20,7 @@ from heimdall.geo import within_radius_nm
 from heimdall.ports import Store
 from heimdall.schemas import AircraftObs, Alert, AlertKind, AlertStatus, Evidence
 
-ENTITY_PERSISTENCE = {AlertKind.MIL_ORBIT}  # persistence tracked per aircraft, else per cell
+ENTITY_PERSISTENCE = {AlertKind.MIL_ORBIT, AlertKind.AIS_GAP}  # per aircraft/vessel, else per cell
 
 
 @dataclass
@@ -46,9 +46,14 @@ PERSIST_TICKS = "persistence_ticks"  # consecutive steps in which the subject tr
 
 
 def persistence_key(aoi: str, ev: Evidence) -> str:
-    """Persistence subject: the aircraft (ICAO hex) for orbits, else the H3 cell."""
+    """Persistence subject: aircraft (ICAO hex) for orbits, MMSI for per-vessel AIS kinds (gap;
+    spoofing A1/A4 flag `per_vessel`), else the H3 cell."""
     if ev.kind in ENTITY_PERSISTENCE and ev.entities:
+        if ev.kind == AlertKind.AIS_GAP:
+            return f"{aoi}|{ev.kind}|mmsi:{ev.entities[0]}"
         return f"{aoi}|{ev.kind}|hex:{ev.entities[0]}"
+    if ev.kind == AlertKind.AIS_SPOOFING and ev.features.get("per_vessel") and ev.entities:
+        return f"{aoi}|{ev.kind}|mmsi:{ev.entities[0]}"
     return f"{aoi}|{ev.kind}|cell:{ev.h3_cell}"
 
 

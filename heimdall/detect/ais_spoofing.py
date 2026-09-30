@@ -207,11 +207,11 @@ def fit_circle(xy: Sequence[tuple[float, float]]) -> tuple[float, float, float, 
     r2 = [x * x + y * y for x, y in pts]
     bx = sum(x * r for (x, _), r in zip(pts, r2, strict=True))
     by = sum(y * r for (_, y), r in zip(pts, r2, strict=True))
-    rhs = [bx / 2, by / 2, sum(r2) / 2]
+    rhs = [bx, by, sum(r2)]
     sol = _solve3([[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, float(n)]], rhs)
     if sol is None:
         return None
-    a, b, cc = sol  # circle: x^2 + y^2 = 2ax + 2by + cc
+    a, b, cc = sol[0] / 2, sol[1] / 2, sol[2]  # x^2 + y^2 = 2ax + 2by + cc (linear in D, E, cc)
     rad2 = cc + a * a + b * b
     if rad2 <= 1e-12:
         return None
