@@ -30,10 +30,12 @@ from heimdall.schemas import (
     AircraftObs,
     Alert,
     AlertKind,
+    AlertSource,
     Corroboration,
     Coverage,
     Domain,
     Evidence,
+    Footprint,
     GeoEvent,
     RecordRef,
     RuleResult,
@@ -195,6 +197,23 @@ def seed(store: Store, seed_value: int = 7) -> Store:
                 corroborations=corr if i % 2 == 0 else [],
                 corroboration_status="corroborated" if i % 2 == 0 else "uncorroborated",
                 recommended_actions=["watch_cell", "export_brief"],
+                sources=[
+                    AlertSource(
+                        connector=c,
+                        family=fam,
+                        admiralty=Admiralty(
+                            reliability=SourceReliability.B, credibility=2 if conf > 0.6 else 3
+                        ),
+                    )
+                    for c, fam in (
+                        [("adsb_lol", "adsb"), ("adsb_fi", "adsb")]
+                        + ([("aisstream", "ais")] if i % 2 == 0 else [])
+                    )
+                ],
+                footprint=Footprint(
+                    kind="area_cell",
+                    description=f"Area cell {cell} (H3 res 4, about 52 km across)",
+                ),
                 first_seen=now - timedelta(hours=2, minutes=i * 9),
                 last_seen=now - timedelta(minutes=i * 7),
             )
