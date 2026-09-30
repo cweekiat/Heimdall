@@ -38,7 +38,7 @@ from heimdall.geo import KM_PER_NM, circular_variance, haversine_km, implied_spe
 from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "spoofing"
-VERSION = "spoofing-1.0.1"
+VERSION = "spoofing-1.0.2"
 
 DEFAULTS: dict[str, Any] = {
     "h3_res": 4,
@@ -69,6 +69,13 @@ DEFAULTS: dict[str, Any] = {
 }
 
 SIGNALS = ("S1", "S2", "S3", "S4", "S5")
+_SIGNAL_WORDS = {
+    "S1": "position jump",
+    "S2": "altitude mismatch",
+    "S3": "radio-timing (MLAT) disagreement",
+    "S4": "cluster of disagreeing tracks",
+    "S5": "good GPS accuracy reported despite wrong positions",
+}
 
 
 @dataclass
@@ -412,8 +419,9 @@ def detect(
             RuleResult(
                 rule="S1_teleport",
                 description=(
-                    f"Implied speed > {c['teleport_kt']} kt or |v_calc-gs| > "
-                    f"{c['speed_diff_kt']} kt persisting >= {c['persist_pairs']} pairs"
+                    f"Position jumps faster than {c['teleport_kt']} kt, or disagrees with the "
+                    f"reported ground speed by more than {c['speed_diff_kt']} kt, for at least "
+                    f"{c['persist_pairs']} consecutive reports"
                 ),
                 value=f.get("s1_persisted_pairs", 0.0),
                 threshold=float(c["persist_pairs"]),
@@ -421,7 +429,7 @@ def detect(
             ),
             RuleResult(
                 rule="S2_alt_divergence",
-                description="Median |alt_geom-alt_baro - cell norm| (ft)",
+                description="GPS vs barometric altitude mismatch beyond the local norm (ft)",
                 value=f.get("alt_div_ft_median"),
                 threshold=float(c["alt_divergence_ft"]),
                 op=">",
@@ -430,7 +438,10 @@ def detect(
             ),
             RuleResult(
                 rule="S3_mlat_gap",
-                description=f"MLAT vs ADS-B pairs with gap > {c['mlat_gap_km']} km (+gs*dt)",
+                description=(
+                    "Radio-timing (MLAT) position and reported position disagree by more than "
+                    f"{c['mlat_gap_km']} km (plus distance flown between reports)"
+                ),
                 value=f.get("mlat_bad_pairs", 0.0),
                 threshold=float(c["mlat_min_pairs"]),
                 passed=s.fired["S3"],
@@ -438,8 +449,8 @@ def detect(
             RuleResult(
                 rule="S4_cluster",
                 description=(
-                    f">= {c['cluster_min_aircraft']} aircraft within {c['cluster_km']} km with "
-                    "disagreeing tracks (time bins)"
+                    f"At least {c['cluster_min_aircraft']} aircraft within {c['cluster_km']} km "
+                    "whose tracks disagree with each other"
                 ),
                 value=f.get("cluster_bins", 0.0),
                 threshold=float(c["cluster_min_bins"]),
@@ -447,14 +458,14 @@ def detect(
             ),
             RuleResult(
                 rule="S5_nic_trusted",
-                description="Median NIC of anomalous fixes (healthy NIC while S1/S3 fire)",
+                description="Aircraft still report good GPS accuracy while positions are wrong",
                 value=f.get("nic_median_anomalous"),
                 threshold=float(c["nic_trusted_min"]),
                 passed=s.fired["S5"],
             ),
             RuleResult(
                 rule="signals",
-                description="Independent spoofing signals fired (S3 alone suffices)",
+                description="Independent spoofing signals seen (MLAT disagreement alone suffices)",
                 value=float(n),
                 threshold=float(c["min_signals"]),
                 passed=True,
@@ -463,9 +474,9 @@ def detect(
         fired = [k for k in SIGNALS if s.fired[k]]
         gaps: list[str] = []
         if f.get("alt_norm_available", 1.0) == 0.0:
-            gaps.append("no regional altitude norm (< 3 aircraft); S2 vs 0 ft")
+            gaps.append("no local altitude norm (fewer than 3 aircraft); compared with 0 ft")
         if "mlat_pairs" not in f:
-            gaps.append("no MLAT cross-check for this aircraft")
+            gaps.append("no radio-timing (MLAT) cross-check for this aircraft")
         conf = min(1.0, s.n_fixes / c["full_coverage_fixes"])
         if len(s.providers) <= 1:
             conf *= c["single_provider_factor"]
@@ -481,8 +492,8 @@ def detect(
             feats["anomaly_first_ts"] = min(o.ts for o in s.anomalous).timestamp()
             feats["anomaly_last_ts"] = max(o.ts for o in s.anomalous).timestamp()
         cf = (
-            f"Fired {', '.join(fired)}. Would not fire with < {c['min_signals']} signals "
-            "and no MLAT gap"
+            f"Seen: {', '.join(_SIGNAL_WORDS[k] for k in fired)}. Would not fire with fewer than "
+            f"{c['min_signals']} independent signals and no radio-timing (MLAT) disagreement"
         )
         cf += (
             f"; e.g. if the {f['jump_km']} km jump had reverted within one fix (glitch)."

@@ -146,8 +146,11 @@ def run_aoi(
     grades: Mapping[str, str],
     vessels: Sequence[VesselObs] = (),
     events: Sequence[GeoEvent] = (),
+    vessels_all: Sequence[VesselObs] | None = None,
 ) -> TickResult:
-    """One AOI step. `vessels`: AIS window for the AOI; `events`: active notices + GFW/SAR events
+    """One AOI step. `vessels`: AIS window for the AOI; `vessels_all`: the unfiltered AIS window
+    for dark-gap detection (ships leaving the AOI keep reporting outside it; a gap belongs to the
+    AOI of the ship's last fix); `events`: active notices + GFW/SAR events
     (context/corroboration only; area notices intersecting the AOI become WARNING_AREA Evidence)."""
     jcfg = dict(detectors.get("jamming", {}))
     scfg = dict(detectors.get("spoofing", {}))
@@ -176,7 +179,14 @@ def run_aoi(
     )
 
     ais_sp = ais_spoofing.detect(vessels, aicfg, now, None, aoi=aoi.name)
-    ais_gp = ais_gap.detect(vessels, agcfg, now, None, aoi=aoi.name)
+    ais_gp = ais_gap.detect(
+        vessels if vessels_all is None else vessels_all,
+        agcfg,
+        now,
+        None,
+        aoi=aoi.name,
+        in_region=lambda la, lo: within_radius_nm(la, lo, aoi.lat, aoi.lon, aoi.radius_nm),
+    )
     warn = warning_area.detect(events, wcfg, now, aoi=aoi)
 
     evs = _assign_persistence(store, aoi.name, [*jam, *spoof, *orb, *ais_sp, *ais_gp, *warn], step)
@@ -280,7 +290,18 @@ def tick(
         ves = [
             v for v in ves_all if within_radius_nm(v.lat, v.lon, aoi.lat, aoi.lon, aoi.radius_nm)
         ]
-        r = run_aoi(store, aoi, obs, dets[aoi.name], now, playbook, source_grades, ves, events_all)
+        r = run_aoi(
+            store,
+            aoi,
+            obs,
+            dets[aoi.name],
+            now,
+            playbook,
+            source_grades,
+            ves,
+            events_all,
+            vessels_all=ves_all,
+        )
         total.evidence += r.evidence
         total.alerts += r.alerts
         total.metrics += r.metrics

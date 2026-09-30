@@ -33,7 +33,7 @@ def test_jammed_cell_fires_with_explainable_evidence() -> None:
     assert {r.rule for r in ev.rules} >= {"min_aircraft", "degraded_ratio", "robust_z"}
     assert all(r.passed for r in ev.rules)
     assert len(ev.entities) == 4 and len(ev.records) == 8  # 4 aircraft x 2 providers
-    assert ev.counterfactual and "<= 2 of 12" in ev.counterfactual
+    assert ev.counterfactual and "2 or fewer of the 12" in ev.counterfactual
     assert ev.geometry and ev.geometry["type"] == "Polygon"
     assert "no baseline" in " ".join(ev.gaps)
     assert 0 < ev.coverage.confidence <= 1

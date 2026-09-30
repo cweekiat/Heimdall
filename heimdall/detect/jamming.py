@@ -36,7 +36,7 @@ from heimdall.detect.common import (
 from heimdall.schemas import AircraftObs, AlertKind, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "jamming"
-VERSION = "jamming-1.1.0"
+VERSION = "jamming-1.1.1"
 METRIC = "jam_ratio"  # baseline metric key recorded per cell by the pipeline
 
 DEFAULTS: dict[str, Any] = {
@@ -194,7 +194,7 @@ def detect(
         thr = c["ratio_clear"] if held else c["ratio_alert"]
         r_min = RuleResult(
             rule="min_aircraft",
-            description="Enough true-ADS-B aircraft with NIC/NACp in the cell",
+            description="Enough aircraft reporting GPS accuracy in the area",
             value=float(st.total),
             threshold=float(c["min_aircraft"]),
             passed=st.total >= c["min_aircraft"],
@@ -202,8 +202,8 @@ def detect(
         r_ratio = RuleResult(
             rule="degraded_ratio",
             description=(
-                "De-noised share of aircraft with degraded GNSS, (bad-1)/total"
-                + (" (hysteresis hold threshold)" if held else "")
+                "Share of aircraft that lost GPS accuracy (one aircraft discounted as noise)"
+                + (" - alert kept while above the lower clear level" if held else "")
             ),
             value=round(st.ratio, 4),
             threshold=thr,
@@ -214,9 +214,9 @@ def detect(
         r_z = RuleResult(
             rule="robust_z",
             description=(
-                "Robust z of ratio vs 14-day median/MAD"
+                "How unusual this share is compared with the last 14 days in this area"
                 if has_baseline
-                else "Robust z skipped: insufficient baseline"
+                else "Not compared with history: too little baseline data"
             ),
             value=None if z is None else round(z, 3),
             threshold=c["robust_z"],
@@ -228,7 +228,9 @@ def detect(
             rules.append(
                 RuleResult(
                     rule="hysteresis_hold",
-                    description="Cell was active last step; held while ratio >= ratio_clear",
+                    description=(
+                        "Alert already active; kept until the share drops below the clear level"
+                    ),
                     value=1.0,
                     threshold=1.0,
                     op="==",
@@ -250,21 +252,21 @@ def detect(
             conf = c["confidence_cap"]
             gaps.append(f"sparse-traffic profile: confidence capped at {c['confidence_cap']}")
         if not has_baseline:
-            gaps.append(f"no baseline: {len(hist)} < {c['baseline_min_samples']} samples")
-        if st.n_observed > st.total:
             gaps.append(
-                f"{st.n_observed - st.total} aircraft without true-ADS-B quality data excluded"
+                f"no baseline: only {len(hist)} of {c['baseline_min_samples']} history samples"
             )
+        if st.n_observed > st.total:
+            gaps.append(f"{st.n_observed - st.total} aircraft without GPS accuracy data left out")
         if len(pts) < 3:
-            gaps.append("emitter ellipse from < 3 aircraft (floored at 5 km sigma)")
+            gaps.append("source area estimated from fewer than 3 aircraft (5 km minimum radius)")
         max_bad_quiet = math.floor(thr * st.total + 1 - 1e-9)
         cf = (
-            f"Would not fire if <= {max_bad_quiet} of {st.total} aircraft were degraded "
-            f"(R' < {thr})"
+            f"Clears when {max_bad_quiet} or fewer of the {st.total} aircraft lose GPS accuracy "
+            f"(alert level {thr:.0%}, now {st.ratio:.0%})"
         )
         if has_baseline and not held and b_med is not None and b_scale is not None:
             quiet_med = st.ratio - c["robust_z"] * b_scale
-            cf += f", or if the cell's baseline median were >= {quiet_med:.3f}"
+            cf += f", or if this area normally had {quiet_med:.0%} or more degraded"
         cf += "."
         features = {
             "total": float(st.total),

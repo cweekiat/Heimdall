@@ -9,7 +9,7 @@ for cell-level jamming); detectors take a keyword `aoi`. Every Evidence also car
 anomaly, used for persistence. Every threshold below is a key in `config/config.yaml`; defaults are in
 each module's `DEFAULTS`. Shared helpers: `heimdall/detect/common.py`, `heimdall/geo.py`.
 
-## GNSS jamming (detect/jamming.py, `jamming-1.1.0`)
+## GNSS jamming (detect/jamming.py, `jamming-1.1.1`)
 Scope: airborne (`on_ground=false`) **true ADS-B** reports (`src_type ∈ {adsb_icao, adsb_icao_nt}`).
 Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `coverage.n_observed`.
 
@@ -42,7 +42,7 @@ Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `cove
 * Counterfactual: "would not fire if ≤ ⌊thr·total + 1⌋ of total were degraded", plus the
   baseline median that would have silenced the z-test.
 
-## GNSS spoofing (detect/spoofing.py, `spoofing-1.0.1`)
+## GNSS spoofing (detect/spoofing.py, `spoofing-1.0.2`)
 Per aircraft in the 30-min window; true-ADS-B fixes de-duplicated by timestamp (tie → provider name),
 then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
 
@@ -81,7 +81,7 @@ then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
   anchor + first displaced fix, S3 ADS-B + MLAT truth fix) whose provider is a showing provider,
   de-duplicated. Reliability uses only these sources.
 
-## Military orbit (detect/orbit.py, `orbit-1.0.0`)
+## Military orbit (detect/orbit.py, `orbit-1.0.1`)
 Military = `mil` flag or type in `mil_types`. All source types (MLAT allowed). Window 75 min.
 Fixes de-duplicated per timestamp and thinned to ≥ `resample_s` (30 s). Heading = reported track,
 else bearing from previous fix.
@@ -101,7 +101,7 @@ else bearing from previous fix.
 * `jam_evidence`: distance from centroid to nearest jamming Evidence → features `jam_distance_km`,
   `near_jamming` (≤ `jam_proximity_km` 100) and informational rule `near_jamming`.
 
-## AIS spoofing (detect/ais_spoofing.py, `ais-spoofing-1.0.0`)
+## AIS spoofing (detect/ais_spoofing.py, `ais-spoofing-1.1.0`)
 Input `Sequence[VesselObs]`, window 60 min at a 5-min step (aligned like the GNSS detectors).
 Invalid positions (out of range, exactly (0, 0)) are dropped first; (mmsi, ts) duplicates from several
 receivers are one fix. Every Evidence carries per-signal rules, `anomaly_first_ts`/`anomaly_last_ts`,
@@ -120,21 +120,34 @@ one RecordRef per anomalous MMSI fix (capped at 40), a counterfactual and covera
   Score 0.6 + 0.4 min(1, (n-2)/5).
 * **A3 ring**: per `ring_bin_s` bin (last fix per MMSI) >= 5 MMSIs with centroid radial distances
   CV = sd/mean <= 0.1, bearing circular variance (geo.circular_variance) >= 0.7 and median radius
-  in [0.2, 30] km. Score 0.7 + 0.3 min(1, n/10).
+  in [0.2, 30] km. Score 0.7 + 0.3 min(1, n/10). Evaluated per neighbourhood, not over the whole
+  AOI (background traffic moves a global centroid): fixes are bucketed in 4 half-cell-shifted square
+  grids (cell side 4 x 30 km, local km projection) and each bucket with >= 5 vessels is tested;
+  if the raw bucket fails, a RANSAC circle search (circumcircle of 3 vessels with R in the radius
+  range, inliers within `ring_cv_max` x R, <= 600 seeded samples, exhaustive if fewer) selects the
+  largest concentric set, which must then pass the same CV/bearing/radius rules. Duplicate sets
+  from the shifted grids are merged by MMSI set and by r4 cell.
 * **A4 circle** (per MMSI, `per_vessel`=1): >= 20 fixes, Kasa least-squares circle fit (centred
   normal equations, 3x3 elimination; degenerate -> none) with relative RMSE <= 0.05, radius <= 5 km
   and |net signed turn| = |sum of angle_diff of segment bearings| >= 720 deg (>= 2 laps; a one-lap
   purse-seine set gives ~360 and does not fire). Score 0.6 + 0.4 turn/1440.
 Not detected: identity spoofing (MMSI/IMO mismatch), land mask. All thresholds are priors, not backtested.
 
-## AIS dark gap (detect/ais_gap.py, `ais-gap-1.0.0`)
+## AIS dark gap (detect/ais_gap.py, `ais-gap-1.1.0`)
 Lookback `window_h` (24). Gap = consecutive fixes of one MMSI with dt >= `gap_min_h` (2), or *open*
 (no fix from the last fix to the aligned `now`, >= 2 h). A closed gap is reported for
 `closed_report_h` (6) after it ended. Skipped if at the last fix nav_status in {1, 5} and sog < 0.5 kn
 (unknown sog counts as slow). **Coverage test**: the gap is cut into hourly bins from the last fix;
 a bin is covered iff >= `gap_min_neighbors` (3) *other* MMSIs were heard in it within
 `gap_neighbor_km` (20) of the last fix; Evidence only if covered bins / bins >= `gap_covered_frac`
-(0.5), else `find_gaps` reports reason "no reception evidence" and nothing is emitted. Features
+(0.5), else `find_gaps` reports reason "no reception evidence" and nothing is emitted. Bins are
+`ceil(gap_h)` (the final partial hour counts as a bin; `int` used to drop it). **Feed-live test**
+(open gaps only): >= `gap_min_neighbors` other MMSIs must be heard near the last fix within the
+final `gap_live_h` (1 h) before `now`, else reason "feed not live" (a receiver outage or a source
+toggled off must not turn every ship dark). **AOI assignment**: gaps are computed on the
+*unfiltered* vessel window (neighbour coverage near the AOI edge included) and assigned to an AOI
+by the ship's last fix before the gap (`in_region`), so a ship sailing out of the AOI is not an
+open gap. Features
 gap_h, open, dist_km, implied_speed_kn (dist / gap_h; 0 for open), covered_frac,
 neighbors_median. score = min(1, gap_h/12) x covered_frac; coverage confidence = min(1, median
 neighbours per covered bin / 6). Persistence subject `aoi|ais_gap|mmsi:<mmsi>`: an open gap has a
@@ -221,8 +234,8 @@ confidence 0.6.
 `tick(store, settings, now)`: one `aircraft_window` pull covering the longest window, one
 `vessels_window` (24 h) and one `events_window` (`notice_lookback_days` 30, notices filtered to
 active); per AOI
-(radius filter) run jamming (with `active` cells from `evidence_history`), spoofing, orbit (with
-the jamming Evidence), AIS spoofing, AIS gap (vessels within the AOI radius) and warning areas;
+(radius filter; AIS gap gets the unfiltered vessel window plus an AOI predicate) run jamming (with `active` cells from `evidence_history`), spoofing, orbit (with
+the jamming Evidence), AIS spoofing, AIS gap (last fix within the AOI radius) and warning areas;
 set `aoi` + persistence (subject `aoi|ais_gap|mmsi:<mmsi>`, `aoi|ais_spoofing|mmsi:<mmsi>` for the
 per-vessel A1/A4, per cell for A2/A3); record `ais_vessels` (distinct MMSIs) per r4 cell; record `jam_ratio` per cell with total ≥
 `min_aircraft` and `orbit_active` per orbit cell; fuse against live alerts; upsert Evidence and
@@ -258,3 +271,10 @@ idempotent (same ids, metrics not duplicated, persistence not inflated).
 All thresholds are literature/GPSJam priors, **not yet backtested** (Baltic control run pending
 in P1). Most sensitive: `ratio_alert`/`mad_floor` (jamming), `speed_diff_kt` (spoofing S1 on
 stale gs), `cluster_*` (holding stacks), `novelty_scale_h`.
+
+## Plain-language text (013a)
+Everything shown on screen from Evidence (counterfactual, rule descriptions, gaps) avoids jargon
+(ratio, z-score, MAD, NIC/NACp, H3, sigma); the numbers stay in `features`/`RuleResult` values. Example
+(jamming): "Clears when 2 or fewer of the 12 aircraft lose GPS accuracy (alert level 10%, now 25%)".
+Detector versions bumped for text: jamming-1.1.1, spoofing-1.0.2, orbit-1.0.1. `fuse/fusion.py`
+alert summaries still use R'/H3 wording (not in this task's scope).
