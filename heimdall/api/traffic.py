@@ -15,11 +15,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Path, Query
 
 from heimdall import config
-from heimdall.geo import BBox, haversine_km, in_bbox
+from heimdall.geo import BBox, h3_cell, haversine_km, in_bbox
 from heimdall.ports import Store
 from heimdall.schemas import AircraftObs, AlertStatus, VesselObs
 
 CAP = 5000
+ZOOM_CAP = 20000  # positions returned when the client sends `zoom`
+DENSITY_BELOW_ZOOM = 5.0  # below this the API returns H3 density cells, not positions
 NOTICE_KINDS = ["nav_warning", "notam"]
 NOTICE_LOOKBACK = timedelta(days=30)
 TEXT_MAX = 2000
@@ -87,8 +89,26 @@ def gps_bad(o: AircraftObs) -> bool:
     return (o.nic is not None and o.nic < 7) or (o.nac_p is not None and o.nac_p < 8)
 
 
-def _fc(features: list[dict[str, Any]], total: int) -> dict[str, Any]:
-    return {"type": "FeatureCollection", "features": features, "truncated": total > len(features)}
+def _fc(features: list[dict[str, Any]], total: int, cap: int = CAP) -> dict[str, Any]:
+    return {"type": "FeatureCollection", "features": features, "truncated": total > cap}
+
+
+def density(points: Iterable[tuple[float, float, bool]], zoom: float) -> dict[str, Any]:
+    """H3 density cells (r3 below zoom 3, else r4): count and military count per cell."""
+    res = 3 if zoom < 3 else 4
+    cells: dict[str, list[int]] = {}
+    total = 0
+    for lat, lon, mil in points:
+        c = cells.setdefault(h3_cell(lat, lon, res), [0, 0])
+        c[0] += 1
+        c[1] += int(mil)
+        total += 1
+    return {
+        "type": "density",
+        "res": res,
+        "total": total,
+        "cells": [{"h3": k, "count": v[0], "mil": v[1]} for k, v in cells.items()],
+    }
 
 
 def _point(lat: float, lon: float, props: dict[str, Any]) -> dict[str, Any]:
@@ -137,6 +157,7 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
         bbox: str,
         max_age_s: int = Query(60, ge=1, le=86400),
         sources: str | None = None,
+        zoom: float | None = Query(None, ge=0, le=24),
     ) -> dict[str, Any]:
         bb, want, t = parse_bbox(bbox), _source_filter(sources), clock()
         rows = store.aircraft_window(t - timedelta(seconds=max_age_s), t + _FUTURE, bbox=bb)
@@ -163,6 +184,9 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
             key=lambda x: x.ts,
             reverse=True,
         )
+        if zoom is not None and zoom < DENSITY_BELOW_ZOOM:
+            return density(((o.lat, o.lon, o.mil) for o in picked), zoom)
+        cap = ZOOM_CAP if zoom is not None else CAP
         feats = [
             _point(
                 o.lat,
@@ -184,15 +208,16 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
                     "in_alert": o.hex.lower() in hot,
                 },
             )
-            for o in picked[:CAP]
+            for o in picked[:cap]
         ]
-        return _fc(feats, len(picked))
+        return _fc(feats, len(picked), cap)
 
     @r.get("/api/traffic/sea")
     def sea(
         bbox: str,
         max_age_s: int = Query(900, ge=1, le=86400),
         sources: str | None = None,
+        zoom: float | None = Query(None, ge=0, le=24),
     ) -> dict[str, Any]:
         bb, want, t = parse_bbox(bbox), _source_filter(sources), clock()
         rows = store.vessels_window(t - timedelta(seconds=max_age_s), t + _FUTURE, bbox=bb)
@@ -215,6 +240,11 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
             key=lambda x: x.ts,
             reverse=True,
         )
+        if zoom is not None and zoom < DENSITY_BELOW_ZOOM:
+            return density(
+                ((v.lat, v.lon, ship_class(v.ship_type) == "military") for v in picked), zoom
+            )
+        cap = ZOOM_CAP if zoom is not None else CAP
         feats = [
             _point(
                 v.lat,
@@ -233,9 +263,9 @@ def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> A
                     "in_alert": str(v.mmsi) in hot,
                 },
             )
-            for v in picked[:CAP]
+            for v in picked[:cap]
         ]
-        return _fc(feats, len(picked))
+        return _fc(feats, len(picked), cap)
 
     def _trail(coords: list[list[float]], props: dict[str, Any]) -> dict[str, Any]:
         if not coords:

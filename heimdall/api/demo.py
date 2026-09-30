@@ -422,6 +422,33 @@ class LiveDemoStore(MemoryStore):
                     {"name": f"RING {k}", "ship_type": 70, "sog": 14.0},
                 )
             )
+        # Synthetic worldwide traffic (024g) so the density layer works without keys. Aircraft
+        # hex "c*" are provider opensky, ships MMSI 2xxxxxxxx are outside the AOIs.
+        grnd = random.Random(seed_value + 1)
+        for i in range(1200):
+            lat, lon = grnd.uniform(-55, 70), grnd.uniform(-180, 180)
+            kt = grnd.uniform(250, 500)
+            self.air.append(
+                (
+                    f"c{i:05x}",
+                    _Mover(lat, lon, grnd.uniform(0, 360), kt, grnd.uniform(200, 900)),
+                    {"flight": f"GLB{i}", "mil": i % 40 == 0, "alt_baro": 35000, "gs": kt},
+                )
+            )
+        for j in range(500):
+            lat, lon = grnd.uniform(-50, 60), grnd.uniform(-180, 180)
+            kt = grnd.uniform(0, 16)
+            self.sea.append(
+                (
+                    200000000 + j,
+                    _Mover(lat, lon, grnd.uniform(0, 360), kt, grnd.uniform(50, 300)),
+                    {
+                        "name": f"GLOBAL VESSEL {j}",
+                        "ship_type": grnd.choice([30, 70, 80, 60]),
+                        "sog": kt,
+                    },
+                )
+            )
         self.dark_id = 419000001  # stops transmitting shortly after start
         lat, lon = _dest(3.0, 100.8, 200, 40)
         self.sea.append(
@@ -451,7 +478,9 @@ class LiveDemoStore(MemoryStore):
                     AircraftObs(
                         ts=ts,
                         hex=hx,
-                        provider="adsb.lol" if n % 2 == 0 else "adsb.fi",
+                        provider="opensky"
+                        if hx.startswith("c")
+                        else ("adsb.lol" if n % 2 == 0 else "adsb.fi"),
                         lat=lat,
                         lon=lon,
                         src_type="adsb_icao",
@@ -506,6 +535,13 @@ class DemoSources:
         ("faa_nms_notam", "FAA NOTAMs", Domain.AIR, "needs_key", "Add FAA_NMS_KEY to .env"),
         ("china_msa", "China MSA warnings", Domain.SEA, "off", None),
         ("gfw", "Global Fishing Watch", Domain.SEA, "down", "unauthorized"),
+        (
+            "opensky_global",
+            "OpenSky (global)",
+            Domain.AIR,
+            "needs_key",
+            "Add OpenSky client id and secret",
+        ),
     ]
 
     def __init__(self) -> None:

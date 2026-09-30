@@ -199,6 +199,19 @@ export interface FC<P> {
   features: { type: "Feature"; geometry: { type: string; coordinates: unknown }; properties: P }[];
   truncated?: boolean;
 }
+export interface DensityCell {
+  h3: string;
+  count: number;
+  mil: number;
+}
+export interface Density {
+  type: "density";
+  res: number;
+  total: number;
+  cells: DensityCell[];
+}
+/** /api/traffic/{air,sea} with `zoom`: H3 density cells below zoom 5, positions otherwise. */
+export type TrafficResp<P> = FC<P> | Density;
 export interface AirProps {
   hex: string;
   flight: string | null;
@@ -319,10 +332,10 @@ export const api = {
     }),
   deleteKey: (name: string) => req<{ deleted: boolean }>(`/api/keys/${encodeURIComponent(name)}`, { method: "DELETE" }),
   setSource: (key: string, enabled: boolean) => post<SourceState>(`/api/sources/${encodeURIComponent(key)}`, { enabled }),
-  air: (bbox: string, sources: string[]) =>
-    req<FC<AirProps>>(`/api/traffic/air?bbox=${bbox}&max_age_s=60${sources.length ? `&sources=${sources.join(",")}` : ""}`),
-  sea: (bbox: string, sources: string[]) =>
-    req<FC<SeaProps>>(`/api/traffic/sea?bbox=${bbox}&max_age_s=900${sources.length ? `&sources=${sources.join(",")}` : ""}`),
+  air: (bbox: string, sources: string[], zoom: number) =>
+    req<TrafficResp<AirProps>>(`/api/traffic/air?bbox=${bbox}&zoom=${zoom.toFixed(2)}&max_age_s=60${sources.length ? `&sources=${sources.join(",")}` : ""}`),
+  sea: (bbox: string, sources: string[], zoom: number) =>
+    req<TrafficResp<SeaProps>>(`/api/traffic/sea?bbox=${bbox}&zoom=${zoom.toFixed(2)}&max_age_s=900${sources.length ? `&sources=${sources.join(",")}` : ""}`),
   airTrail: (hex: string) => req<GeoFeature>(`/api/traffic/air/${encodeURIComponent(hex)}/trail?min=30`),
   seaTrail: (mmsi: number) => req<GeoFeature>(`/api/traffic/sea/${mmsi}/trail?min=120`),
   notices: () => req<FC<NoticeProps>>("/api/notices"),

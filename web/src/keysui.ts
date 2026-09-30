@@ -10,6 +10,12 @@ export interface KeyDeps {
   del: (name: string) => Promise<unknown>;
 }
 
+/** Where to find each key; shown under the row. */
+const KEY_HELP: Record<string, string> = {
+  OPENSKY_CLIENT_ID: "OpenSky account → Account → API client",
+  OPENSKY_CLIENT_SECRET: "OpenSky account → Account → API client",
+};
+
 export const KEY_BANNER = "Key saved; source restarted. Refresh the page to see new data.";
 export const KEY_CLEARED_BANNER = "Key cleared; source restarted. Refresh the page to see new data.";
 
@@ -102,6 +108,7 @@ export class KeysSection {
           h("button", { type: "button", onclick: () => { this.editing = k.name; this.banner = ""; this.render(); } }, k.is_set ? "Replace" : "Set"),
           k.is_set && k.origin !== "env" ? h("button", { type: "button", class: "danger", onclick: () => void this.clear(k.name) }, "Clear") : null,
         ),
+        KEY_HELP[k.name] ? h("span", { class: "note key-help" }, KEY_HELP[k.name]) : null,
         form,
       );
     });

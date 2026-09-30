@@ -191,3 +191,16 @@ def test_actions_board_and_sources_demo() -> None:
     on = c.post("/api/sources/china_msa", json={"enabled": True}).json()
     assert on["enabled"] and on["status"] == "ok"
     assert c.post("/api/sources/nope", json={"enabled": True}).status_code == 404
+
+
+def test_zoomed_out_returns_h3_density(client: TestClient) -> None:
+    d = client.get(f"/api/traffic/air?bbox={BB}&zoom=3.9").json()
+    assert d["type"] == "density"
+    assert d["res"] == 4 and d["total"] == sum(c["count"] for c in d["cells"]) == 4
+    assert client.get(f"/api/traffic/sea?bbox={BB}&zoom=2").json()["res"] == 3
+
+
+def test_zoomed_in_returns_positions(client: TestClient) -> None:
+    d = client.get(f"/api/traffic/air?bbox={BB}&zoom=6").json()
+    assert d["type"] == "FeatureCollection" and len(d["features"]) == 4
+    assert client.get(f"/api/traffic/air?bbox={BB}&zoom=99").status_code == 422
