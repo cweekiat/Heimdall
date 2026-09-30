@@ -20,6 +20,7 @@ from heimdall.adapters.composite_store import CompositeStore
 from heimdall.adapters.duckdb_store import DuckDBStore
 from heimdall.adapters.memory_bus import MemoryBus
 from heimdall.adapters.parquet_lake import ParquetLake
+from heimdall.adapters.secrets_file import default_store
 from heimdall.config import Settings
 from heimdall.config import settings as load_settings
 from heimdall.config import sources as load_sources
@@ -237,7 +238,10 @@ def start_api(store: Store, cfg: Settings, sources: SourceControl | None = None)
             yield
 
     config = uvicorn.Config(
-        create_app(store, sources=sources), host=cfg.api.host, port=cfg.api.port, log_config=None
+        create_app(store, sources=sources, secrets=default_store()),
+        host=cfg.api.host,
+        port=cfg.api.port,
+        log_config=None,
     )
     return _Server(config)
 

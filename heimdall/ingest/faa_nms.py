@@ -8,7 +8,6 @@ NOTAM text is untrusted data.
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -16,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from heimdall.config import Settings
+from heimdall.config import Settings, secret
 from heimdall.ingest.http import RateLimitedClient
 from heimdall.ingest.notice_base import NoticeConnector, Unauthorized, load_warnings_cfg
 from heimdall.ingest.notice_parse import (
@@ -185,8 +184,8 @@ def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> FaaNmsConnect
         cfg.get("base", "https://nms.aim.faa.gov"),
         firs,
         w.get("categories", {}),
-        key=os.environ.get("FAA_NMS_KEY"),
-        secret=os.environ.get("FAA_NMS_SECRET"),
+        key=secret("FAA_NMS_KEY"),
+        secret=secret("FAA_NMS_SECRET"),
         token_path=f.get("token_path", "/v1/auth/token"),
         notam_path=f.get("notam_path", "/nmsapi/v1/notams"),
         client=RateLimitedClient(key, rps=rps),

@@ -20,8 +20,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from heimdall import config
 from heimdall.api import triage
+from heimdall.api.keys import keys_router
 from heimdall.api.traffic import traffic_router
-from heimdall.ports import SourceControl, Store
+from heimdall.ports import SecretStore, SourceControl, Store
 from heimdall.schemas import (
     ActionRequest,
     Alert,
@@ -124,6 +125,7 @@ def create_app(
     allowed_hosts: list[str] | None = None,
     basemap: str | None = None,
     sources: SourceControl | None = None,
+    secrets: SecretStore | None = None,
 ) -> FastAPI:
     st: Store = store
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
@@ -468,6 +470,7 @@ def create_app(
         return sorted(out, key=lambda a: a["ts"], reverse=True)
 
     app.include_router(traffic_router(st))
+    app.include_router(keys_router(secrets, sources))
 
     @app.get("/api/ui-config")
     def ui_config() -> dict[str, Any]:

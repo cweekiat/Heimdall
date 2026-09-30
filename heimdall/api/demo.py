@@ -502,6 +502,9 @@ class DemoSources:
     def list(self) -> list[SourceState]:
         return [*self._s.values()]
 
+    async def restart(self, key: str) -> None:
+        _ = self._s[key]  # KeyError if unknown; demo has nothing to rebuild
+
     async def set_enabled(self, key: str, enabled: bool) -> SourceState:
         cur = self._s[key]  # KeyError -> 404
         status, detail = self._natural[key]

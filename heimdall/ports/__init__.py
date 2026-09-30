@@ -24,6 +24,7 @@ from heimdall.schemas import (
     Evidence,
     Feedback,
     GeoEvent,
+    KeyStatus,
     SourceHealth,
     SourceReliability,
     SourceState,
@@ -158,3 +159,21 @@ class SourceControl(Protocol):
     async def set_enabled(self, key: str, enabled: bool) -> SourceState:
         """Start or stop the source pump and persist the override. Unknown key raises KeyError."""
         ...
+
+    async def restart(self, key: str) -> None:
+        """Stop and rebuild a source's connector (e.g. after its API key changed), if enabled.
+        Unknown key raises KeyError."""
+        ...
+
+
+@runtime_checkable
+class SecretStore(Protocol):
+    """API-key storage (ADR-006). Values are write-only from the API's point of view."""
+
+    def get(self, name: str) -> str | None: ...
+
+    def set(self, name: str, value: str) -> None: ...
+
+    def delete(self, name: str) -> None: ...
+
+    def status(self) -> builtins.list[KeyStatus]: ...
