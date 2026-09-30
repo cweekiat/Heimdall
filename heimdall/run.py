@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from heimdall.adapters.aoi_file import FileAoiStore
 from heimdall.adapters.composite_store import CompositeStore
 from heimdall.adapters.duckdb_store import DuckDBStore
+from heimdall.adapters.gnss_lake import GnssLake
 from heimdall.adapters.memory_bus import MemoryBus
 from heimdall.adapters.parquet_lake import ParquetLake
 from heimdall.adapters.secrets_file import default_store
@@ -27,8 +28,9 @@ from heimdall.config import Settings
 from heimdall.config import settings as load_settings
 from heimdall.config import sources as load_sources
 from heimdall.geo import haversine_km
+from heimdall.gnss_service import GnssService, LakeGnssService, gnss_loop
 from heimdall.ingest.adsb import merge_providers
-from heimdall.ingest.registry import build_connectors
+from heimdall.ingest.registry import ADSB_PROVIDERS, build_connectors
 from heimdall.live import LivePositions
 from heimdall.logging import configure_logging, get_logger, start_metrics_server
 from heimdall.ports import Bus, Connector, Lake, SourceControl, Store
@@ -310,6 +312,7 @@ def start_api(
     sources: SourceControl | None = None,
     aoi_service: AoiService | None = None,
     live: LivePositions | None = None,
+    gnss: GnssService | None = None,
 ) -> Any:
     """Build the in-process API server (ADR-002) if heimdall.api.app is available."""
     try:
@@ -329,7 +332,12 @@ def start_api(
 
     config = uvicorn.Config(
         create_app(
-            store, sources=sources, secrets=default_store(), aoi_service=aoi_service, live=live
+            store,
+            sources=sources,
+            secrets=default_store(),
+            aoi_service=aoi_service,
+            live=live,
+            gnss=gnss,
         ),
         host=cfg.api.host,
         port=cfg.api.port,
@@ -381,6 +389,9 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     )
     live = LivePositions()
     writer = Writer(bus, lake, store, live=live)
+    gnss = LakeGnssService(
+        GnssLake(cfg.storage.lake_dir), cfg.detectors, sorted(p for p, _ in ADSB_PROVIDERS.values())
+    )  # task 031: GPSJam-style map from the lake
     step_min = int(cfg.detectors.get("jamming", {}).get("step_min", 5))
 
     stop = asyncio.Event()
@@ -403,9 +414,10 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         ),
         asyncio.create_task(health_loop(lambda: manager.connectors, store)),
         asyncio.create_task(tick_loop(store, cfg, step_min)),
+        asyncio.create_task(gnss_loop(gnss)),
     ]
     await manager.start()
-    server = start_api(store, cfg, manager, aoi_svc, live)
+    server = start_api(store, cfg, manager, aoi_svc, live, gnss)
     if server is not None:
         tasks.append(asyncio.create_task(server.serve()))
     log.info("started", connectors=[c.name for c in manager.connectors], step_min=step_min)
