@@ -1,7 +1,7 @@
 // Shared UI helpers, alert queue and data-health view.
 import type { Alert, SourceHealth } from "./api";
 import { ago, fmtTime, h } from "./dom";
-import { alertTitle, aoiName, kindLabel } from "./labels";
+import { alertTitle, aoiName, confidenceLabel, CORROBORATION_LABEL, kindLabel, PRIORITY_WORD, SOURCE_LABEL, T, truthLabel } from "./labels";
 import { patch, selectAlert, state, triage } from "./store";
 
 const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
@@ -168,25 +168,25 @@ export function renderQueue(root: HTMLElement): void {
   const group = h(
     "select",
     { "aria-label": "Group by", onchange: (e) => set("group", (e.target as HTMLSelectElement).value) },
-    ...(["none", "aoi", "priority"] as const).map((g) => h("option", { value: g, selected: f.group === g }, `Group: ${g}`)),
+    ...(["none", "aoi", "priority"] as const).map((g) => h("option", { value: g, selected: f.group === g }, `Group: ${g === "aoi" ? "area" : g}`)),
   );
   root.replaceChildren(
-    h("h2", { id: "qcount" }, "Alerts"),
+    h("h2", { id: "qcount" }, T.alerts),
     search,
     h(
       "div",
       { class: "filters" },
-      sel("AOI", "aoi", uniq(state.alerts.map((a) => a.aoi)), aoiName),
-      sel("Kind", "kind", uniq(state.alerts.map((a) => a.kind)), kindLabel),
+      sel("Area", "aoi", uniq(state.alerts.map((a) => a.aoi)), aoiName),
+      sel("Type", "kind", uniq(state.alerts.map((a) => a.kind)), kindLabel),
       sel("Status", "status", ["open", "new", "acknowledged", "under_review", "shelved", "confirmed", "dismissed", "expired"], (s) => STATUS_LABEL[s] ?? "Open"),
-      sel("Grade", "grade", ["A", "B", "C", "D", "E", "F"]),
-      sel("Priority", "priority", ["P1", "P2", "P3", "P4"]),
+      sel("Source", "grade", ["A", "B", "C", "D", "E", "F"], (g) => SOURCE_LABEL[g] ?? g),
+      sel("Priority", "priority", ["P1", "P2", "P3", "P4"], (p) => PRIORITY_WORD[p] ?? p),
       group,
     ),
     h(
       "div",
       { class: "row" },
-      h("button", { id: "bulk-ack", onclick: () => void bulkAck() }, "Ack selected"),
+      h("button", { id: "bulk-ack", onclick: () => void bulkAck() }, "Acknowledge selected"),
     ),
     list,
   );
@@ -202,7 +202,7 @@ async function bulkAck(): Promise<void> {
 function renderQueueList(list: HTMLElement): void {
   const shown = visibleAlerts();
   const h2 = document.getElementById("qcount");
-  if (h2) h2.textContent = `Alerts (${shown.length})`;
+  if (h2) h2.textContent = `${T.alerts} (${shown.length})`;
   const row = (a: Alert) => {
     const pr = PRIORITY[a.severity]!;
     const cb = h("input", {
@@ -223,24 +223,25 @@ function renderQueueList(list: HTMLElement): void {
       h(
         "button",
         { class: `card sev-${a.severity}`, "data-id": a.id, "aria-pressed": String(a.id === state.selected), onclick: () => void selectAlert(a.id) },
-        h("div", { class: "t" }, `${pr.icon} ${pr.p} `, alertTitle(a)),
+        h("div", { class: "t" }, `${pr.icon} `, alertTitle(a)),
         h(
           "div",
           { class: "m" },
-          h("span", { class: "badge grade", title: "Admiralty grade" }, `${a.admiralty.reliability}${a.admiralty.credibility}`),
-          h("span", { class: `badge ${a.corroboration_status}` }, a.corroboration_status),
+          h("span", { class: "badge grade", title: "How reliable the source is" }, SOURCE_LABEL[a.admiralty.reliability] ?? "Unknown"),
+          h("span", { class: "badge grade", title: "How likely it is true" }, truthLabel(a.admiralty.credibility)),
+          h("span", { class: `badge ${a.corroboration_status}` }, CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status),
           h("span", {}, STATUS_LABEL[a.status] ?? a.status),
-          h("span", {}, `conf ${(a.confidence * 100).toFixed(0)}%`),
+          h("span", {}, `Confidence: ${confidenceLabel(a.confidence)}`),
           h("span", { title: fmtTime(a.first_seen) }, ago(a.last_seen)),
         ),
       ),
     );
   };
   const nodes: Node[] = [];
-  if (!shown.length) nodes.push(h("div", { class: "empty" }, "No alerts match. Absence of alerts is not proof of absence of activity."));
+  if (!shown.length) nodes.push(h("div", { class: "empty" }, T.noAlerts));
   else if (state.filters.group === "none") nodes.push(...shown.map(row));
   else {
-    const key = (a: Alert) => (state.filters.group === "aoi" ? aoiName(a.aoi) : `${PRIORITY[a.severity]!.p} ${PRIORITY[a.severity]!.label}`);
+    const key = (a: Alert) => (state.filters.group === "aoi" ? aoiName(a.aoi) : PRIORITY[a.severity]!.label);
     for (const g of uniq(shown.map(key)).sort()) {
       nodes.push(h("div", { class: "grp" }, g), ...shown.filter((a) => key(a) === g).map(row));
     }
@@ -255,12 +256,12 @@ export function renderHealth(root: HTMLElement, sources: SourceHealth[]): void {
     const stale = s.last_ok ? (Date.now() - new Date(s.last_ok).getTime()) / 1000 > s.expected_latency_s * 5 : true;
     return stale || s.error_rate > 0.25 ? "fail" : s.error_rate > 0.05 ? "warn" : "pass";
   };
-  const label: Record<string, string> = { pass: "OK", warn: "Degraded", fail: "Stale / failing" };
+  const label: Record<string, string> = { pass: "OK", warn: "Slow", fail: "Down" };
   root.replaceChildren(
-    h("h2", {}, "Data health"),
-    h("p", { class: "note" }, "Low freshness lowers alert confidence; a quiet source is a coverage gap, not a quiet region."),
+    h("h2", {}, T.sources),
+    h("p", { class: "note" }, "Old data lowers alert confidence. A quiet source is a gap in what we can see, not a quiet region."),
     table(
-      ["Source", "Domain", "Reliability", "Last OK", "Records/h", "Error rate", "Last error", "Status"],
+      ["Source", "Type", "Reliability", "Last update", "Records per hour", "Errors", "Last error", "Status"],
       sources.map((s) => {
         const g = grade(s);
         return [

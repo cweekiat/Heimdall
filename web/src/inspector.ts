@@ -1,29 +1,16 @@
-// Right-hand inspector: header + Now / Why / Trend / Log tabs + triage footer.
-// Every view surfaces the explanation: rules (value vs threshold vs baseline), coverage,
-// Admiralty grade, corroboration and counterfactual. Actions come only from /api/playbook ids.
+// Alert details window: header + Now / Why / Trend / Log tabs + triage footer.
+// Every view surfaces the explanation: what fired (value vs normal), data coverage, source and truth badges,
+// corroboration and the "Clears when" line. Raw numbers live only under "Technical details".
+// Actions come only from /api/playbook ids.
 import { api } from "./api";
-import type { ActionRec, AlertDetail, AlertStatus, Evidence, Note } from "./api";
+import type { ActionRec, AlertDetail, AlertStatus, Note } from "./api";
 import { ago, fmtNum, fmtTime, h } from "./dom";
-import { alertTitle, aoiName, kindLabel } from "./labels";
+import { icon, iconButton } from "./icons";
+import type { IconName } from "./icons";
+import { alertTitle, aoiName, CORROBORATION_LABEL, confidenceLabel, coverageLabel, KIND_ICON, kindLabel, sourceLabel, T, truthLabel } from "./labels";
 import { chart, PRIORITY, STATUS_LABEL, table } from "./panels";
+import { technicalDetails } from "./technical";
 import { addNote, loadDetail, patch, state, triage } from "./store";
-
-const ADMIRALTY_R: Record<string, string> = {
-  A: "completely reliable",
-  B: "usually reliable",
-  C: "fairly reliable",
-  D: "not usually reliable",
-  E: "unreliable",
-  F: "reliability cannot be judged",
-};
-const ADMIRALTY_C: Record<number, string> = {
-  1: "confirmed by other sources",
-  2: "probably true (independent domains agree)",
-  3: "possibly true",
-  4: "doubtful",
-  5: "improbable",
-  6: "truth cannot be judged",
-};
 
 type Pending = null | { kind: "dismissed" | "shelved" | "note" };
 let pending: Pending = null;
@@ -39,39 +26,45 @@ export function openTriage(kind: "dismissed" | "shelved" | "note"): void {
 
 // ------------------------------------------------------------------ tabs
 
-function rulesTable(ev: Evidence): HTMLElement {
-  return table(
-    ["Rule", "Value", "Threshold", "Baseline", "Result"],
-    ev.rules.map((r) => [
-      h("div", {}, h("div", {}, r.rule), h("div", { class: "note" }, r.description)),
-      h("span", { class: "num" }, fmtNum(r.value)),
-      h("span", { class: "num" }, r.threshold === null ? "n/a" : `${r.op} ${fmtNum(r.threshold)}`),
-      h("span", { class: "num" }, fmtNum(r.baseline)),
-      h("span", { class: r.passed ? "pass" : "fail" }, r.passed ? "PASS" : "FAIL"),
-    ]),
-  );
+const pct = (v: number): string => `${v < 0.1 ? (v * 100).toFixed(1) : Math.round(v * 100)}%`;
+
+/** One plain sentence describing what was seen versus the normal level. */
+function plainSentence(d: AlertDetail): string {
+  const ev = d.evidence[0];
+  const rule = ev?.rules.find((r) => r.baseline !== null && r.value !== null);
+  if (ev && rule && rule.value !== null && rule.baseline !== null && rule.value <= 1 && d.alert.kind === "gnss_jamming") {
+    const total = ev.coverage.n_quality || ev.coverage.n_observed;
+    const n = Math.round(rule.value * total);
+    return total > 0 ? T.lostGps(n, total, pct(rule.value), pct(rule.baseline)) : T.affectedNow(pct(rule.value), pct(rule.baseline));
+  }
+  if (rule && rule.value !== null && rule.baseline !== null && rule.value <= 1) return T.affectedNow(pct(rule.value), pct(rule.baseline));
+  return `${kindLabel(d.alert.kind)} near ${aoiName(d.alert.aoi)}.`;
 }
 
-function tabNow(d: AlertDetail): Node[] {
+function factRow(ic: IconName, text: string, tip: string): HTMLElement {
+  return h("span", { class: "fact", title: tip }, icon(ic), text);
+}
+
+type Kid = Node | string | null | undefined | false;
+
+function tabNow(d: AlertDetail): Kid[] {
   const a = d.alert;
   const ev = d.evidence[0];
-  const fresh = ev ? ago(ev.window_end) : "-";
+  const covWord = ev ? coverageLabel(ev.coverage.confidence) : "Poor";
+  const mins = Math.max(0, (new Date(a.last_seen).getTime() - new Date(a.first_seen).getTime()) / 60000);
   return [
-    h("p", {}, a.summary),
-    table(
-      ["Fact", "Value"],
-      [
-        ["Kind", kindLabel(a.kind)],
-        ["Area", aoiName(a.aoi)],
-        ["Cell", a.h3_cell ?? "-"],
-        ["Position", a.lat !== null && a.lon !== null ? `${a.lat.toFixed(3)}, ${a.lon.toFixed(3)}` : "-"],
-        ["First seen", fmtTime(a.first_seen)],
-        ["Last seen", `${fmtTime(a.last_seen)} (${ago(a.last_seen)})`],
-        ["Persistence", ev ? `${ev.persistence} window(s)` : "-"],
-        ["Latest evidence", fresh],
-      ],
+    h(
+      "div",
+      { class: "facts" },
+      factRow(KIND_ICON[a.kind] ?? "warn", kindLabel(a.kind), "Type"),
+      factRow("area", aoiName(a.aoi), T.area),
+      factRow("clock", T.since(ago(a.first_seen)), "When it started"),
+      factRow("seen", T.seenFor(mins), "How long it has persisted"),
+      factRow("coverage", T.dataCoverage(covWord), "How much data supports this"),
     ),
-    h("h3", {}, "Entities"),
+    h("p", { class: "plain" }, plainSentence(d)),
+    ev?.counterfactual && h("p", { class: "clears" }, h("strong", {}, `${T.clearsWhen}: `), ev.counterfactual),
+    h("h3", {}, "Things involved"),
     h(
       "div",
       { class: "row" },
@@ -79,49 +72,49 @@ function tabNow(d: AlertDetail): Node[] {
         ? [...new Set(d.evidence.flatMap((e) => e.entities))].map((e) =>
             h("button", { class: "chip", onclick: () => patch({ selectedEntity: e }), "aria-pressed": String(state.selectedEntity === e) }, e),
           )
-        : [h("span", { class: "note" }, "No entities attached.")]),
+        : [h("span", { class: "note" }, "None attached.")]),
     ),
-    h("h3", {}, "Sources"),
-    h(
-      "div",
-      { class: "row" },
-      ...d.evidence.flatMap((e) => e.records.map((r) => h("span", { class: "chip", title: r.url ?? "" }, `${r.source}:${r.id}`))),
-    ),
-    h("h3", {}, "Recommended actions"),
+    h("h3", {}, "Suggested next steps"),
     a.recommended_actions.length ? h("ul", {}, ...a.recommended_actions.map((x) => h("li", {}, x))) : h("div", { class: "note" }, "None."),
+    technicalDetails(d),
   ];
 }
 
-function tabWhy(d: AlertDetail): Node[] {
+function tabWhy(d: AlertDetail): Kid[] {
   const a = d.alert;
+  const ev = d.evidence[0];
+  const bullets: Node[] = [];
+  for (const e of d.evidence) {
+    for (const r of e.rules) {
+      bullets.push(h("li", { class: r.passed ? "pass" : "fail" }, `${r.passed ? "Yes" : "No"}: ${r.description}`));
+    }
+  }
   return [
-    h("h3", {}, "Admiralty grade"),
+    h("h3", {}, "How much to trust it"),
     h(
       "div",
-      {},
-      h("span", { class: "badge grade" }, `${a.admiralty.reliability}${a.admiralty.credibility}`),
-      ` ${a.admiralty.reliability} = ${ADMIRALTY_R[a.admiralty.reliability] ?? "?"}; ${a.admiralty.credibility} = ${ADMIRALTY_C[a.admiralty.credibility] ?? "?"}.`,
+      { class: "row" },
+      h("span", { class: "badge grade" }, sourceLabel(a.admiralty.reliability)),
+      h("span", { class: "badge grade" }, truthLabel(a.admiralty.credibility)),
+      h("span", { class: `badge ${a.corroboration_status}` }, CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status),
+      h("span", { class: "note" }, `Confidence: ${confidenceLabel(a.confidence)}`),
     ),
-    ...d.evidence.flatMap((ev) => [
-      h("h3", {}, `Rules fired: ${ev.detector} v${ev.detector_version}`),
-      rulesTable(ev),
-      h("h3", {}, "Coverage"),
-      h(
-        "div",
-        {},
-        `${ev.coverage.n_quality} quality / ${ev.coverage.n_observed} observed via ${ev.coverage.providers.join(", ") || "-"}; coverage confidence ${(ev.coverage.confidence * 100).toFixed(0)}%`,
-      ),
-      h("div", { class: "bar" }, h("i", { style: `width:${ev.coverage.confidence * 100}%` })),
-      h("h3", {}, "Counterfactual"),
-      h("div", { class: "cf" }, ev.counterfactual ?? "Not provided by detector."),
-      h("h3", {}, "Known gaps"),
-      ev.gaps.length ? h("ul", {}, ...ev.gaps.map((g) => h("li", {}, g))) : h("div", { class: "note" }, "None recorded (this does not mean there are none)."),
+    h("h3", {}, "What triggered it"),
+    bullets.length ? h("ul", { class: "why" }, ...bullets) : h("div", { class: "note" }, "No rule details recorded."),
+    ev && h("h3", {}, "Data coverage"),
+    ev && h("div", {}, `${T.dataCoverage(coverageLabel(ev.coverage.confidence))} (${ev.coverage.n_quality} good reports out of ${ev.coverage.n_observed} seen)`),
+    ev && h("div", { class: "bar" }, h("i", { style: `width:${ev.coverage.confidence * 100}%` })),
+    ...d.evidence.flatMap((e) => [
+      e.counterfactual && h("h3", {}, T.clearsWhen),
+      e.counterfactual && h("div", { class: "cf" }, e.counterfactual),
+      h("h3", {}, "What we cannot see"),
+      e.gaps.length ? h("ul", {}, ...e.gaps.map((g) => h("li", {}, g))) : h("div", { class: "note" }, "None recorded (this does not mean there are none)."),
     ]),
-    h("h3", {}, "Corroboration"),
-    h("span", { class: `badge ${a.corroboration_status}` }, a.corroboration_status),
+    h("h3", {}, "Other sources"),
     a.corroborations.length
-      ? table(["Domain", "Relation", "Note"], a.corroborations.map((c) => [c.domain, c.relation, c.note]))
-      : h("div", { class: "note" }, "Uncorroborated: no other domain has reported on this yet. That is not evidence it is false."),
+      ? table(["Type", "Agrees?", "Note"], a.corroborations.map((c) => [c.domain, c.relation, c.note]))
+      : h("div", { class: "note" }, T.noSecondSource),
+    technicalDetails(d),
   ];
 }
 
@@ -129,7 +122,7 @@ let trendHours = 24;
 
 function tabTrend(d: AlertDetail): Node[] {
   const a = d.alert;
-  const host = h("div", {}, h("div", { class: "note" }, "Loading metric history..."));
+  const host = h("div", {}, h("div", { class: "note" }, "Loading history..."));
   const rule = d.evidence[0]?.rules.find((r) => r.baseline !== null || r.threshold !== null);
   if (a.h3_cell) {
     api
@@ -138,12 +131,12 @@ function tabTrend(d: AlertDetail): Node[] {
         pts.length
           ? host.replaceChildren(
               chart(pts, rule?.baseline ?? null, rule?.threshold ?? null),
-              h("div", { class: "note" }, `degraded ratio, last ${trendHours} h (blue) vs baseline (grey dashed) and threshold (amber dotted)`),
+              h("div", { class: "note" }, `Share of aircraft affected, last ${trendHours} h (blue), against the normal level (grey dashed) and the alert line (amber dotted)`),
             )
-          : host.replaceChildren(h("div", { class: "note" }, "No metric history recorded for this cell.")),
+          : host.replaceChildren(h("div", { class: "note" }, "No history recorded for this area.")),
       )
-      .catch(() => host.replaceChildren(h("div", { class: "note" }, "Metric history unavailable.")));
-  } else host.replaceChildren(h("div", { class: "note" }, "This alert has no cell; no metric trend."));
+      .catch(() => host.replaceChildren(h("div", { class: "note" }, "History unavailable.")));
+  } else host.replaceChildren(h("div", { class: "note" }, "This alert has no area, so no trend is available."));
   const ev = d.evidence[0];
   const onset = new Date(a.first_seen).getTime();
   const hrs = Math.max(0, (Date.now() - onset) / 3600_000);
@@ -156,18 +149,18 @@ function tabTrend(d: AlertDetail): Node[] {
       ),
     ),
     host,
-    h("h3", {}, "Projection"),
+    h("h3", {}, "Outlook"),
     h(
       "div",
       {},
-      `Onset ${fmtTime(a.first_seen)} (${hrs.toFixed(1)} h ago); persisted ${ev?.persistence ?? 0} window(s). `,
-      ev?.counterfactual ? `Clears if: ${ev.counterfactual}` : "No clearing condition provided.",
+      `Started ${fmtTime(a.first_seen)} (${hrs.toFixed(1)} h ago). `,
+      ev?.counterfactual ? `${T.clearsWhen}: ${ev.counterfactual}` : "No clearing condition provided.",
     ),
   ];
 }
 
 function logEntry(n: Note): HTMLElement {
-  const tag = n.kind === "status" ? `status -> ${STATUS_LABEL[n.status_to ?? ""] ?? n.status_to}` : n.kind === "shelve" ? `shelved until ${fmtTime(n.shelve_until)}` : n.kind;
+  const tag = n.kind === "status" ? `status: ${STATUS_LABEL[n.status_to ?? ""] ?? n.status_to}` : n.kind === "shelve" ? `shelved until ${fmtTime(n.shelve_until)}` : n.kind;
   return h("div", { class: "log" }, h("time", {}, `${fmtTime(n.ts)} · ${n.user} · ${tag}`), n.text);
 }
 
@@ -180,7 +173,7 @@ function tabLog(d: AlertDetail): Node[] {
       el: h("div", { class: "log" }, h("time", {}, `${fmtTime(f.ts)} · ${f.user} · verdict`), `${f.verdict}${f.reason ? `: ${f.reason}` : ""}`),
     })),
   ].sort((x, y) => y.ts.localeCompare(x.ts));
-  return items.length ? items.map((i) => i.el) : [h("div", { class: "empty" }, "No journal entries yet. Use Note to record your reasoning for the next watch.")];
+  return items.length ? items.map((i) => i.el) : [h("div", { class: "empty" }, "No notes yet. Add a note to record your reasoning for the next shift.")];
 }
 
 function actionRow(x: ActionRec): HTMLElement {
@@ -206,8 +199,10 @@ const isoLocal = (hours: number): string => new Date(Date.now() + hours * 3600_0
 
 function footer(d: AlertDetail): HTMLElement {
   const a = d.alert;
-  const t = (s: AlertStatus, label: string, cls = "") =>
-    h("button", { class: cls, disabled: a.status === s, onclick: () => void run(triage(a.id, s)) }, label);
+  const t = (s: AlertStatus, ic: IconName, label: string, cls = "") =>
+    h("button", { class: `tri ${cls}`.trim(), title: label, disabled: a.status === s, onclick: () => void run(triage(a.id, s)) }, icon(ic), label);
+  const tb = (ic: IconName, label: string, kind: "dismissed" | "shelved" | "note", cls = "") =>
+    h("button", { class: `tri ${cls}`.trim(), title: label, onclick: () => openTriage(kind) }, icon(ic), label);
   const run = async (p: Promise<string | null>): Promise<void> => {
     error = (await p) ?? "";
     pending = null;
@@ -247,7 +242,7 @@ function footer(d: AlertDetail): HTMLElement {
       { class: "row" },
       text,
       kind === "shelved" && h("label", {}, "until (UTC) ", until),
-      h("button", { class: "primary", onclick: submit }, kind === "note" ? "Add note" : kind === "dismissed" ? "Dismiss" : "Shelve"),
+      h("button", { class: "primary", onclick: submit }, kind === "note" ? T.note : kind === "dismissed" ? T.dismiss : T.shelve),
       h("button", { onclick: () => { pending = null; renderInspector(document.getElementById("inspector")!); } }, "Cancel"),
     );
   };
@@ -258,12 +253,12 @@ function footer(d: AlertDetail): HTMLElement {
     h(
       "div",
       { class: "row" },
-      t("acknowledged", "Ack"),
-      t("under_review", "Review"),
-      t("confirmed", "Confirm", "primary"),
-      h("button", { class: "danger", onclick: () => openTriage("dismissed") }, "Dismiss…"),
-      h("button", { onclick: () => openTriage("shelved") }, "Shelve…"),
-      h("button", { onclick: () => openTriage("note") }, "Note…"),
+      t("acknowledged", "ack", T.ack),
+      t("under_review", "review", T.review),
+      t("confirmed", "confirm", T.confirm, "primary"),
+      tb("dismiss", T.dismiss, "dismissed", "danger"),
+      tb("shelve", T.shelve, "shelved"),
+      tb("note", T.note, "note"),
     ),
     form(),
     error && h("div", { class: "fail", role: "alert" }, error),
@@ -271,18 +266,18 @@ function footer(d: AlertDetail): HTMLElement {
       h(
         "div",
         { class: "row" },
-        h("span", { class: "note" }, "Playbook:"),
+        h("span", { class: "note" }, "Suggested actions:"),
         ...pb.map((p) =>
           h(
             "button",
             {
-              title: `${p.id} (risk: ${p.risk})`,
+              title: `${p.label} (risk: ${p.risk})`,
               onclick: async () => {
                 await api.propose(a.id, p.id).catch((e) => { error = String(e); });
                 await loadDetail(a.id);
               },
             },
-            `Propose: ${p.label}${p.risk === "high" ? " [high risk]" : ""}`,
+            `Propose: ${p.label}${p.risk === "high" ? " (high risk)" : ""}`,
           ),
         ),
       ),
@@ -294,7 +289,7 @@ function footer(d: AlertDetail): HTMLElement {
 export function renderInspector(root: HTMLElement): void {
   const d = state.detail;
   if (!d || d.alert.id !== state.selected) {
-    root.replaceChildren(h("div", { class: "empty" }, "Select an alert from the queue or map to see why it fired."));
+    root.replaceChildren(h("div", { class: "empty" }, T.selectPrompt));
     return;
   }
   if (pendingFor !== d.alert.id) {
@@ -304,7 +299,7 @@ export function renderInspector(root: HTMLElement): void {
   const a = d.alert;
   const pr = PRIORITY[a.severity]!;
   const prev = root.querySelector<HTMLElement>(".body")?.scrollTop ?? 0;
-  const tabs: [typeof state.tab, string][] = [["now", "Now"], ["why", "Why"], ["trend", "Trend"], ["log", `Log (${d.notes.length + d.actions.length})`]];
+  const tabs: [typeof state.tab, string][] = [["now", "Now"], ["why", "Why"], ["trend", "Trend"], ["log", `Notes (${d.notes.length + d.actions.length})`]];
   const content = state.tab === "now" ? tabNow(d) : state.tab === "why" ? tabWhy(d) : state.tab === "trend" ? tabTrend(d) : tabLog(d);
   const typing = document.activeElement instanceof HTMLInputElement && root.contains(document.activeElement) ? document.activeElement : null;
   const draft = typing?.value;
@@ -312,17 +307,17 @@ export function renderInspector(root: HTMLElement): void {
     h(
       "div",
       { class: "head" },
-      h("h2", {}, `${pr.icon} ${pr.p} ${alertTitle(a)}`),
+      h("h2", {}, `${pr.icon} ${alertTitle(a)}`),
       h(
         "div",
         { class: "row" },
-        h("span", { class: `badge ${a.corroboration_status}` }, a.corroboration_status),
-        h("span", { class: "badge grade", title: "Admiralty: reliability A-F x credibility 1-6" }, `Admiralty ${a.admiralty.reliability}${a.admiralty.credibility}`),
+        h("span", { class: `badge sev-${a.severity}` }, `${pr.label} priority`),
+        h("span", { class: "badge grade" }, sourceLabel(a.admiralty.reliability)),
+        h("span", { class: "badge grade" }, truthLabel(a.admiralty.credibility)),
+        h("span", { class: `badge ${a.corroboration_status}` }, CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status),
         h("span", { class: "badge" }, STATUS_LABEL[a.status] ?? a.status),
-        h("span", { class: "note" }, `conf ${(a.confidence * 100).toFixed(0)}%`),
-        h("button", { "aria-label": "Close inspector", onclick: () => patch({ selected: null, detail: null, tracks: [] }) }, "Close"),
+        h("span", { class: "note" }, `Confidence: ${confidenceLabel(a.confidence)}`),
       ),
-      h("div", { class: "bar", role: "progressbar", "aria-valuenow": String(Math.round(a.confidence * 100)), "aria-valuemin": "0", "aria-valuemax": "100", "aria-label": "Confidence" }, h("i", { style: `width:${a.confidence * 100}%` })),
     ),
     h(
       "div",
@@ -344,14 +339,14 @@ export function renderEntity(root: HTMLElement, hex: string): void {
   const refs = state.alerts.filter((a) => a.id === state.selected);
   const tr = state.tracks.find((t) => t.hex === hex);
   root.replaceChildren(
-    h("div", { class: "head" }, h("h2", {}, `Entity ${hex}`), h("button", { onclick: () => patch({ selectedEntity: null }) }, "Back")),
+    h("div", { class: "head" }, h("h2", {}, `Aircraft ${hex}`), iconButton("undo", "Back to alert", () => patch({ selectedEntity: null }))),
     h(
       "div",
       { class: "body" },
       tr
-        ? table(["Time", "Lat", "Lon", "Alt", "GS"], tr.path.slice(-8).reverse().map((p) => [fmtTime(p.ts), p.lat.toFixed(3), p.lon.toFixed(3), fmtNum(p.alt, 0), fmtNum(p.gs, 0)]))
+        ? table(["Time", "Lat", "Lon", "Altitude", "Speed"], tr.path.slice(-8).reverse().map((p) => [fmtTime(p.ts), p.lat.toFixed(3), p.lon.toFixed(3), fmtNum(p.alt, 0), fmtNum(p.gs, 0)]))
         : h("div", { class: "note" }, "No track loaded."),
-      h("h3", {}, "Referenced by"),
+      h("h3", {}, "Mentioned in"),
       ...refs.map((a) => h("div", {}, alertTitle(a))),
     ),
   );

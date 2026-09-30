@@ -3,18 +3,21 @@ import { api } from "./api";
 import type { Alert } from "./api";
 import { renderBoard } from "./board";
 import { ago, h } from "./dom";
+import { icon, iconButton } from "./icons";
 import { renderEntity, renderInspector } from "./inspector";
 import { fmtLatLon, toMgrs } from "./geoutil";
 import { installKeys } from "./keys";
-import { showHelp, showShift } from "./overlays";
-import { renderTimeline } from "./timeline";
-import { alertTitle, aoiName, setAois } from "./labels";
+import { alertTitle, aoiName, CORROBORATION_LABEL, setAois, sourceLabel, T, truthLabel } from "./labels";
 import type { OpsMap } from "./map";
+import { showHelp, showShift } from "./overlays";
 import { PRIORITY, renderHealth, renderQueue, visibleAlerts } from "./panels";
-import { patch, refreshAll, refreshHealth, selectAlert, selectAoi, state, subscribe, triage, upsertAlert } from "./store";
+import { patch, refreshAll, refreshHealth, selectAlert, state, subscribe, triage, upsertAlert } from "./store";
+import { renderTimeline } from "./timeline";
+import { mountToolbar, setAlertBadge } from "./toolbar";
+import type { Tool } from "./toolbar";
+import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, isOpen, openWindow, toggleWindow } from "./wm";
 
 const $ = (id: string): HTMLElement => document.getElementById(id) as HTMLElement;
-const mobile = (): boolean => matchMedia("(max-width: 1100px)").matches;
 
 // ---- theme: dark -> light -> high contrast
 const THEMES = ["dark", "light", "hc"] as const;
@@ -23,56 +26,73 @@ const stored = localStorage.getItem("theme") as Theme | null;
 let theme: Theme = stored && THEMES.includes(stored) ? stored : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 document.documentElement.dataset.theme = theme;
 let ops: OpsMap | null = null;
-$("theme").addEventListener("click", () => {
+function cycleTheme(): void {
   theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!;
   document.documentElement.dataset.theme = theme;
   localStorage.setItem("theme", theme);
   ops?.setTheme(theme === "light" ? "light" : "dark");
+}
+
+// ---- windows (the map is the whole viewport; everything else floats above it)
+const layersBody = h("div", { id: "layers-body" });
+const placeholder = (text: string): HTMLElement => h("div", { class: "empty" }, text);
+createWindow({ id: "queue", title: T.alerts, icon: "alerts", body: $("queue"), x: EDGE_LEFT + 8, y: EDGE_TOP + 8, w: 380, h: 560 });
+createWindow({ id: "board", title: T.areas, icon: "areas", body: $("board"), x: EDGE_LEFT + 8, y: EDGE_TOP + 8, w: 340, h: 340 });
+createWindow({ id: "layers", title: T.layers, icon: "layers", body: layersBody, x: -60, y: EDGE_TOP + 8, w: 320, h: 520 });
+createWindow({ id: "sources", title: T.sources, icon: "sources", body: $("health"), x: -60, y: EDGE_TOP + 8, w: 620, h: 420, onOpen: () => void refreshHealth().catch(() => undefined) });
+createWindow({ id: "actions", title: T.actions, icon: "actions", body: h("div", { id: "actions-body" }, placeholder(T.placeholderActions)), x: -60, y: EDGE_TOP + 8, w: 560, h: 420 });
+createWindow({ id: "timeline", title: T.timeline, icon: "timeline", body: $("timeline"), x: EDGE_LEFT + 8, y: -12, w: 820, h: 220, minH: 140 });
+createWindow({
+  id: "inspector",
+  title: "Alert details",
+  icon: "alerts",
+  body: $("inspector"),
+  x: -60,
+  y: EDGE_TOP + 8,
+  w: 440,
+  h: 640,
+  minW: 320,
+  onClose: () => {
+    if (state.selected !== null) patch({ selected: null, detail: null, tracks: [], selectedEntity: null });
+  },
 });
-$("rail-toggle").addEventListener("click", () => document.body.classList.toggle("rail-collapsed"));
 
-// ---- draggable divider between AOI board and queue (queue keeps >= 55% by default)
-{
-  const rail = $("rail");
-  const setH = (pct: number): void => {
-    const v = Math.min(60, Math.max(8, pct));
-    rail.style.setProperty("--board-h", `${v}%`);
-    localStorage.setItem("board-h", String(v));
-  };
-  const saved = Number(localStorage.getItem("board-h"));
-  if (saved) setH(saved);
-  const div = $("divider");
-  div.addEventListener("pointerdown", (e) => {
-    div.setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent): void => {
-      const r = rail.getBoundingClientRect();
-      setH(((ev.clientY - r.top) / r.height) * 100);
-    };
-    const up = (): void => {
-      div.removeEventListener("pointermove", move);
-      div.removeEventListener("pointerup", up);
-    };
-    div.addEventListener("pointermove", move);
-    div.addEventListener("pointerup", up);
-  });
-  div.addEventListener("keydown", (e) => {
-    const cur = parseFloat(rail.style.getPropertyValue("--board-h")) || 34;
-    if (e.key === "ArrowUp") setH(cur - 4);
-    if (e.key === "ArrowDown") setH(cur + 4);
-  });
-}
+const shiftTool = (id: string, fn: () => void): (() => void) => () => (isOpen(id) ? closeWindow(id) : fn());
+const winToggles: Record<string, () => void> = {
+  q: () => toggleWindow("queue"),
+  b: () => toggleWindow("board"),
+  l: () => toggleWindow("layers"),
+  u: () => toggleWindow("sources"),
+  x: () => toggleWindow("actions"),
+  t: () => toggleWindow("timeline"),
+  h: shiftTool("shift", () => showShift()),
+  "?": shiftTool("help", showHelp),
+};
+const tools: Tool[] = [
+  { id: "queue", icon: "alerts", label: T.alerts, key: "q", toggle: winToggles.q! },
+  { id: "board", icon: "areas", label: T.areas, key: "b", toggle: winToggles.b! },
+  { id: "layers", icon: "layers", label: T.layers, key: "l", toggle: winToggles.l! },
+  { id: "sources", icon: "sources", label: T.sources, key: "u", toggle: winToggles.u! },
+  { id: "actions", icon: "actions", label: T.actions, key: "x", toggle: winToggles.x! },
+  { id: "timeline", icon: "timeline", label: T.timeline, key: "t", toggle: winToggles.t! },
+  { id: "shift", icon: "shift", label: T.shift, key: "h", toggle: winToggles.h! },
+  { id: "help", icon: "help", label: T.help, key: "?", toggle: winToggles["?"]! },
+];
+mountToolbar($("toolbar"), tools);
+installKeys(winToggles);
+$("brand").title = T.brandTip;
 
-// ---- panels / tabs (mobile shows one at a time; desktop is 3-pane)
-function showPanel(p: string): void {
-  document.body.dataset.panel = p;
-  document.querySelectorAll<HTMLButtonElement>("#tabs button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.panel === p)));
-  if (p === "health") void refreshHealth();
-}
-document.querySelectorAll<HTMLButtonElement>("#tabs button").forEach((b) => b.addEventListener("click", () => showPanel(b.dataset.panel!)));
-showPanel(matchMedia("(max-width: 720px)").matches ? "queue" : "map");
+// ---- top-right status tools: search + theme
+$("sb-tools").replaceChildren(
+  iconButton("search", T.search, () => {
+    openWindow("queue");
+    $("q")?.focus();
+  }, { cls: "sb-btn" }),
+  iconButton("theme", T.theme, cycleTheme, { cls: "sb-btn" }),
+);
 
-// ---- map controls
-const slider = h("input", { type: "range", min: "0", max: "24", step: "1", value: "0", "aria-label": "Time slider, hours before now" });
+// ---- map controls: small square icon buttons, top-right
+const slider = h("input", { type: "range", min: "0", max: "24", step: "1", value: "0", "aria-label": "Look back (hours before now)" });
 const sliderLbl = h("span", {}, "now");
 slider.addEventListener("input", () => {
   if (ops) ops.state.hoursAgo = Number(slider.value);
@@ -84,8 +104,8 @@ cov.addEventListener("change", () => {
   if (ops) ops.state.showCoverage = cov.checked;
   ops?.render();
 });
-const toolBtn = (label: string, t: "measure" | "ring"): HTMLButtonElement => {
-  const b = h("button", { "aria-pressed": "false", onclick: () => setTool(ops?.state.tool === t ? "none" : t) }, label);
+const toolBtn = (name: "measure" | "ring", label: string, t: "measure" | "ring"): HTMLButtonElement => {
+  const b = iconButton(name, label, () => setTool(ops?.state.tool === t ? "none" : t), { pressed: false });
   b.dataset.tool = t;
   return b;
 };
@@ -94,9 +114,11 @@ function setTool(t: "none" | "measure" | "ring"): void {
   document.querySelectorAll<HTMLButtonElement>("#mapctl [data-tool]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tool === t)));
 }
 $("mapctl").replaceChildren(
-  h("label", { for: "cov" }, cov, "Coverage (quality aircraft)"),
-  h("label", {}, "Time ", slider, sliderLbl),
-  h("div", { class: "tools" }, toolBtn("Measure", "measure"), toolBtn("Range ring", "ring")),
+  iconButton("zoomIn", T.zoomIn, () => ops?.zoomBy(1)),
+  iconButton("zoomOut", T.zoomOut, () => ops?.zoomBy(-1)),
+  toolBtn("measure", T.measure, "measure"),
+  toolBtn("ring", T.ring, "ring"),
+  iconButton("layers", `${T.layers} (l)`, winToggles.l!),
 );
 const hover = h("div", { class: "hovercard", hidden: true });
 $("mapwrap").append(hover);
@@ -119,7 +141,7 @@ function wireMapExtras(m: OpsMap): void {
     hover.style.top = `${y + 12}px`;
     hover.replaceChildren(
       ...as.slice(0, 4).map((a) =>
-        h("div", {}, h("strong", {}, `${PRIORITY[a.severity]!.icon} ${alertTitle(a)}`), h("div", {}, `${a.admiralty.reliability}${a.admiralty.credibility} · ${a.corroboration_status} · ${ago(a.last_seen)}`)),
+        h("div", {}, h("strong", {}, `${PRIORITY[a.severity]!.icon} ${alertTitle(a)}`), h("div", {}, `${sourceLabel(a.admiralty.reliability)} · ${truthLabel(a.admiralty.credibility)} · ${CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status} · ${ago(a.last_seen)}`)),
       ),
       ...(as.length > 4 ? [h("div", { class: "note" }, `+${as.length - 4} more (click to zoom)`)] : []),
     );
@@ -127,71 +149,67 @@ function wireMapExtras(m: OpsMap): void {
   update();
 }
 
-$("help-btn").addEventListener("click", showHelp);
-$("summary-btn").addEventListener("click", () => showShift());
-installKeys(showPanel);
-$("modal").addEventListener("pointerdown", (e) => {
-  if (e.target === $("modal")) $("modal").hidden = true;
-});
-
-// ---- status bar
-function renderStatus(): void {
+// ---- status strip
+function renderClock(): void {
   $("clock").textContent = new Date().toISOString().slice(0, 19).replace("T", " ") + "Z";
 }
-setInterval(renderStatus, 1000);
-renderStatus();
+setInterval(renderClock, 1000);
+renderClock();
 
 const isOpenA = (a: Alert): boolean => ["new", "acknowledged", "under_review"].includes(a.status);
+const SEV_ORDER = ["critical", "high", "medium", "low", "info"] as const;
 
-function renderChips(): void {
-  $("sb-chips").replaceChildren(
-    ...state.summary.map((s) =>
-      h(
-        "button",
-        { class: `chip sev-${s.max_severity ?? "info"}`, "aria-pressed": String(state.selectedAoi === s.name), title: `${aoiName(s.name)}: ${s.open_total} open`, onclick: () => selectAoi(s.name) },
-        `${s.max_severity ? PRIORITY[s.max_severity]!.icon : "○"} ${aoiName(s.name)} ${s.open_total}`,
-      ),
-    ),
-  );
+function renderStatus(): void {
   const open = state.alerts.filter(isOpenA);
   const counts: Record<string, number> = { P1: 0, P2: 0, P3: 0, P4: 0 };
   open.forEach((a) => (counts[PRIORITY[a.severity]!.p]! += 1));
-  $("sb-counts").replaceChildren(
-    ...Object.entries(counts).map(([p, n]) =>
-      h(
-        "button",
-        {
-          class: `pill sev-${p === "P1" ? "critical" : p === "P2" ? "high" : p === "P3" ? "medium" : "low"}`,
-          "aria-pressed": String(state.filters.priority === p),
-          title: `Filter to ${p} (open alerts)`,
-          onclick: () => patch({ filters: { ...state.filters, priority: state.filters.priority === p ? "" : p, status: state.filters.priority === p ? state.filters.status : "open" } }),
-        },
-        `${p} ${n}`,
-      ),
-    ),
-  );
   const now = Date.now();
   const lastH = state.alerts.filter((a) => now - new Date(a.first_seen).getTime() < 3600_000).length;
   const avg = state.alerts.filter((a) => now - new Date(a.first_seen).getTime() < 24 * 3600_000).length / 24;
   const flood = lastH > Math.max(3, avg * 2);
-  $("sb-counts").append(
-    h("span", { class: flood ? "fail" : "note", title: "Alerts opened in the last hour vs the 24 h hourly average (flood indicator)" }, `${flood ? "▲ " : ""}rate ${lastH}/h (avg ${avg.toFixed(1)})`),
+  const sevOf = { P1: "critical", P2: "high", P3: "medium", P4: "low" } as const;
+  $("sb-counts").replaceChildren(
+    ...(Object.entries(counts) as [keyof typeof sevOf, number][]).map(([p, n]) => {
+      const icoText = p === "P1" ? "▲▲" : p === "P2" ? "▲" : p === "P3" ? "■" : "●";
+      const word = { P1: "Critical", P2: "High", P3: "Medium", P4: "Low" }[p];
+      return h(
+        "button",
+        {
+          class: `pill sev-${sevOf[p]}`,
+          "aria-pressed": String(state.filters.priority === p),
+          "aria-label": `${word} priority: ${n} open`,
+          title: `${word} priority: ${n} open${flood ? ` (busy: ${lastH} new in the last hour)` : ""}`,
+          onclick: () => {
+            patch({ filters: { ...state.filters, priority: state.filters.priority === p ? "" : p, status: state.filters.priority === p ? state.filters.status : "open" } });
+            openWindow("queue");
+          },
+        },
+        `${icoText} ${n}`,
+      );
+    }),
   );
-  const dom: Record<string, "ok" | "warn" | "bad"> = {};
+  const unack = state.alerts.filter((a) => a.status === "new");
+  const worst = SEV_ORDER.find((s) => unack.some((a) => a.severity === s)) ?? "info";
+  setAlertBadge(unack.length, worst);
+  // source health: one dot summarising the worst state; click opens Data sources
   const rank = { ok: 0, warn: 1, bad: 2 } as const;
+  let worstG: "ok" | "warn" | "bad" = "ok";
+  let bad = 0;
   for (const s of state.health) {
     const age = s.last_ok ? (Date.now() - new Date(s.last_ok).getTime()) / 1000 : Infinity;
     const g = age < s.expected_latency_s * 2 ? "ok" : age < s.expected_latency_s * 5 ? "warn" : "bad";
-    if (!dom[s.domain] || rank[g] > rank[dom[s.domain]!]) dom[s.domain] = g;
+    if (g !== "ok") bad += 1;
+    if (rank[g] > rank[worstG]) worstG = g;
   }
+  const word = worstG === "ok" ? "All sources up to date" : worstG === "warn" ? `${bad} source(s) slow` : `${bad} source(s) down or stale`;
   $("sb-fresh").replaceChildren(
-    ...Object.entries(dom).map(([d, g]) => h("span", { title: `${d}: ${g === "ok" ? "fresh" : g === "warn" ? "delayed" : "stale"}` }, h("span", { class: `dot ${g}` }), d)),
+    h("button", { class: "pill", title: `${word} (open Data sources)`, "aria-label": word, onclick: winToggles.u! }, h("span", { class: `dot ${worstG}` }), icon("sources", 14)),
   );
 }
 
-// Critical banner: persistent, never auto-jumps the view.
-function renderBanner(): void {
-  const b = $("banner");
+// Critical toast: floating, persistent, never auto-jumps the view.
+function renderToast(): void {
+  const b = $("toast");
   const crit = state.alerts.filter((a) => a.severity === "critical" && a.status === "new").sort((x, y) => y.last_seen.localeCompare(x.last_seen));
   const a = crit[0];
   if (!a) {
@@ -200,33 +218,38 @@ function renderBanner(): void {
   }
   b.hidden = false;
   b.replaceChildren(
-    h("strong", {}, `▲▲ P1 ${alertTitle(a)}`),
-    ` · ${aoiName(a.aoi)} · ${ago(a.first_seen)}`,
-    crit.length > 1 ? ` · +${crit.length - 1} more` : "",
-    h("button", { onclick: () => { void selectAlert(a.id); if (mobile()) showPanel("detail"); } }, "Go to"),
-    h("button", { onclick: () => void triage(a.id, "acknowledged") }, "Ack"),
+    icon("warn"),
+    h("strong", {}, alertTitle(a)),
+    h("span", { class: "note" }, `${aoiName(a.aoi)} · ${ago(a.first_seen)}${crit.length > 1 ? ` · +${crit.length - 1} more` : ""}`),
+    h("button", { class: "primary", onclick: () => void selectAlert(a.id) }, T.toastGoTo),
+    h("button", { onclick: () => void triage(a.id, "acknowledged") }, T.toastAck),
   );
 }
 
 // ---- linked rendering
+let lastSelected: string | null = null;
 function draw(changed: Set<string>): void {
   const has = (...k: string[]): boolean => k.some((x) => changed.has(x));
   if (has("alerts", "filters", "selected", "checked", "window")) {
     if (!(document.activeElement instanceof HTMLInputElement && document.activeElement.id === "q")) renderQueue($("queue"));
-    else document.getElementById("qcount") && (document.getElementById("qcount")!.textContent = `Alerts (${visibleAlerts().length})`);
+    else document.getElementById("qcount") && (document.getElementById("qcount")!.textContent = `${T.alerts} (${visibleAlerts().length})`);
   }
   if (has("summary", "selectedAoi")) renderBoard($("board"));
   if (has("alerts", "summary", "health", "filters", "selectedAoi")) {
-    renderChips();
-    renderBanner();
+    renderStatus();
+    renderToast();
   }
   if (has("detail", "tab", "selected", "selectedEntity", "tracks")) {
     if (state.selectedEntity) renderEntity($("inspector"), state.selectedEntity);
     else renderInspector($("inspector"));
-    document.body.classList.toggle("has-selection", state.selected !== null);
+  }
+  if (has("selected") && state.selected !== lastSelected) {
+    lastSelected = state.selected;
+    if (state.selected) openWindow("inspector");
+    else closeWindow("inspector");
   }
   if (has("alerts", "window", "playing", "filters")) renderTimeline($("timeline"));
-  if (has("health") && document.body.dataset.panel === "health") renderHealth($("health"), state.health);
+  if (has("health")) renderHealth($("health"), state.health);
   if (ops && has("alerts", "cells", "aois", "selected", "detail", "tracks", "filters", "window")) {
     Object.assign(ops.state, {
       alerts: visibleAlerts(),
@@ -240,27 +263,27 @@ function draw(changed: Set<string>): void {
     ops.render();
   }
   if (ops && has("fly") && state.fly) ops.flyTo(state.fly.lon, state.fly.lat);
-  if (has("selected") && state.selected && mobile()) showPanel("detail");
 }
 subscribe(draw);
 
 // ---- live updates (SSE) with polling fallback
 function live(): void {
   const es = new EventSource("/api/stream");
-  const pill = $("live");
-  es.onopen = () => {
-    pill.textContent = "live";
-    pill.classList.add("on");
+  const dot = $("live");
+  const set = (on: boolean, word: string): void => {
+    dot.classList.toggle("on", on);
+    dot.title = word;
+    dot.setAttribute("aria-label", word);
   };
+  es.onopen = () => set(true, T.live);
   es.addEventListener("snapshot", (e) => patch({ alerts: JSON.parse((e as MessageEvent<string>).data) as Alert[] }));
   es.addEventListener("alert", (e) => upsertAlert(JSON.parse((e as MessageEvent<string>).data) as Alert));
-  es.onerror = () => {
-    pill.textContent = "reconnecting";
-    pill.classList.remove("on");
-  };
+  es.onerror = () => set(false, T.reconnecting);
 }
 
 async function boot(): Promise<void> {
+  // first run: open the alert list so the analyst lands on something useful (wide screens only)
+  if (!localStorage.getItem("hm.wm.v1") && window.innerWidth >= 1100) openWindow("queue");
   try {
     const aois = await api.aois();
     setAois(aois);
@@ -269,7 +292,11 @@ async function boot(): Promise<void> {
     ops = new OpsMapCls($("map"), theme === "light" ? "light" : "dark", ui.basemap, ui.overlays, (id) => void selectAlert(id, false));
     $("legend").replaceChildren(legend());
     wireMapExtras(ops);
-    mountLayersDrawer($("layers"), ops.layers.panel());
+    getBody("layers")!.replaceChildren(
+      h("label", { for: "cov", class: "chk" }, cov, T.coverageLayer),
+      h("label", { class: "chk" }, "Look back ", slider, sliderLbl),
+      ops.layers.panel(),
+    );
     await Promise.all([refreshAll(), refreshHealth().catch(() => undefined)]);
     patch({ aois });
   } catch (e) {
@@ -280,25 +307,3 @@ async function boot(): Promise<void> {
   setInterval(() => void refreshHealth().catch(() => undefined), 60_000);
 }
 void boot();
-
-/** Collapsible layers drawer: closed by default, closes on outside click / Escape. */
-function mountLayersDrawer(root: HTMLElement, body: HTMLElement): void {
-  const btn = h("button", { "aria-expanded": "false", "aria-controls": "layers-drawer" }, "Layers");
-  const close = h("button", { class: "drawer-close", "aria-label": "Close layers" }, "Close");
-  const drawer = h("div", { class: "drawer", id: "layers-drawer" }, close, body);
-  const set = (open: boolean): void => {
-    drawer.hidden = !open;
-    document.body.classList.toggle("layers-open", open);
-    btn.setAttribute("aria-expanded", String(open));
-  };
-  btn.addEventListener("click", () => set(Boolean(drawer.hidden)));
-  close.addEventListener("click", () => set(false));
-  document.addEventListener("pointerdown", (e) => {
-    if (!drawer.hidden && !root.contains(e.target as Node)) set(false);
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") set(false);
-  });
-  root.replaceChildren(btn, drawer);
-  set(false);
-}
