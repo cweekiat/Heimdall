@@ -14,7 +14,7 @@ Malacca/Singapore Strait. The **Baltic** is a calibration control. The results a
 C4I-style analyst console with a live operational map, an alert board, evidence, and a triage
 workflow.
 
-> Status: **Phase 1 (airspace + UI) nearing completion.** See [CLAUDE.md](CLAUDE.md) for the phase table and
+> Status: **Phase 1 done (v0.1.0); Phase 2 (maritime + warnings) in progress.** See [CLAUDE.md](CLAUDE.md) for the phase table and
 > [docs/CHANGELOG.md](docs/CHANGELOG.md) for history.
 
 ---
@@ -76,7 +76,7 @@ docker compose -f deploy/docker-compose.yml up                  # live worker on
 docker compose -f deploy/docker-compose.yml --profile demo up   # demo on 127.0.0.1:8001
 ```
 
-### Backtest and calibration (task 006, in progress)
+### Backtest and calibration
 ```bash
 uv run python -m heimdall.backtest --aoi baltic --date YYYY-MM-DD --traces data/raw/<dir> --gpsjam data/raw/<file>.csv
 ```
