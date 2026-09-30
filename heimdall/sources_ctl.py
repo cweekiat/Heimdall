@@ -125,8 +125,8 @@ class SourceManager:
                 self._start(key)
 
     async def stop(self) -> None:
-        for key in list(self._tasks):
-            await self._stop(key)
+        # all at once: stopping one by one kept the others polling external APIs meanwhile
+        await asyncio.gather(*(self._stop(k) for k in list(self._tasks)), return_exceptions=True)
         await self._drain_orphans()
 
     # ------------------------------------------------------------ SourceControl

@@ -26,6 +26,11 @@ CAP = 5000
 COVERAGE_WINDOW_S = 3600
 ZOOM_CAP = 20000  # positions returned when the client sends `zoom`
 DENSITY_BELOW_ZOOM = 5.0  # below this the API returns H3 density cells, not positions
+
+
+def density_res(zoom: float) -> int:
+    """H3 resolution for density hexes: r3 (~60 km) < z2.5, r4 (~22 km) < z4, r5 (~8.5 km) above."""
+    return 3 if zoom < 2.5 else 4 if zoom < 4 else 5
 NOTICE_KINDS = ["nav_warning", "notam"]
 NOTICE_LOOKBACK = timedelta(days=30)
 TEXT_MAX = 2000
@@ -345,8 +350,8 @@ def _emit(
 
 
 def density(points: Iterable[tuple[float, float, bool]], zoom: float) -> dict[str, Any]:
-    """H3 density cells (r3 below zoom 3, else r4): count and military count per cell."""
-    res = 3 if zoom < 3 else 4
+    """H3 density cells (`density_res(zoom)`): count and military count per cell."""
+    res = density_res(zoom)
     cells: dict[str, list[int]] = {}
     total = 0
     for lat, lon, mil in points:
@@ -436,7 +441,7 @@ def traffic_router(
         want: set[str] | None,
         max_age_s: int,
     ) -> Any:
-        res = 3 if zoom < 3 else 4
+        res = density_res(zoom)
         w, s, e, n = bb
         if (
             w <= -179.9
@@ -459,7 +464,7 @@ def traffic_router(
             counts: dict[str, list[int]] = {}
             ents = ents_fn()
             for x in ents:
-                c = counts.setdefault(x.r3 if res == 3 else x.r4, [0, 0])
+                c = counts.setdefault({3: x.r3, 4: x.r4, 5: x.r5}[res], [0, 0])
                 c[0] += 1
                 c[1] += int(x.mil)
             cells = [{"h3": k, "count": v[0], "mil": v[1]} for k, v in counts.items()]

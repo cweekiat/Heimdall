@@ -204,3 +204,9 @@ def test_zoomed_in_returns_positions(client: TestClient) -> None:
     d = client.get(f"/api/traffic/air?bbox={BB}&zoom=6").json()
     assert d["type"] == "FeatureCollection" and len(d["features"]) == 4
     assert client.get(f"/api/traffic/air?bbox={BB}&zoom=99").status_code == 422
+
+
+def test_density_resolution_by_zoom() -> None:
+    from heimdall.api.traffic import density_res
+
+    assert [density_res(z) for z in (1, 2.4, 2.5, 3.9, 4, 4.99)] == [3, 3, 4, 4, 5, 5]
