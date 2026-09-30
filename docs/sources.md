@@ -476,3 +476,249 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 | gfw | needs-key | Rate limits shared; commercial license |
 | nga_msi | broken | Portal under maintenance; no JSON API confirmed |
 | china_msa | blocked | Geo-IP 403 block; requires China-based IP or VPN |
+
+## open_meteo
+
+**Status:** verified
+
+**Base URL:** `https://api.open-meteo.com/v1`
+
+**Endpoints:**
+- `/forecast` — Weather forecast (default 7 days; extendable to 16 days)
+- Query parameters: `latitude`, `longitude`, `hourly`, `daily`, `past_days` (for archive lag), `forecast_days`
+
+**Authentication:** None (public); commercial use requires API key and custom server
+
+**Rate Limit:** Not documented; assume standard REST limits (typically generous for non-commercial)
+
+**Fields of Interest:** temperature_2m, cloud_cover, precipitation, weather_code, wind_speed_10m (ADR-007: all)
+
+**Latency:** Live forecast API; historical via `past_days` parameter (~1 day archive lag)
+
+**License:** Non-commercial free; commercial requires subscription
+
+**Fixture Path:** `tests/fixtures/open_meteo/real_san_francisco.json` (1.3 KB; 24h past + forecast)
+
+**Gotchas:**
+- archive-api.open-meteo.com not live; use api.open-meteo.com with `past_days` instead
+- Response: `hourly`, `daily`, `current` objects with parallel time/value arrays
+- No authentication for non-commercial use
+
+**Source:** [API Docs](https://open-meteo.com/en/docs), [Historical](https://open-meteo.com/en/docs/historical-weather-api), [GitHub](https://github.com/open-meteo/open-meteo)
+
+---
+
+## firms
+
+**Status:** unverified (needs key)
+
+**Base URL:** `https://firms.modaps.eosdis.nasa.gov/api/v2.1`
+
+**Endpoints:**
+- `/active_fire/{region}/csv?key={MAP_KEY}&date={YYYY-MM-DD}` — Fire detections
+
+**Authentication:** FIRMS_MAP_KEY (required; UI key store)
+
+**Rate Limit:** Not documented; standard NASA EOSDIS
+
+**Fields of Interest:** latitude, longitude, brightness, scan, track, acq_date, acq_time, satellite, instrument, confidence, bright_ti4, bright_ti5, frp, daynight (ADR-007 attrs)
+
+**Latency:** 3 hours (NRT); ~1 day (archive)
+
+**License:** NASA public; requires attribution
+
+**Fixture Path:** Not yet created (requires key)
+
+**Gotchas:** CSV format (not JSON); multiple regional endpoints
+
+**Source:** [FIRMS Docs](https://www.earthdata.nasa.gov/learn/find-data/near-real-time/firms), [Home](https://firms.modaps.eosdis.nasa.gov/)
+
+---
+
+## ioda
+
+**Status:** unverified
+
+**Base URL:** `https://api.ioda.inetintel.cc.gatech.edu/v2`
+
+**Endpoints:**
+- `/outages` — Query outage signals
+
+**Authentication:** None (public)
+
+**Rate Limit:** Not documented
+
+**Fields of Interest:** entity_type, entity_code, datasource, observed, baseline, level (ADR-007 attrs)
+
+**Latency:** 600 seconds (10 min)
+
+**License:** Academic; check ToS
+
+**Fixture Path:** Not yet created
+
+**Gotchas:** Response format complex (hierarchical JSON); rate limits not public
+
+**Source:** [IODA API](https://ioda.inetintel.cc.gatech.edu/help/api), [Project](https://www.inetintel.cc.gatech.edu/)
+
+---
+
+## cloudflare_radar
+
+**Status:** unverified (needs key)
+
+**Base URL:** `https://api.cloudflare.com/client/v4/radar`
+
+**Endpoints:**
+- `/bgp/top/ases`, `/bgp/top/prefixes`, `/attacks`
+
+**Authentication:** CLOUDFLARE_TOKEN (required; UI key store)
+
+**Rate Limit:** Not documented; standard Cloudflare API
+
+**Fields of Interest:** location, asn, scope, outage_type (ADR-007 attrs)
+
+**Latency:** 900 seconds (15 min)
+
+**License:** Cloudflare ToS
+
+**Fixture Path:** Not yet created (requires key)
+
+**Gotchas:** Key required; multiple endpoint types
+
+**Source:** [Radar API](https://developers.cloudflare.com/radar/), [API Docs](https://developers.cloudflare.com/api/)
+
+---
+
+## celestrak
+
+**Status:** unverified
+
+**Base URL:** `https://celestrak.org`
+
+**Endpoints:**
+- `/api/v2/satcat` — Satellite catalog
+- `/api/v2/decay` — Decayed tracking
+- `/api/v2/countries`, `/api/v2/groups` — Filters
+
+**Authentication:** None (public)
+
+**Rate Limit:** Not documented; standard HTTP
+
+**Fields of Interest:** norad_id, name, epoch, semi_major_axis, eccentricity, inclination, raan, arg_of_pericenter, mean_anomaly (ADR-007 orbit_elements)
+
+**Latency:** 86400 seconds (daily TLE updates)
+
+**License:** NORAD TLE public domain; Celestrak adds metadata
+
+**Fixture Path:** Not yet created
+
+**Gotchas:** JSON format; multiple APIs available
+
+**Source:** [CelesTrak Docs](https://celestrak.org/), [GitHub](https://github.com/cbassa/celestrak)
+
+---
+
+## earth_search (STAC)
+
+**Status:** unverified
+
+**Base URL:** `https://earth-search.aws.element84.com/v1`
+
+**Endpoints:**
+- `/search` — STAC Item Search (POST/GET)
+- `/collections` — Available collections (S1, S2, etc.)
+
+**Authentication:** None (public; no token for item search)
+
+**Rate Limit:** Not documented; AWS standard
+
+**Fields of Interest:** stac_item_id, collection, platform, datetime, geometry, cloud_cover, relative_orbit, orbit_state (ADR-007)
+
+**Latency:** 86400 seconds (daily catalog updates)
+
+**License:** Sentinel data Copernicus; STAC metadata CC-BY-4.0
+
+**Fixture Path:** Not yet created
+
+**Gotchas:** Metadata only (no COG/thumbnail fetches per ADR-007); Sentinel thumbnails declined
+
+**Source:** [Earth Search](https://www.element84.com/earth-search/), [STAC Spec](https://github.com/radiantearth/stac-api-spec)
+
+---
+
+## black_marble
+
+**Status:** unverified (needs Earthdata access)
+
+**Base URL:** `https://ladsweb.modaps.eosdis.nasa.gov`
+
+**Endpoints:**
+- `/api/v2/content/archives/COLORMAPS/BlackMarble` — Dataset archive
+- Alternative: `https://data.naaee.xyz/` (CDN)
+
+**Authentication:** Earthdata token (urs.earthdata.nasa.gov; UI key store)
+
+**Rate Limit:** EOSDIS standard (~5–10 req/sec)
+
+**Fields of Interest:** h3_r4, date, product, n_valid, n_total, valid_frac, cloud_frac, median, p90, mean_radiance (ADR-007)
+
+**Latency:** 86400 seconds (monthly/seasonal; lag ~1–3 months)
+
+**License:** NASA public; attribution + EOSDIS science terms
+
+**Fixture Path:** Not yet created (HDF5 listing only per ADR-007; no tile sample)
+
+**Gotchas:** HDF5 format (h5py); tiles downloaded→reduced to H3-r4→deleted (no pixel arrays stored)
+
+**Source:** [LAADS Web](https://ladsweb.modaps.eosdis.nasa.gov/), [Black Marble](https://earthobservatory.nasa.gov/images/topic/earth-at-night), [Register](https://urs.earthdata.nasa.gov/users/new)
+
+---
+
+## swpc
+
+**Status:** unverified
+
+**Base URL:** `https://services.swpc.noaa.gov/products`
+
+**Endpoints:**
+- `/noaa-planetary-k-index-forecast.json` — Kp forecast
+- `/noaa-space-weather-3-day-outlook.json` — 3-day outlook
+
+**Authentication:** None (public)
+
+**Rate Limit:** Not documented; NOAA standard
+
+**Fields of Interest:** kp, g_scale, r_scale, s_scale, product (ADR-007 confounder only)
+
+**Latency:** 900 seconds (NOAA ~4x/day updates)
+
+**License:** NOAA public; no copyright
+
+**Fixture Path:** Not yet created
+
+**Gotchas:** Forecast-only; used as confounder (lowers confidence, never creates Evidence per ADR-007)
+
+**Source:** [SWPC Products](https://www.swpc.noaa.gov/), [JSON Services](https://services.swpc.noaa.gov/products/), [Kp Info](https://www.swpc.noaa.gov/products/planetary-k-index)
+
+---
+| open_meteo | verified | archive-api not live; use api.open-meteo.com with past_days |
+| firms | unverified | Requires FIRMS_MAP_KEY; CSV format |
+| ioda | unverified | Public but response format complex; rate limits not documented |
+| cloudflare_radar | unverified | Requires CLOUDFLARE_TOKEN; multiple endpoint types |
+| celestrak | unverified | Public TLE data; JSON format via v2 API |
+| earth_search (STAC) | unverified | No token needed; metadata only per ADR-007 |
+| black_marble | unverified | Requires Earthdata auth; HDF5; tiles→H3-r4 reduction→delete |
+| swpc | unverified | Public; Kp forecast for confounder use only per ADR-007 |
+
+### P3 live reachability check (lead, 2026-09-30)
+Unauthenticated GETs from this machine:
+| Source | Endpoint | Result |
+|---|---|---|
+| celestrak | `gp.php?GROUP=active&FORMAT=json` | 200, ~7 MB JSON. Use narrower groups (e.g. `GROUP=military`, `resource`) or per-NORAD queries |
+| earth_search | `/v1/collections` | 200 (STAC, no key) |
+| ioda | `/v2/signals/raw/country/MM?from&until` | 200 (no key) |
+| swpc | `/products/noaa-planetary-k-index.json` | 200 (no key) |
+| firms | `/api/area/` | 200 index page. Data calls need `MAP_KEY` |
+| black_marble | ladsweb `/api/v2/content/details/allData/5200/VNP46A1` | 200 listing. File download needs an Earthdata token |
+| cloudflare_radar | `/client/v4/radar/annotations/outages` | 400 without a token, as expected. Needs a free API token with Radar read |
+| open_meteo | `/v1/forecast` (see above) | 200, verified |
