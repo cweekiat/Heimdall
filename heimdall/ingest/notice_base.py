@@ -1,4 +1,4 @@
-"""Shared polling base for notice connectors (nga_msi, china_msa, faa_nms).
+"""Shared polling base for notice connectors (nga_msi, faa_nms).
 
 Health follows ADR-004. Only new/changed notices (content hash) are emitted per process.
 Error detail strings are fixed vocabulary: they never echo response bodies or secrets.

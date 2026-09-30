@@ -5,13 +5,13 @@ Pure functions. Choices (documented in docs/detectors.md):
 * **Reliability = best grade among the sources whose own reports show the anomaly**, i.e. the
   `source` of the Evidence's `records` (detectors emit one RecordRef per anomaly-showing
   provider). Providers that merely covered the area (`coverage.providers`) do not count.
-  The aggregators (adsb.lol, adsb.fi, airplanes.live, OpenSky) re-publish the *same* broadcast,
+  The aggregators (adsb.lol, adsb.fi, OpenSky) re-publish the *same* broadcast,
   so a finding is as reliable as the most reliable source that independently shows it; adding a
   weaker mirror must not downgrade it (worst-case would punish extra coverage). Unknown sources
   grade F; no sources -> F.
 * **Credibility** from the number of *independent source families* that support the alert
-  (ADR-005 section C; `fusion.source_family`: adsb, ais, gfw, sar, notice, and ADR-007 thermal,
-  ioda, cloudflare, night_lights; the `context` family is never counted). Jamming and a tanker
+  (ADR-005 section C; `fusion.source_family`: adsb, ais, notice, and ADR-007 thermal;
+  the `context` family is never counted). Jamming and a tanker
   orbit are both `air` but one ADS-B feed, so domains would overcount; a NOTAM is an independent
   publisher. 1 = analyst-confirmed or >= 3 families; 2 = 2 families; 3 = one family, strong
   (lead score >= strong_score) AND persistent (persistence >= required windows), OR one family
@@ -62,7 +62,7 @@ def independent_families(families: Iterable[str]) -> set[str]:
 
 
 def source_key(provider: str) -> str:
-    """'adsb.lol' -> 'adsb_lol', 'airplanes.live' -> 'airplanes_live', 'history' -> alias."""
+    """'adsb.lol' -> 'adsb_lol', 'history' -> alias."""
     k = provider.strip().lower().replace(".", "_").replace("-", "_")
     return PROVIDER_ALIASES.get(k, k)
 

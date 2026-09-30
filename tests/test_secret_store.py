@@ -20,18 +20,18 @@ def test_set_get_modes_and_precedence(
     caplog.set_level(logging.DEBUG)
     store = FileSecretStore(tmp_path / "secrets" / "keys.json")
     assert isinstance(store, SecretStore)
-    monkeypatch.setenv("GFW_TOKEN", "from-env-value")
-    assert store.get("GFW_TOKEN") == "from-env-value"
-    store.set("GFW_TOKEN", CANARY)
+    monkeypatch.setenv("FAA_NMS_KEY", "from-env-value")
+    assert store.get("FAA_NMS_KEY") == "from-env-value"
+    store.set("FAA_NMS_KEY", CANARY)
     f = tmp_path / "secrets" / "keys.json"
     assert stat.S_IMODE(f.stat().st_mode) == 0o600
     assert stat.S_IMODE(f.parent.stat().st_mode) == 0o700
-    assert store.get("GFW_TOKEN") == CANARY
-    st = {k.name: k for k in store.status()}["GFW_TOKEN"]
+    assert store.get("FAA_NMS_KEY") == CANARY
+    st = {k.name: k for k in store.status()}["FAA_NMS_KEY"]
     assert st.is_set and st.origin == "store" and st.last4 == CANARY[-4:]
     assert CANARY not in st.model_dump_json()
-    store.delete("GFW_TOKEN")
-    assert store.get("GFW_TOKEN") == "from-env-value"
+    store.delete("FAA_NMS_KEY")
+    assert store.get("FAA_NMS_KEY") == "from-env-value"
     assert not list(f.parent.glob("*.tmp"))
     assert CANARY not in caplog.text
 

@@ -11,8 +11,6 @@ Assumptions
   GNSS_JAMMING: Kp >= kp_severe -> kp_severe_factor, elif Kp >= kp_minor -> kp_minor_factor;
   equatorial scintillation (|lat| <= scint_lat_max and local solar time in `scint_hours`, wrapping
   midnight) -> scint_factor (needs no context event: it is a climatological effect).
-  OUTAGE: weather_code in `storm_codes` within `storm_km` -> storm_factor; night-lights evidence
-  (`detector == "night_lights"`) with mean cloud_cover >= cloud_pct -> cloud_factor.
   AIS_GAP: max wind_speed_ms >= wind_ms within `storm_km` -> wind_factor.
 * Product is clamped to [min_factor, 1]; each single factor is clamped to <= 1 so a bad config
   can never raise confidence. Non-finite or non-numeric attrs are ignored.
@@ -40,11 +38,7 @@ DEFAULTS: dict[str, Any] = {
     "scint_lat_max": 20,
     "scint_hours": [19, 2],
     "scint_factor": 0.85,
-    "storm_codes": [95, 96, 99],
     "storm_km": 50,
-    "storm_factor": 0.7,
-    "cloud_pct": 80,
-    "cloud_factor": 0.5,
     "wind_ms": 20,
     "wind_factor": 0.9,
     "min_factor": 0.3,
@@ -83,7 +77,7 @@ def assess(
 ) -> tuple[float, list[Corroboration], list[str]]:
     """(confidence factor in [min_factor, 1], context notes, gap strings) for one Evidence."""
     c = _cfg(cfg)
-    if ev.kind not in (AlertKind.GNSS_JAMMING, AlertKind.OUTAGE, AlertKind.AIS_GAP):
+    if ev.kind not in (AlertKind.GNSS_JAMMING, AlertKind.AIS_GAP):
         return 1.0, [], []
     t0 = ev.window_start - timedelta(hours=float(c["max_age_h"]))
     t1 = ev.window_end
@@ -150,33 +144,6 @@ def assess(
         wx = nearby("weather")
         if not wx:
             gaps.append("weather context unavailable (lag)")
-        elif ev.kind == AlertKind.OUTAGE:
-            codes = {int(x) for x in c["storm_codes"]}
-            storm = [(e, _num(e.attrs.get("weather_code"))) for e in wx]
-            hit = [e for e, code in storm if code is not None and int(code) in codes]
-            if hit:
-                factor *= _f(c["storm_factor"])
-                e0 = hit[0]
-                d = haversine_km(ev.lat or 0.0, ev.lon or 0.0, e0.lat or 0.0, e0.lon or 0.0)
-                code = int(_num(e0.attrs.get("weather_code")) or 0)
-                note(
-                    e0.domain,
-                    e0.id,
-                    f"Thunderstorm (weather code {code}) {d:.0f} km away",
-                    _f(c["storm_factor"]),
-                )
-            if ev.detector == "night_lights":
-                clouds = [
-                    v for e in wx if (v := _num(e.attrs.get("cloud_cover", e.value))) is not None
-                ]
-                if clouds and sum(clouds) / len(clouds) >= float(c["cloud_pct"]):
-                    factor *= _f(c["cloud_factor"])
-                    note(
-                        wx[0].domain,
-                        wx[0].id,
-                        f"Mean cloud cover {sum(clouds) / len(clouds):.0f} % during window",
-                        _f(c["cloud_factor"]),
-                    )
         else:  # AIS_GAP
             winds = [(w, e) for e in wx if (w := _num(e.attrs.get("wind_speed_ms"))) is not None]
             if winds:

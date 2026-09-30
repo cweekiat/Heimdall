@@ -58,7 +58,7 @@ def test_layer_errors(client: TestClient) -> None:
 
 
 def test_layers_never_leak_text_or_assets(client: TestClient) -> None:
-    for layer in ("thermal", "imagery", "night_lights", "outage", "overpass"):
+    for layer in ("thermal", "imagery", "overpass"):
         r = client.get(f"/api/layers/{layer}?aoi=myanmar&hours=200")
         assert r.status_code == 200
         assert INJECT not in r.text

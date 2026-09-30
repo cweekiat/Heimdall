@@ -8,7 +8,7 @@ Steps (see docs/detectors.md "Fusion v0"):
 3. CRITICAL composite: >= critical_min_tankers distinct tanker orbits within jam_proximity_km of
    a gated jamming Evidence.
 4. Severity from s = lead.score x lead.coverage.confidence; control AOIs capped at INFO.
-5. Corroborations from `fuse/corroborate.py` (ADR-005: notices, AIS/jamming, GFW/SAR; co-located
+5. Corroborations from `fuse/corroborate.py` (ADR-005: notices, AIS/jamming; co-located
    other-kind Evidence = context). Credibility counts independent source *families*. Admiralty
    grade, template summary (no LLM, no notice text), recommended_actions from playbook `applies_to`.
    WARNING_AREA Evidence is context-only: it never opens an alert.
@@ -283,25 +283,6 @@ def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: s
             f"{_f(lead, 'sum_frp_mw'):.0f} MW over {_f(lead, 'n_passes'):.0f} satellite passes; "
             f"{pers}; {cov}."
         )
-    if kind == AlertKind.OUTAGE and lead.detector == "night_lights":
-        return (
-            f"Night-time lights in H3 {cell} fell to {_f(lead, 'worst_ratio'):.0%} of normal "
-            f"for {_f(lead, 'n_dropped_nights'):.0f} clear nights (satellite data "
-            f"{_f(lead, 'imagery_lag_days'):.0f} days old); {pers}; {cov}."
-        )
-    if kind == AlertKind.OUTAGE:
-        who = ", ".join(_entity(x) for x in sorted({x for e in group for x in e.entities})[:3])
-        ann = " and a Cloudflare Radar report" if _f(lead, "annotation_active") else ""
-        low = (
-            f", lowest {_f(lead, 'min_ratio'):.0%} of normal"
-            if "min_ratio" in lead.features
-            else ""
-        )
-        return (
-            f"Internet outage{f' ({who})' if who else ''} near H3 {cell}: "
-            f"{_f(lead, 'n_datasources'):.0f} independent measurements down for "
-            f"{_f(lead, 'duration_h'):.1f} h{low}{ann}; {pers}; {cov}."
-        )
     return f"{kind} in H3 {cell}: {len(group)} evidence items; {pers}; {cov}."
 
 
@@ -354,7 +335,7 @@ def fuse(
 ) -> list[Alert]:
     """Return new/updated/expired alerts (caller upserts them).
 
-    `notices`: active area notices and GFW/SAR events (ADR-005) used only for corroboration.
+    `notices`: active area notices (ADR-005) used only for corroboration.
     `context_events`: weather, space_weather, imagery_footprint and overpass events (ADR-007); they
     only lower confidence and add context notes, never corroborate.
     """

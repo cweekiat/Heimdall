@@ -9,9 +9,7 @@ from heimdall.detect import (
     ais_gap,
     ais_spoofing,
     jamming,
-    night_lights,
     orbit,
-    outage,
     spoofing,
     thermal,
     warning_area,
@@ -46,10 +44,6 @@ DETECTORS: dict[str, DetectorSpec] = {
     ),
     # P3 (ADR-007): detect(events, cfg, now, *, aoi); thermal also takes baseline_events
     "thermal": DetectorSpec("thermal", thermal.VERSION, AlertKind.THERMAL, thermal.detect),
-    "outage": DetectorSpec("outage", outage.VERSION, AlertKind.OUTAGE, outage.detect),
-    "night_lights": DetectorSpec(
-        "night_lights", night_lights.VERSION, AlertKind.OUTAGE, night_lights.detect
-    ),
 }
 
 __all__ = [
@@ -58,9 +52,7 @@ __all__ = [
     "ais_gap",
     "ais_spoofing",
     "jamming",
-    "night_lights",
     "orbit",
-    "outage",
     "spoofing",
     "thermal",
     "warning_area",

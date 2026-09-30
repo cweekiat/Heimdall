@@ -34,7 +34,7 @@ class FakeSources:
 
 @pytest.fixture
 def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, FakeSources, Path]:
-    for n in ("AISSTREAM_KEY", "GFW_TOKEN", "FAA_NMS_KEY", "FAA_NMS_SECRET"):
+    for n in ("AISSTREAM_KEY", "FAA_NMS_KEY", "FAA_NMS_KEY", "FAA_NMS_SECRET"):
         monkeypatch.delenv(n, raising=False)
     store = FileSecretStore(tmp_path / "secrets" / "keys.json")
     src = FakeSources()
@@ -47,17 +47,17 @@ def test_put_list_delete_never_leaks(
 ) -> None:
     c, src, _ = env
     caplog.set_level(logging.DEBUG)
-    r = c.put("/api/keys/GFW_TOKEN", json={"value": CANARY}, headers=LOCAL)
+    r = c.put("/api/keys/FAA_NMS_KEY", json={"value": CANARY}, headers=LOCAL)
     assert r.status_code == 200 and CANARY not in r.text
-    assert src.restarted == ["gfw"]
+    assert src.restarted == ["faa_nms_notam"]
     listing = c.get("/api/keys")
     assert CANARY not in listing.text
-    row = {k["name"]: k for k in listing.json()}["GFW_TOKEN"]
+    row = {k["name"]: k for k in listing.json()}["FAA_NMS_KEY"]
     assert row["is_set"] and row["last4"] == CANARY[-4:]
-    r = c.delete("/api/keys/GFW_TOKEN", headers=LOCAL)
+    r = c.delete("/api/keys/FAA_NMS_KEY", headers=LOCAL)
     assert r.status_code == 200
-    assert not {k["name"]: k for k in c.get("/api/keys").json()}["GFW_TOKEN"]["is_set"]
-    assert src.restarted == ["gfw", "gfw"]
+    assert not {k["name"]: k for k in c.get("/api/keys").json()}["FAA_NMS_KEY"]["is_set"]
+    assert src.restarted == ["faa_nms_notam", "faa_nms_notam"]
     assert CANARY not in caplog.text
 
 
@@ -70,16 +70,16 @@ def test_unknown_name_404(env: tuple[TestClient, FakeSources, Path]) -> None:
 def test_origin_and_client_403(env: tuple[TestClient, FakeSources, Path]) -> None:
     c, src, _ = env
     body = {"value": CANARY}
-    assert c.put("/api/keys/GFW_TOKEN", json=body).status_code == 403
+    assert c.put("/api/keys/FAA_NMS_KEY", json=body).status_code == 403
     bad = {"Origin": "http://evil.example"}
-    assert c.put("/api/keys/GFW_TOKEN", json=body, headers=bad).status_code == 403
+    assert c.put("/api/keys/FAA_NMS_KEY", json=body, headers=bad).status_code == 403
     # same-origin fetch metadata alone is not enough for keys
     fetch = {"Sec-Fetch-Site": "same-origin"}
-    assert c.put("/api/keys/GFW_TOKEN", json=body, headers=fetch).status_code == 403
+    assert c.put("/api/keys/FAA_NMS_KEY", json=body, headers=fetch).status_code == 403
     remote = TestClient(c.app, client=("203.0.113.9", 5000))
-    r = remote.put("/api/keys/GFW_TOKEN", json=body, headers=LOCAL)
+    r = remote.put("/api/keys/FAA_NMS_KEY", json=body, headers=LOCAL)
     assert r.status_code == 403 and CANARY not in r.text
-    assert remote.delete("/api/keys/GFW_TOKEN", headers=LOCAL).status_code == 403
+    assert remote.delete("/api/keys/FAA_NMS_KEY", headers=LOCAL).status_code == 403
     assert src.restarted == []
 
 
@@ -88,8 +88,8 @@ def test_origin_and_client_403(env: tuple[TestClient, FakeSources, Path]) -> Non
 )
 def test_malformed_body_no_echo(env: tuple[TestClient, FakeSources, Path], payload: Any) -> None:
     c, src, _ = env
-    r = c.put("/api/keys/GFW_TOKEN", json=payload, headers=LOCAL)
+    r = c.put("/api/keys/FAA_NMS_KEY", json=payload, headers=LOCAL)
     assert r.status_code == 422 and CANARY not in r.text
-    r = c.put("/api/keys/GFW_TOKEN", content=CANARY + "{", headers=LOCAL)
+    r = c.put("/api/keys/FAA_NMS_KEY", content=CANARY + "{", headers=LOCAL)
     assert r.status_code == 422 and CANARY not in r.text
     assert src.restarted == []

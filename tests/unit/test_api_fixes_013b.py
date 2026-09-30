@@ -152,8 +152,8 @@ async def test_state_file_private_atomic_and_malformed_ignored(tmp_path: Path) -
 def test_store_bbox_and_ident_filters_match_between_adapters(tmp_path: Path) -> None:
     rows = [_ac("aaaaaa", 5, 5), _ac("bbbbbb", 50, 50), _ac("cccccc", 5, 179.5)]
     vs = [
-        VesselObs(ts=NOW - timedelta(seconds=5), mmsi=1, provider="gfw", lat=5, lon=5),
-        VesselObs(ts=NOW - timedelta(seconds=5), mmsi=2, provider="gfw", lat=50, lon=50),
+        VesselObs(ts=NOW - timedelta(seconds=5), mmsi=1, provider="aisstream", lat=5, lon=5),
+        VesselObs(ts=NOW - timedelta(seconds=5), mmsi=2, provider="aisstream", lat=50, lon=50),
     ]
     mem, db = MemoryStore(), DuckDBStore(str(tmp_path / "t.duckdb"))
     for s in (mem, db):
@@ -200,8 +200,12 @@ def test_no_ghost_when_newest_fix_left_the_bbox(tmp_path: Path) -> None:
         )
         s.insert_vessels(
             [
-                VesselObs(ts=NOW - timedelta(seconds=30), mmsi=7, provider="gfw", lat=5, lon=5),
-                VesselObs(ts=NOW - timedelta(seconds=5), mmsi=7, provider="gfw", lat=50, lon=50),
+                VesselObs(
+                    ts=NOW - timedelta(seconds=30), mmsi=7, provider="aisstream", lat=5, lon=5
+                ),
+                VesselObs(
+                    ts=NOW - timedelta(seconds=5), mmsi=7, provider="aisstream", lat=50, lon=50
+                ),
             ]
         )
         c = TestClient(create_app(s, playbook=PB, allowed_hosts=HOSTS))

@@ -9,13 +9,9 @@ other sources give it:
 * jamming <-> AIS spoofing within `jam_ais_km` (both directions);
 * mil orbit <- covering notice, or gated jamming within `jam_orbit_km` (same ADS-B feed: fusion
   sees it as *same-family* support);
-* AIS gap <- GFW gap of the same MMSI overlapping the gap, or a SAR detection within `sar_km` of the
-  last fix during the gap; GFW loitering/encounter of the same MMSI -> `context`.
 * thermal <-> jamming within `thermal_jam_km`; thermal <- covering notice (as jamming);
-  IODA/Cloudflare outage <-> night-lights outage within `outage_nl_km` (night-lights data lags, so
-  the window slack is `outage_nl_slack_h`); outage <-> thermal in the same H3 r4 cell (ADR-007);
-  all need windows overlapping within `time_slack_h`;
-* `context`: outage <- covering notice; other-kind Evidence in `context` in the same H3 cell that
+  needs windows overlapping within `time_slack_h`;
+* `context`: other-kind Evidence in `context` in the same H3 cell that
   is not already support. Context kinds (weather, imagery, overpass) never count as families.
 
 Notes are built only from `attrs.ref` (re-sanitised), source and category: notice `title`/`text`
@@ -48,30 +44,20 @@ DEFAULT_CORROBORATION: dict[str, Any] = {
     "proximity_km": 50,
     "jam_ais_km": 100,
     "jam_orbit_km": 100,
-    "sar_km": 10,
     "time_slack_h": 2,
     "thermal_jam_km": 50,  # prior, not backtested
-    "outage_nl_km": 30,  # prior, not backtested
-    "outage_nl_slack_h": 48,  # night-lights nights lag 1-2 days. Prior, not backtested
 }
 
 DEFAULT_SOURCE_FAMILY: dict[str, str] = {
     "adsb_lol": "adsb",
     "adsb_fi": "adsb",
-    "airplanes_live": "adsb",
     "adsb_lol_history": "adsb",
     "opensky": "adsb",
     "gpsjam": "adsb",
     "aisstream": "ais",
-    "gfw": "gfw",
-    "gfw_sar": "sar",
     "nga_msi": "notice",
-    "china_msa": "notice",
     "faa_nms_notam": "notice",
     "firms": "thermal",  # ADR-007 s.6
-    "ioda": "ioda",
-    "cloudflare_radar": "cloudflare",
-    "black_marble": "night_lights",
     "open_meteo": "context",
     "swpc": "context",
     "celestrak": "context",
@@ -168,12 +154,10 @@ def _p3_supports(
     e: Evidence,
     jams: Sequence[Evidence],
     thermals: Sequence[Evidence],
-    outages: Sequence[Evidence],
     c: Mapping[str, Any],
     slack: timedelta,
-    nl_slack: timedelta,
 ) -> list[Corroboration]:
-    """Thermal <-> jamming, outage <-> night-lights outage, outage <-> thermal (ADR-007)."""
+    """Thermal <-> jamming (ADR-007)."""
     out: list[Corroboration] = []
 
     def add(o: Evidence, domain: Domain, note: str) -> None:
@@ -184,28 +168,11 @@ def _p3_supports(
             d = _dist(e, j)
             if d is not None and d <= float(c["thermal_jam_km"]) and _near_in_time(e, j, slack):
                 add(j, Domain.AIR, f"GNSS jamming evidence {d:.0f} km from the fire cluster")
-        r4 = _r4(e)
-        for o in outages:
-            if r4 is not None and _r4(o) == r4 and _near_in_time(e, o, slack):
-                add(o, Domain.CYBER, "outage evidence in the same r4 cell")
     if e.kind == AlertKind.GNSS_JAMMING:
         for t in thermals:
             d = _dist(e, t)
             if d is not None and d <= float(c["thermal_jam_km"]) and _near_in_time(e, t, slack):
                 add(t, Domain.SPACE, f"fire detections {d:.0f} km from the jamming area")
-    if e.kind == AlertKind.OUTAGE:
-        nl = e.detector == "night_lights"
-        for o in outages:
-            if o.id == e.id or (o.detector == "night_lights") == nl:
-                continue  # need one night-lights and one IODA/Cloudflare outage
-            d = _dist(e, o)
-            if d is not None and d <= float(c["outage_nl_km"]) and _near_in_time(e, o, nl_slack):
-                what = "IODA/Cloudflare connectivity outage" if nl else "night-lights drop"
-                add(o, Domain.CYBER if nl else Domain.SPACE, f"{what} {d:.0f} km away")
-        r4 = _r4(e)
-        for t in thermals:
-            if r4 is not None and _r4(t) == r4 and _near_in_time(e, t, slack):
-                add(t, Domain.SPACE, "fire detections in the same r4 cell")
     return out
 
 
@@ -224,19 +191,9 @@ def cross_source(
         if n.kind in ("nav_warning", "notam")
         and str(n.attrs.get("category") or "other") in CORROBORATING_CATEGORIES
     ]
-    by_mmsi: dict[str, list[GeoEvent]] = defaultdict(list)
-    for n in notices:
-        if (
-            n.kind in ("gfw_gap", "gfw_loitering", "gfw_encounter")
-            and n.attrs.get("mmsi") is not None
-        ):
-            by_mmsi[str(n.attrs["mmsi"])].append(n)
-    sars = [n for n in notices if n.kind == "sar_detection"]
     jams = [e for e in gated if e.kind == AlertKind.GNSS_JAMMING]
     ais_sp = [e for e in gated if e.kind == AlertKind.AIS_SPOOFING]
     thermals = [e for e in gated if e.kind == AlertKind.THERMAL]
-    outages = [e for e in gated if e.kind == AlertKind.OUTAGE]
-    nl_slack = timedelta(hours=float(c["outage_nl_slack_h"]))
 
     out: dict[str, list[Corroboration]] = {}
     for e in gated:
@@ -287,53 +244,7 @@ def cross_source(
                             note=f"GNSS jamming evidence {d:.0f} km away (same ADS-B feed)",
                         )
                     )
-        if e.kind == AlertKind.OUTAGE:
-            ctx += [
-                _notice_corr(n, "context")
-                for n in area
-                if _overlaps(e, n, slack) and _covers(e, n, prox)
-            ]
-        supports += _p3_supports(e, jams, thermals, outages, c, slack, nl_slack)
-        if e.kind == AlertKind.AIS_GAP and e.entities:
-            t0, t1 = _span(e)
-            s = slack.total_seconds()
-            for n in by_mmsi.get(e.entities[0], []):
-                a = (n.valid_from or n.ts).timestamp()
-                b = (n.valid_to or n.valid_from or n.ts).timestamp()
-                if n.kind == "gfw_gap" and a <= t1 + s and b >= t0 - s:
-                    supports.append(
-                        Corroboration(
-                            domain=Domain.SEA,
-                            evidence_id=n.id,
-                            relation="supports",
-                            note=f"{n.source} reports an AIS gap for the same MMSI",
-                        )
-                    )
-                elif n.kind in ("gfw_loitering", "gfw_encounter"):
-                    ctx.append(
-                        Corroboration(
-                            domain=Domain.SEA,
-                            evidence_id=n.id,
-                            relation="context",
-                            note=f"{n.source} {n.kind[4:]} event for the same MMSI",
-                        )
-                    )
-            if e.lat is not None and e.lon is not None:
-                for n in sars:
-                    if n.lat is None or n.lon is None:
-                        continue
-                    t = n.ts.timestamp()
-                    if t0 - s <= t <= t1 + s and haversine_km(e.lat, e.lon, n.lat, n.lon) <= float(
-                        c["sar_km"]
-                    ):
-                        supports.append(
-                            Corroboration(
-                                domain=Domain.SPACE,
-                                evidence_id=n.id,
-                                relation="supports",
-                                note=f"{n.source} SAR detection near the last fix during the gap",
-                            )
-                        )
+        supports += _p3_supports(e, jams, thermals, c, slack)
         seen = {x.evidence_id for x in supports}
         for o in context:
             if o.id != e.id and o.kind != e.kind and o.h3_cell == e.h3_cell and o.id not in seen:

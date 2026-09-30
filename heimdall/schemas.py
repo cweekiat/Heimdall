@@ -47,7 +47,7 @@ class AlertKind(StrEnum):
     AIS_SPOOFING = "ais_spoofing"
     AIS_GAP = "ais_gap"
     THERMAL = "thermal"
-    OUTAGE = "outage"
+    OUTAGE = "outage"  # legacy (027, ADR-008): nothing produces it; kept so stored alerts load
     EVENT_SURGE = "event_surge"
     WARNING_AREA = "warning_area"
     COMPOSITE = "composite"
@@ -326,14 +326,12 @@ class SourceState(BaseModel):
 KEY_CONNECTORS: dict[str, str] = dict(
     [
         ("AISSTREAM_KEY", "aisstream"),
-        ("GFW_TOKEN", "gfw"),
         ("FAA_NMS_KEY", "faa_nms_notam"),
         ("FAA_NMS_SECRET", "faa_nms_notam"),
         ("OPENSKY_CLIENT_ID", "opensky_global"),
         ("OPENSKY_CLIENT_SECRET", "opensky_global"),
         ("FIRMS_MAP_KEY", "firms"),
-        ("CLOUDFLARE_RADAR_TOKEN", "cloudflare_radar"),
-        ("EARTHDATA_TOKEN", "black_marble"),  # task 019: NASA Earthdata bearer token (LAADS)
+        ("EARTHDATA_TOKEN", "earthdata"),  # task 019: NASA Earthdata bearer token (LAADS)
     ]
 )
 

@@ -49,13 +49,13 @@ def _sea(mmsi: int = 563000001, dt: float = 0.0) -> VesselObs:
     )
 
 
-def _evt(id_: str = "gfw:gap-1", value: float = 1.0) -> GeoEvent:
+def _evt(id_: str = "nga:evt-1", value: float = 1.0) -> GeoEvent:
     return GeoEvent(
         id=id_,
         ts=T0,
-        source="gfw",
+        source="nga_msi",
         domain=Domain.SEA,
-        kind="gfw_gap",
+        kind="nav_warning",
         lat=3.0,
         lon=100.8,
         value=value,
@@ -154,11 +154,11 @@ def test_insert_events_is_idempotent_on_id(make: Any) -> None:
     assert s.insert_events([_evt(value=1.0)]) == 1
     s.insert_events([_evt(value=2.0), _evt("other")])
     rows = s.events_window(T0 - timedelta(hours=1), T0 + timedelta(hours=1))
-    assert sorted(r.id for r in rows) == ["gfw:gap-1", "other"]
-    assert next(r for r in rows if r.id == "gfw:gap-1").value == 2.0  # last write wins
+    assert sorted(r.id for r in rows) == ["nga:evt-1", "other"]
+    assert next(r for r in rows if r.id == "nga:evt-1").value == 2.0  # last write wins
     s.insert_events([_evt(value=3.0), _evt(value=4.0)])  # duplicates inside one batch
     rows = s.events_window(T0 - timedelta(hours=1), T0 + timedelta(hours=1))
-    assert [r.value for r in rows if r.id == "gfw:gap-1"] == [4.0]
+    assert [r.value for r in rows if r.id == "nga:evt-1"] == [4.0]
 
 
 def test_registry_unknown_impl_is_disabled_placeholder() -> None:
@@ -186,11 +186,11 @@ def test_registry_reserved_impls_show_status(monkeypatch: pytest.MonkeyPatch) ->
     from heimdall.config import sources
 
     monkeypatch.delenv("AISSTREAM_KEY", raising=False)
-    monkeypatch.delenv("GFW_TOKEN", raising=False)
+    monkeypatch.delenv("FIRMS_MAP_KEY", raising=False)
     by_name = {c.name: c for c in build_connectors(Settings(), sources())}
     assert by_name["aisstream"].health().status == "needs_key"
-    assert by_name["gfw"].health().status == "needs_key"
-    for n in ("nga_msi", "china_msa", "faa_nms_notam"):  # modules land with task 009
+    assert by_name["firms"].health().status == "needs_key"
+    for n in ("nga_msi", "faa_nms_notam"):  # modules land with task 009
         if n in by_name:
             assert by_name[n].health().status in ("disabled", "needs_key", "ok", "degraded")
 

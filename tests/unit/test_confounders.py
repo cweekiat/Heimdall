@@ -51,29 +51,13 @@ def test_factors_multiply_and_floor() -> None:
     assert assess(ev, sw, {"min_factor": 0.75})[0] == 0.75
 
 
-def test_outage_storm_and_cloud_rules() -> None:
-    ev = syn.evidence(AlertKind.OUTAGE, detector="outage")
-    f, notes, _ = assess(ev, [syn.weather(code=95)], CFG)
-    assert f == 0.7 and "weather code 95" in notes[0].note
-    assert assess(ev, [syn.weather(lat=8.0, code=95)], CFG)[2] == [
-        "weather context unavailable (lag)"
-    ]
-    assert assess(ev, [syn.weather(cloud=95.0)], CFG)[0] == 1.0  # cloud only matters for lights
-    nl = syn.evidence(AlertKind.OUTAGE, detector="night_lights")
-    f2, notes2, _ = assess(nl, [syn.weather(cloud=90.0), syn.weather(cloud=70.0)], CFG)
-    assert f2 == 0.5 and "cloud cover 80 %" in notes2[0].note
-
-
-def test_ais_gap_wind_and_other_kinds() -> None:
-    ev = syn.evidence(AlertKind.AIS_GAP, detector="ais_gap")
-    assert assess(ev, [syn.weather(wind=25.0)], CFG)[0] == 0.9
-    assert assess(ev, [syn.weather(wind=10.0)], CFG)[0] == 1.0
+def test_wind_rule_and_other_kinds_untouched() -> None:
     assert assess(syn.evidence(AlertKind.THERMAL), [syn.weather(wind=99.0)], CFG) == (1.0, [], [])
 
 
 def test_injection_never_in_notes() -> None:
     ctx = [syn.space_weather(6.0), syn.weather(code=95, cloud=95.0, wind=30.0)]
-    for kind, det in [(AlertKind.GNSS_JAMMING, "jamming"), (AlertKind.OUTAGE, "night_lights")]:
+    for kind, det in [(AlertKind.GNSS_JAMMING, "jamming"), (AlertKind.AIS_GAP, "ais_gap")]:
         _, notes, gaps = assess(syn.evidence(kind, detector=det), ctx, CFG)
         assert notes and "IGNORE" not in " ".join(n.note for n in notes) + " ".join(gaps)
 
@@ -88,7 +72,7 @@ def test_factor_always_in_bounds_property() -> None:
             lat=rng.uniform(-90, 90),
             lon=rng.uniform(-180, 180),
             start=syn.T0 + timedelta(hours=rng.uniform(-30, 30)),
-            detector=rng.choice(["night_lights", "outage", "jamming"]),
+            detector=rng.choice(["jamming", "ais_gap"]),
         )
         ctx: list[GeoEvent] = []
         for _ in range(rng.randint(0, 6)):

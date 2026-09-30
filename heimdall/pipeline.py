@@ -18,9 +18,7 @@ from heimdall.detect import (
     ais_gap,
     ais_spoofing,
     jamming,
-    night_lights,
     orbit,
-    outage,
     spoofing,
     thermal,
     warning_area,
@@ -33,7 +31,7 @@ from heimdall.detect.common import (
 )
 from heimdall.fuse.admiralty import grades_from_sources
 from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
-from heimdall.geo import h3_cell, h3_center, haversine_km
+from heimdall.geo import h3_cell, haversine_km
 from heimdall.logging import get_logger
 from heimdall.ports import Store
 from heimdall.schemas import (
@@ -83,10 +81,6 @@ def persistence_key(aoi: str, ev: Evidence) -> str:
         return f"{aoi}|{ev.kind}|mmsi:{ev.entities[0]}"
     if ev.kind == AlertKind.THERMAL:
         return f"{aoi}|{ev.kind}|r6:{ev.h3_cell}"
-    if ev.kind == AlertKind.OUTAGE:
-        if ev.entities:
-            return f"{aoi}|{ev.kind}|entity:{ev.entities[0].split(':', 1)[-1]}"
-        return f"{aoi}|{ev.kind}|r4:{ev.h3_cell}"
     return f"{aoi}|{ev.kind}|cell:{ev.h3_cell}"
 
 
@@ -156,7 +150,6 @@ def _active_jam_cells(
 
 
 FIRMS_METRIC = "firms_detections"  # thermal detections per r4 cell in the detector window
-NIGHT_METRIC = "night_lights_mean"  # latest Black Marble night mean radiance per r4 cell
 OVERPASS_METRIC = "overpass_refresh"  # last time overpasses were (re)computed
 OVERPASS_REFRESH_H = 6.0  # predictions move by seconds per day; recompute a few times a day
 log = get_logger("heimdall.pipeline")
@@ -167,8 +160,6 @@ class P3Windows:
     """Event windows for the P3 detectors (ADR-007), shared by all AOIs of one tick."""
 
     thermal: Sequence[GeoEvent] = ()  # detector window + baseline history in one list
-    outage: Sequence[GeoEvent] = ()
-    night: Sequence[GeoEvent] = ()
     context: Sequence[GeoEvent] = ()  # confounders/observability for fusion (ADR-007, task 022b)
 
 
@@ -189,14 +180,8 @@ def _p3_windows(
     t_days = mx("thermal", "baseline_days", thermal.DEFAULTS["baseline_days"]) + (
         mx("thermal", "window_h", thermal.DEFAULTS["window_h"]) / 24 + 1
     )
-    o_h = mx("outage", "window_h", outage.DEFAULTS["window_h"]) + 1
-    n_days = mx("night_lights", "baseline_nights", night_lights.DEFAULTS["baseline_nights"]) + 5
     return P3Windows(
         thermal=events_window(store, ["thermal"], timedelta(days=t_days), now),
-        outage=events_window(
-            store, ["outage_signal", "outage_annotation"], timedelta(hours=o_h), now
-        ),
-        night=events_window(store, ["night_lights"], timedelta(days=n_days), now),
         # weather/Kp for confounders; footprints and overpasses (+/- horizon) for observability
         context=store.events_window(
             now - timedelta(days=2),
@@ -290,20 +275,9 @@ def _p3_evidence(
     res: TickResult,
 ) -> list[Evidence]:
     tcfg = dict(detectors.get("thermal", {}))
-    ocfg = dict(detectors.get("outage", {}))
-    ncfg = dict(detectors.get("night_lights", {}))
     thm = thermal.detect(p3.thermal, p3.thermal, tcfg, now, aoi=aoi)
-    out = outage.detect(p3.outage, ocfg, now, aoi=aoi)
-    nl = night_lights.detect(p3.night, ncfg, now, aoi=aoi)
     t_step = float(tcfg.get("step_min", thermal.DEFAULTS["step_min"]))
-    o_step = float(ocfg.get("step_min", outage.DEFAULTS["step_min"]))
     evs = _assign_tick_persistence(store, aoi.name, thm, timedelta(minutes=t_step))
-    evs += _assign_tick_persistence(store, aoi.name, out, timedelta(minutes=o_step))
-    # night lights: the detector's N4 already counts consecutive dropped nights
-    evs += [
-        e.model_copy(update={"persistence": max(1, int(e.features.get("n_dropped_nights", 1)))})
-        for e in nl
-    ]
 
     # metrics per r4 cell (history for later tuning)
     _, w_end = align_window(
@@ -322,17 +296,6 @@ def _p3_evidence(
             counts[cell] = counts.get(cell, 0) + 1
     for cell, n in sorted(counts.items()):
         store.record_metric(cell, FIRMS_METRIC, w_end, float(n))
-        res.metrics += 1
-    latest: dict[str, GeoEvent] = {}
-    for e in p3.night:
-        cell = str(e.attrs.get("h3_r4") or e.h3_r4 or "")
-        if not cell or e.value is None:
-            continue
-        clat, clon = h3_center(cell)
-        if aoi.contains(clat, clon) and (cell not in latest or e.ts > latest[cell].ts):
-            latest[cell] = e
-    for cell, e in sorted(latest.items()):
-        store.record_metric(cell, NIGHT_METRIC, e.ts, float(e.value or 0.0))
         res.metrics += 1
     return evs
 
@@ -353,7 +316,7 @@ def run_aoi(
 ) -> TickResult:
     """One AOI step. `vessels`: AIS window for the AOI; `vessels_all`: the unfiltered AIS window
     for dark-gap detection (ships leaving the AOI keep reporting outside it; a gap belongs to the
-    AOI of the ship's last fix); `events`: active notices + GFW/SAR events
+    AOI of the ship's last fix); `events`: active notices + SAR events
     (context/corroboration only; area notices intersecting the AOI become WARNING_AREA Evidence)."""
     jcfg = dict(detectors.get("jamming", {}))
     scfg = dict(detectors.get("spoofing", {}))

@@ -145,23 +145,8 @@ detectors:
     static_days: 10         # r8 cell hot on >= N of baseline_days -> static heat source. Prior, not backtested — calibrate on FIRMS archive, see 016
     ratio_min: 3            # r4 window count / (baseline mean per day + 1). Prior, not backtested — calibrate on FIRMS archive, see 016
     expected_passes: 4      # VIIRS passes per 24 h at SE Asia latitudes (S-NPP, NOAA-20, NOAA-21, x2 day/night). Prior, not backtested — calibrate on FIRMS archive, see 016
-  outage:                   # task 021b; IODA / Cloudflare Radar; ADR-007. Each value: prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    window_h: 6             # prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    drop_ratio_max: 0.7     # observed/baseline at or below this counts as a drop. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    min_datasources: 2      # in the same time bin. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    annotation_alone: false # a Cloudflare annotation alone never opens Evidence. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    datasources: [bgp, ping-slash24, merit-nt]   # IODA datasources expected per entity (coverage denominator). Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    aoi_margin_km: 100      # entity centroids (countries/regions) may sit outside the AOI circle. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-  night_lights:             # task 021b; Black Marble per-r4 stats; ADR-007. Each value: prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    baseline_nights: 30     # prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    min_valid_frac: 0.5     # prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    min_baseline_radiance: 5.0   # nW/cm2/sr; below = unlit, ignored. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    drop_ratio_max: 0.5     # prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    min_nights: 2           # consecutive valid dropped nights. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    min_history_nights: 5   # clean nights needed for a trusted baseline. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
-    max_lag_days: 10        # latest night older than this -> no Evidence. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
   fusion:
-    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2, outage: 2}  # CLAUDE.md: >= 2 windows; ais_*, thermal, outage prior, not backtested
+    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2}  # CLAUDE.md: >= 2 windows; ais_*, thermal prior, not backtested
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior
     strong_score: 0.6         # Admiralty credibility 3 (single family strong & persistent) vs 4
     expire_after_min: 60      # open alerts with no fresh evidence for 60 min expire
@@ -170,20 +155,13 @@ detectors:
     source_family:
       adsb_lol: adsb
       adsb_fi: adsb
-      airplanes_live: adsb
       adsb_lol_history: adsb
       opensky: adsb
       gpsjam: adsb          # derived from ADS-B NIC, not independent of it
       aisstream: ais
-      gfw: gfw
-      gfw_sar: sar
       nga_msi: notice
-      china_msa: notice
       faa_nms_notam: notice
       firms: thermal        # ADR-007 s.6. Prior, not backtested
-      ioda: ioda
-      cloudflare_radar: cloudflare
-      black_marble: night_lights
       open_meteo: context   # context sources never count as families
       swpc: context
       celestrak: context
@@ -198,11 +176,7 @@ detectors:
       scint_lat_max: 20     # prior, not calibrated — review after 022b backtest
       scint_hours: [19, 2]  # local solar time, wraps midnight. Prior, not calibrated — review after 022b backtest
       scint_factor: 0.85    # prior, not calibrated — review after 022b backtest
-      storm_codes: [95, 96, 99]   # WMO thunderstorm codes. Prior, not calibrated — review after 022b backtest
       storm_km: 50          # prior, not calibrated — review after 022b backtest
-      storm_factor: 0.7     # prior, not calibrated — review after 022b backtest
-      cloud_pct: 80         # prior, not calibrated — review after 022b backtest
-      cloud_factor: 0.5     # prior, not calibrated — review after 022b backtest
       wind_ms: 20           # prior, not calibrated — review after 022b backtest
       wind_factor: 0.9      # prior, not calibrated — review after 022b backtest
       min_factor: 0.3       # prior, not calibrated — review after 022b backtest
@@ -210,8 +184,6 @@ detectors:
     observability:
       footprint_window_h: 48   # prior, not calibrated — review after 022b backtest
       n_next: 3                # prior, not calibrated — review after 022b backtest
-    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, sar_km: 10, time_slack_h: 2, thermal_jam_km: 50, outage_nl_km: 30, outage_nl_slack_h: 48}  # thermal_jam_km, outage_nl_km, outage_nl_slack_h: prior, not backtested (task 022b)
+    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, time_slack_h: 2, thermal_jam_km: 50}  # thermal_jam_km: prior, not backtested (task 022b)
 
-schedule:                   # task 022a: per-source daily run times (UTC)
-  black_marble:
-    run_utc: "06:00"        # prior: VNP46A2 for day D is published ~1-2 days later; one daily poll is enough
+schedule: {}                # task 022a: per-source daily run times (UTC); none configured

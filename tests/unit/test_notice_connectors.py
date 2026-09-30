@@ -9,8 +9,6 @@ import pytest
 import respx
 
 from heimdall.config import Settings
-from heimdall.ingest.china_msa import ChinaMsaConnector
-from heimdall.ingest.china_msa import build as build_china
 from heimdall.ingest.faa_nms import FaaNmsConnector
 from heimdall.ingest.faa_nms import build as build_faa
 from heimdall.ingest.http import RateLimitedClient
@@ -23,7 +21,6 @@ from heimdall.schemas import Domain, GeoEvent
 FIX = Path(__file__).resolve().parents[1] / "fixtures"
 RULES = load_warnings_cfg()["categories"]
 NGA_URL = "https://msi.nga.mil/api/publications/broadcast-warn"
-MSA = "https://www.msa.gov.cn"
 FAA = "https://nms.aim.faa.gov"
 
 
@@ -165,80 +162,10 @@ async def test_nga_recovers_after_maintenance() -> None:
     assert c.health().status == "ok"
 
 
-def _china(enabled: bool = True) -> ChinaMsaConnector:
-    return ChinaMsaConnector(
-        MSA, {"sansha": "CH1"}, RULES, client=_client("china_msa"), enabled=enabled, sleep=_nosleep
-    )
-
-
-def _mock_msa() -> respx.Route:
-    lst = (FIX / "china_msa/list_sansha.html").read_text()
-    respx.get(f"{MSA}/msacncms_wap/pages/info_detail.do", params={"id": "EX2026093001"}).mock(
-        return_value=httpx.Response(200, text=(FIX / "china_msa/detail_exercise.html").read_text())
-    )
-    respx.get(f"{MSA}/msacncms_wap/pages/info_detail.do", params={"id": "CI2026092902"}).mock(
-        return_value=httpx.Response(200, text=(FIX / "china_msa/detail_circle.html").read_text())
-    )
-    return respx.get(f"{MSA}/msacncms_wap/pages/info_warn.do").mock(
-        return_value=httpx.Response(200, text=lst)
-    )
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_china_fixtures_to_events() -> None:
-    lst = _mock_msa()
-    c = _china()
-    events = await c.poll_once()
-    assert lst.calls[0].request.url.params["channelId"] == "CH1"
-    assert (
-        respx.calls.call_count == 3
-    )  # listing + 2 detail pages; off-host/non-detail never fetched
-    by_id = {e.id: e for e in events}
-    assert set(by_id) == {"china_msa:EX2026093001", "china_msa:CI2026092902"}
-    for e in events:
-        _check_adr005(e)
-        assert e.attrs["lang"] == "zh" and e.domain == Domain.SEA
-    ex = by_id["china_msa:EX2026093001"]
-    assert ex.attrs["category"] == "military_exercise"
-    assert ex.geometry and ex.geometry["type"] == "Polygon" and ex.attrs["parse_status"] == "ok"
-    assert ex.valid_from == datetime(2026, 9, 30, 0, tzinfo=UTC)  # 08:00 UTC+8
-    assert ex.valid_to == datetime(2026, 9, 30, 10, tzinfo=UTC)
-    ci = by_id["china_msa:CI2026092902"]
-    assert ci.attrs["category"] == "live_firing" and ci.geometry
-    assert ci.valid_from == datetime(2026, 9, 28, 22, tzinfo=UTC)
-    # re-poll: nothing new and no detail refetch
-    assert await c.poll_once() == []
-    assert respx.calls.call_count == 4
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_china_geo_block_403() -> None:
-    respx.get(f"{MSA}/msacncms_wap/pages/info_warn.do").mock(
-        return_value=httpx.Response(403, text="denied")
-    )
-    c = _china()
-    assert await c.poll_once() == []
-    h = c.health()
-    assert h.status == "down" and h.detail == "geo-blocked"
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_china_disabled_makes_no_requests() -> None:
-    c = _china(enabled=False)
-    assert c.health().status == "disabled"
-    assert [b async for b in c.stream()] == []
-    assert respx.calls.call_count == 0
-
-
 def test_build_factories_default_to_config() -> None:
     s = Settings()
     n = build_nga("nga_msi", {"base": "https://msi.nga.mil/api", "reliability": "A"}, s)
     assert set(n.navareas) == {"P", "11"} and n.domain == Domain.SEA
-    c = build_china("china_msa", {"base": MSA, "enabled": False}, s)
-    assert c.health().status == "disabled" and c.channels
 
 
 def _faa(key: str | None = "k", secret: str | None = "s") -> FaaNmsConnector:
