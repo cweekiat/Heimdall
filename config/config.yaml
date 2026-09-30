@@ -173,6 +173,14 @@ detectors:
       nga_msi: notice
       china_msa: notice
       faa_nms_notam: notice
+      firms: thermal        # ADR-007 s.6. Prior, not backtested
+      ioda: ioda
+      cloudflare_radar: cloudflare
+      black_marble: night_lights
+      open_meteo: context   # context sources never count as families
+      swpc: context
+      celestrak: context
+      stac: context
     # ADR-005 section D cross-source rules. Prior, not backtested
     # task 021c (ADR-007 s.4-5): confounders only lower confidence; each value: prior, not calibrated — review after 022b backtest
     confounders:
@@ -195,4 +203,4 @@ detectors:
     observability:
       footprint_window_h: 48   # prior, not calibrated — review after 022b backtest
       n_next: 3                # prior, not calibrated — review after 022b backtest
-    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, sar_km: 10, time_slack_h: 2}
+    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, sar_km: 10, time_slack_h: 2, thermal_jam_km: 50, outage_nl_km: 30, outage_nl_slack_h: 48}  # thermal_jam_km, outage_nl_km, outage_nl_slack_h: prior, not backtested (task 022b)

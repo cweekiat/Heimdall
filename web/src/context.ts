@@ -33,13 +33,15 @@ const cache = new Map<string, AlertContext>();
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const s = (v: unknown): string | null => (typeof v === "string" ? v : null);
+/** The confidence multiplier is an explicit number from the API (Corroboration.factor); never parsed from note text. */
+const factorOf = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null);
 
 /** Tolerant parse: unknown shapes become an empty context, never an exception. */
 export function parseContext(raw: unknown): AlertContext {
   const r = isObj(raw) ? raw : {};
   const list = (k: string): unknown[] => (Array.isArray(r[k]) ? (r[k] as unknown[]) : []);
   return {
-    confounders: list("confounders").filter(isObj).map((c) => ({ note: s(c.note) ?? "", factor: typeof c.factor === "number" ? c.factor : null })),
+    confounders: list("confounders").filter(isObj).map((c) => ({ note: s(c.note) ?? "", factor: factorOf(c.factor) })),
     observability: list("observability")
       .filter(isObj)
       .map((o) => ({
@@ -75,7 +77,7 @@ const local = (iso: string | null, tz?: string): string =>
 /** Plain-words effect on confidence, e.g. "confidence lowered x0.8". */
 export function effect(c: Confounder): string {
   if (c.factor === null) return "confidence lowered";
-  return `confidence lowered ×${c.factor}`;
+  return `confidence lowered ×${+c.factor.toFixed(2)}`;
 }
 
 /** Spell out shorthand: a bare "Kp 6" becomes "geomagnetic storm (Kp 6)". */

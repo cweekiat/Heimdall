@@ -6,7 +6,6 @@ expose the STAC item link (`url`) as data only: no asset/thumbnail hrefs, ever.
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -52,7 +51,6 @@ ATTRS: dict[str, tuple[str, ...]] = {
     "overpass": ("norad_id", "sat_name", "sensor", "aoi", "max_elev_deg"),
 }
 _SCALAR = (str, int, float, bool, type(None))
-_FACTOR = re.compile(r"[\u00d7x]\s?(\d(?:\.\d+)?)")
 NEXT_H = 48
 MAX_OVERPASSES = 3
 AID = Path(pattern=r"^[A-Za-z0-9_.:|-]{1,80}$")
@@ -165,11 +163,10 @@ def layers_router(st: Store) -> APIRouter:
             raise HTTPException(404, "unknown alert")
         confounders = []
         for c in al.corroborations:
-            if c.relation != "context":
-                continue
-            m = _FACTOR.search(c.note)
-            confounders.append({"note": c.note, "factor": float(m.group(1)) if m else None})
-        gaps: list[str] = []
+            if c.relation != "context" or c.factor is None:
+                continue  # footprint/overpass/co-location notes are not confounders
+            confounders.append({"note": c.note, "factor": c.factor})
+        gaps: list[str] = list(al.gaps)
         for ev in st.get_evidence(al.evidence_ids):
             gaps += [g for g in ev.gaps if g not in gaps]
         obs: list[dict[str, Any]] = []

@@ -227,7 +227,7 @@ backtested (2021 Myanmar / Baltic control).
 
 ## Confounders and observability (fuse/confounders.py, fuse/observability.py, ADR-007 s.4-5, task 021c)
 Pure helpers; they never create Evidence, never raise severity or change Admiralty. Config lives at
-`detectors.fusion.confounders` / `.observability`. 022b wires them into fusion.
+`detectors.fusion.confounders` / `.observability`. Task 022b wires them into fusion (below).
 `assess(ev, context, cfg) -> (factor, notes, gaps)`. Context matches when
 `window_start - max_age_h <= ts <= window_end` (6 h; live Open-Meteo forecast + `past_days`, SWPC Kp).
 * GNSS_JAMMING: max Kp in the context; Kp >= 7 -> x0.5, elif Kp >= 5 -> x0.8 (tiers do not stack).
@@ -394,3 +394,26 @@ timestamps; tracks are time-shifted onto the wall clock and loop). No math added
 sandbox blocked the archive host and web access, so no public jamming report could be cited and the
 release naming was not checked. Verify a source before treating the day as ground truth; if none, pick
 another date. Data: adsb.lol, ODbL 1.0 ("Contains information from adsb.lol, made available under the ODbL").
+
+## Fusion P3 additions (task 022b, ADR-007)
+* **New corroboration pairs** (`fuse/corroborate.py`, `fusion.corroboration`; all priors, not
+  backtested): thermal <-> GNSS jamming within `thermal_jam_km` 50; thermal <- covering notice (same
+  rule as jamming); IODA/Cloudflare outage <-> night-lights outage within `outage_nl_km` 30 (window
+  slack `outage_nl_slack_h` 48, because night-lights lags); outage <-> thermal in the same H3 r4
+  cell (thermal cells are r6, compared via `h3_parent(., 4)`) -> `supports`; outage <- covering
+  notice -> `context`. Windows must overlap within `time_slack_h` (2). Two outages of the same
+  detector never support each other.
+* **Families**: firms=thermal, ioda, cloudflare_radar=cloudflare, black_marble=night_lights;
+  open_meteo, swpc, celestrak, stac = `context`, removed by `admiralty.independent_families` from
+  every count (status, credibility). Weather/imagery alone can never corroborate.
+* **Confounders** (`fuse(..., context_events=...)`): after grading, `confounders.assess(lead, ...)`
+  gives factor f in [min_factor, 1]; alert confidence = confidence x f (severity is computed before
+  and is unchanged; Admiralty unchanged). Notes are appended as `Corroboration(relation="context",
+  factor=f_i)`: `factor` is the explicit numeric multiplier (API/UI read it, never the note text);
+  gaps go to `Alert.gaps`. `observability.observability` appends footprint/overpass context notes.
+  The summary gains " Confidence x0.50: <notes>." when f < 1. `/api/alerts/{id}/context` lists as
+  confounders only the context corroborations that carry a factor.
+* **Summaries** from features only: thermal "12 fire detections in a normally quiet area (usual
+  ~1/day) ..."; IODA outage "Internet outage (country:MM) ...: n independent measurements down for h
+  h, lowest r of normal"; night-lights "Night-time lights ... fell to r of normal for n clear nights".
+  Entity labels are re-sanitised; no free text is echoed.

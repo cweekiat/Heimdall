@@ -10,7 +10,8 @@ Pure functions. Choices (documented in docs/detectors.md):
   weaker mirror must not downgrade it (worst-case would punish extra coverage). Unknown sources
   grade F; no sources -> F.
 * **Credibility** from the number of *independent source families* that support the alert
-  (ADR-005 section C; `fusion.source_family`: adsb, ais, gfw, sar, notice). Jamming and a tanker
+  (ADR-005 section C; `fusion.source_family`: adsb, ais, gfw, sar, notice, and ADR-007 thermal,
+  ioda, cloudflare, night_lights; the `context` family is never counted). Jamming and a tanker
   orbit are both `air` but one ADS-B feed, so domains would overcount; a NOTAM is an independent
   publisher. 1 = analyst-confirmed or >= 3 families; 2 = 2 families; 3 = one family, strong
   (lead score >= strong_score) AND persistent (persistence >= required windows), OR one family
@@ -49,6 +50,15 @@ KIND_DOMAIN: dict[AlertKind, Domain] = {
 PROVIDER_ALIASES = {"history": "adsb_lol_history"}
 
 _ORDER = "ABCDEF"
+
+#: family of weather / space weather / orbit / imagery-catalogue sources (ADR-007 s.5-6). It says
+#: "can this be explained / checked", never "an independent source saw it", so it is never counted.
+CONTEXT_FAMILY = "context"
+
+
+def independent_families(families: Iterable[str]) -> set[str]:
+    """`families` without the non-counting `context` family."""
+    return {f for f in families if f != CONTEXT_FAMILY}
 
 
 def source_key(provider: str) -> str:
@@ -127,7 +137,7 @@ def grade(
     return Admiralty(
         reliability=reliability(providers, grades),
         credibility=credibility(
-            domains if families is None else set(families),
+            domains if families is None else independent_families(families),
             same_family_support=same_family_support,
             has_evidence=lead is not None,
             strong=lead is not None and lead.score >= strong_score,

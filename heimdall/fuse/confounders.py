@@ -92,8 +92,12 @@ def assess(
     gaps: list[str] = []
     factor = 1.0
 
-    def note(domain: Domain, ref: str, text: str) -> None:
-        notes.append(Corroboration(domain=domain, evidence_id=ref, relation="context", note=text))
+    def note(domain: Domain, ref: str, text: str, f: float) -> None:
+        notes.append(
+            Corroboration(
+                domain=domain, evidence_id=ref, relation="context", note=text, factor=_f(f)
+            )
+        )
 
     def nearby(kind: str) -> list[GeoEvent]:
         if ev.lat is None or ev.lon is None:
@@ -123,7 +127,7 @@ def assess(
                 factor *= fk
                 g = _num(top.attrs.get("g_scale"))
                 gs = f" (G{int(g)})" if g is not None and g >= 1 else ""
-                note(top.domain, top.id, f"Kp {kp:.1f}{gs} during window")
+                note(top.domain, top.id, f"Kp {kp:.1f}{gs} during window", fk)
         if (
             ev.lat is not None
             and ev.lon is not None
@@ -140,6 +144,7 @@ def assess(
                     ev.id,
                     f"Equatorial scintillation window: local solar time {lst:.1f} h "
                     f"at latitude {ev.lat:.1f}",
+                    _f(c["scint_factor"]),
                 )
     else:
         wx = nearby("weather")
@@ -154,7 +159,12 @@ def assess(
                 e0 = hit[0]
                 d = haversine_km(ev.lat or 0.0, ev.lon or 0.0, e0.lat or 0.0, e0.lon or 0.0)
                 code = int(_num(e0.attrs.get("weather_code")) or 0)
-                note(e0.domain, e0.id, f"Thunderstorm (weather code {code}) {d:.0f} km away")
+                note(
+                    e0.domain,
+                    e0.id,
+                    f"Thunderstorm (weather code {code}) {d:.0f} km away",
+                    _f(c["storm_factor"]),
+                )
             if ev.detector == "night_lights":
                 clouds = [
                     v for e in wx if (v := _num(e.attrs.get("cloud_cover", e.value))) is not None
@@ -165,6 +175,7 @@ def assess(
                         wx[0].domain,
                         wx[0].id,
                         f"Mean cloud cover {sum(clouds) / len(clouds):.0f} % during window",
+                        _f(c["cloud_factor"]),
                     )
         else:  # AIS_GAP
             winds = [(w, e) for e in wx if (w := _num(e.attrs.get("wind_speed_ms"))) is not None]
@@ -172,6 +183,11 @@ def assess(
                 w, e0 = max(winds, key=lambda t: t[0])
                 if w >= float(c["wind_ms"]):
                     factor *= _f(c["wind_factor"])
-                    note(e0.domain, e0.id, f"Wind {w:.1f} m/s near the gap area")
+                    note(
+                        e0.domain,
+                        e0.id,
+                        f"Wind {w:.1f} m/s near the gap area",
+                        _f(c["wind_factor"]),
+                    )
     floor = max(0.0, min(1.0, _num(c["min_factor"]) or 0.0))
     return max(floor, min(1.0, factor)), notes, gaps
