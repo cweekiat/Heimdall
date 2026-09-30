@@ -16,11 +16,13 @@ from typing import Any
 import duckdb
 from pydantic import BaseModel
 
+from heimdall.adapters.aoi_file import FileAoiStore
 from heimdall.adapters.composite_store import CompositeStore
 from heimdall.adapters.duckdb_store import DuckDBStore
 from heimdall.adapters.memory_bus import MemoryBus
 from heimdall.adapters.parquet_lake import ParquetLake
 from heimdall.adapters.secrets_file import default_store
+from heimdall.aoi_ctl import AoiService
 from heimdall.config import Settings
 from heimdall.config import settings as load_settings
 from heimdall.config import sources as load_sources
@@ -220,7 +222,12 @@ async def tick_loop(store: Store, cfg: Settings, step_min: int) -> None:
             log.error("tick_failed", error=str(e))
 
 
-def start_api(store: Store, cfg: Settings, sources: SourceControl | None = None) -> Any:
+def start_api(
+    store: Store,
+    cfg: Settings,
+    sources: SourceControl | None = None,
+    aoi_service: AoiService | None = None,
+) -> Any:
     """Build the in-process API server (ADR-002) if heimdall.api.app is available."""
     try:
         from heimdall.api.app import create_app
@@ -238,7 +245,7 @@ def start_api(store: Store, cfg: Settings, sources: SourceControl | None = None)
             yield
 
     config = uvicorn.Config(
-        create_app(store, sources=sources, secrets=default_store()),
+        create_app(store, sources=sources, secrets=default_store(), aoi_service=aoi_service),
         host=cfg.api.host,
         port=cfg.api.port,
         log_config=None,
@@ -280,6 +287,13 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         lambda c: pump(c, bus),
         Path(cfg.storage.duckdb_path).parent / "state" / "sources.json",
     )
+    # user-drawn areas load before manager.start() so the first poll already includes them
+    aoi_svc = AoiService(
+        FileAoiStore(Path(cfg.storage.duckdb_path).parent / "state" / "aois.json"),
+        cfg,
+        manager,
+        all_src,
+    )
     writer = Writer(bus, lake, store)
     step_min = int(cfg.detectors.get("jamming", {}).get("step_min", 5))
 
@@ -296,7 +310,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         asyncio.create_task(tick_loop(store, cfg, step_min)),
     ]
     await manager.start()
-    server = start_api(store, cfg, manager)
+    server = start_api(store, cfg, manager, aoi_svc)
     if server is not None:
         tasks.append(asyncio.create_task(server.serve()))
     log.info("started", connectors=[c.name for c in manager.connectors], step_min=step_min)

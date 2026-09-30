@@ -59,3 +59,7 @@ Markdown. The **Timeline** (`t`) shows what happened and when.
 
 **Data sources** (`u`) shows whether each source is fresh, lets you switch one on or off, and takes
 optional API keys. Keys are stored on this computer only and never shown again after saving.
+
+## Draw your own area (task 015)
+
+Open **Draw areas** (pen icon, key `o`). Choose Draw circle (press the centre, drag out) or Draw polygon (click corners, double-click or press Finish; Esc cancels), then name it and pick a role. Use the list to select, show/hide, rename, delete, or switch Monitoring on so data collection and alerts cover it. Areas from the config file are marked "config" and are read-only. Limits: 20 areas, radius 5-500 nm, polygons up to 10 degrees across. Areas are saved in `data/state/aois.json`.

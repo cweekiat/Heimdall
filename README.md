@@ -199,3 +199,7 @@ your permission. See [docs/guardrails.md](docs/guardrails.md).
 - ADS-B and AIS coverage over open SE Asian seas is sparse (for example, Myanmar sees about 3–10 aircraft within 250 NM). Confidence is lowered to match, and sparse-region defaults are being calibrated in task 006.
 - Thresholds are priors until the Baltic backtest (task 006) calibrates them.
 - Data is for situational awareness from open sources only; verify before acting.
+
+### Drawing areas of operation
+
+In the UI, **Draw areas** (pen icon) lets you draw circles or polygons, name them and turn monitoring on or off. They persist in `data/state/aois.json`; config-file areas stay read-only. API: `GET/POST /api/aois/user`, `PATCH/DELETE /api/aois/user/{id}` (same-origin only). Details: `docs/tasks/015-draw-ao.md`.

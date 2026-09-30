@@ -22,7 +22,7 @@ from heimdall.detect.common import (
 )
 from heimdall.fuse.admiralty import grades_from_sources
 from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
-from heimdall.geo import haversine_km, within_radius_nm
+from heimdall.geo import haversine_km
 from heimdall.ports import Store
 from heimdall.schemas import (
     AircraftObs,
@@ -186,7 +186,7 @@ def run_aoi(
             vessels if vessels_all is None else vessels_all,
             agcfg,
             now,
-            lambda la, lo: within_radius_nm(la, lo, aoi.lat, aoi.lon, aoi.radius_nm),
+            aoi.contains,
         )
     ais_gp = ais_gap.evidence_from_gaps(gaps, agcfg, now, aoi=aoi.name)
     warn = warning_area.detect(events, wcfg, now, aoi=aoi)
@@ -262,9 +262,7 @@ def _assign_gaps(
         for g in ais_gap.find_gaps(ves_all, json.loads(key), now):
             la, lo = g["last"].lat, g["last"].lon
             inside = [
-                (haversine_km(la, lo, a.lat, a.lon), a.name)
-                for a in members
-                if within_radius_nm(la, lo, a.lat, a.lon, a.radius_nm)
+                (haversine_km(la, lo, a.lat, a.lon), a.name) for a in members if a.contains(la, lo)
             ]
             if inside:
                 out[min(inside)[1]].append(g)
@@ -312,12 +310,8 @@ def tick(
     gaps_by_aoi = _assign_gaps(settings.aois, dets, ves_all, now)
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
-        obs = [
-            o for o in obs_all if within_radius_nm(o.lat, o.lon, aoi.lat, aoi.lon, aoi.radius_nm)
-        ]
-        ves = [
-            v for v in ves_all if within_radius_nm(v.lat, v.lon, aoi.lat, aoi.lon, aoi.radius_nm)
-        ]
+        obs = [o for o in obs_all if aoi.contains(o.lat, o.lon)]
+        ves = [v for v in ves_all if aoi.contains(v.lat, v.lon)]
         r = run_aoi(
             store,
             aoi,

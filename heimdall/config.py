@@ -10,6 +10,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field
 
+from heimdall.geo import point_in_polygon, within_radius_nm
+
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = Path(os.environ.get("HEIMDALL_CONFIG_DIR", ROOT / "config"))
 
@@ -23,6 +25,16 @@ class AOI(BaseModel):
     label: str | None = None  # display name for the UI
     # per-AOI detector overrides merged over `detectors` (e.g. a sparse-traffic jamming profile)
     detectors: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # task 015: user-drawn areas. A polygon AOI keeps its bounding circle in lat/lon/radius_nm
+    # (what connectors poll) and the exact ring here as (lat, lon) vertices for filtering.
+    origin: Literal["config", "user"] = "config"
+    polygon: list[tuple[float, float]] | None = None
+
+    def contains(self, lat: float, lon: float) -> bool:
+        """Is the point inside this AOI (exact polygon if drawn, else the circle)?"""
+        if not within_radius_nm(lat, lon, self.lat, self.lon, self.radius_nm):
+            return False
+        return self.polygon is None or point_in_polygon(lat, lon, self.polygon)
 
 
 class StorageCfg(BaseModel):
@@ -50,6 +62,10 @@ class Settings(BaseModel):
     ui: UiCfg = Field(default_factory=UiCfg)
     aois: list[AOI] = Field(default_factory=list)
     detectors: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+    def set_user_aois(self, user: list[AOI]) -> None:
+        """Replace the user-drawn (active) AOIs; config AOIs are never touched."""
+        self.aois = [a for a in self.aois if a.origin == "config"] + list(user)
 
     def aoi(self, name: str) -> AOI:
         return next(a for a in self.aois if a.name == name)

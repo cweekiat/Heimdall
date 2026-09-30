@@ -5,6 +5,7 @@ Agents: read this file instead of other modules' internals. Changing a contract 
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -333,3 +334,74 @@ class KeyStatus(BaseModel):
     is_set: bool = False
     last4: str | None = None
     origin: Literal["store", "env"] | None = None
+
+
+# ---------------------------------------------------------------- user-drawn areas (task 015)
+AOI_NAME_PATTERN = r"^[A-Za-z0-9_-][A-Za-z0-9 _-]{0,39}$"
+MAX_USER_AOIS = 20
+MAX_POLYGON_SPAN_DEG = 10.0
+
+
+class UserAoiIn(BaseModel):
+    """Create request: a circle (lat, lon, radius_nm) or a polygon of (lat, lon) vertices."""
+
+    model_config = {"extra": "forbid"}
+
+    name: str = Field(pattern=AOI_NAME_PATTERN)
+    role: Literal["primary", "control"] = "primary"
+    active: bool = True
+    shape: Literal["circle", "polygon"]
+    lat: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    lon: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    radius_nm: float | None = Field(default=None, ge=5, le=500, allow_inf_nan=False)
+    # (lat, lon) vertices, open ring (the first point is not repeated)
+    polygon: list[tuple[float, float]] | None = Field(default=None, min_length=3, max_length=200)
+
+    def check(self) -> None:
+        """Cross-field rules; raises ValueError (message is generic, never echoes input)."""
+        if self.shape == "circle":
+            if None in (self.lat, self.lon, self.radius_nm) or self.polygon is not None:
+                raise ValueError("bad circle")
+            return
+        if self.polygon is None or any(v is not None for v in (self.lat, self.lon, self.radius_nm)):
+            raise ValueError("bad polygon")
+        if not all(
+            math.isfinite(a) and math.isfinite(b) and -90 <= a <= 90 and -180 <= b <= 180
+            for a, b in self.polygon
+        ):
+            raise ValueError("bad vertex")
+        lats = [p[0] for p in self.polygon]
+        lons = [p[1] for p in self.polygon]
+        if (
+            max(lats) - min(lats) > MAX_POLYGON_SPAN_DEG
+            or max(lons) - min(lons) > MAX_POLYGON_SPAN_DEG
+        ):
+            raise ValueError("too large")
+        area = 0.0
+        for i, (y1, x1) in enumerate(self.polygon):
+            y2, x2 = self.polygon[(i + 1) % len(self.polygon)]
+            area += x1 * y2 - x2 * y1
+        if abs(area) < 1e-9:
+            raise ValueError("degenerate")
+
+
+class UserAoiPatch(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    name: str | None = Field(default=None, pattern=AOI_NAME_PATTERN)
+    role: Literal["primary", "control"] | None = None
+    active: bool | None = None
+
+
+class UserAoi(BaseModel):
+    """A persisted user AOI. `id` is the stable runtime AOI name (alerts key on it)."""
+
+    id: str
+    name: str
+    role: Literal["primary", "control"] = "primary"
+    active: bool = True
+    shape: Literal["circle", "polygon"]
+    lat: float  # circle centre, or bounding-circle centre for a polygon
+    lon: float
+    radius_nm: float  # circle radius, or bounding-circle radius for a polygon
+    polygon: list[tuple[float, float]] | None = None

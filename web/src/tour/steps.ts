@@ -45,6 +45,14 @@ export const TOUR_STEPS: TourStep[] = [
     open: "layers",
   },
   {
+    id: "draw",
+    phase: "Monitor",
+    title: "Draw your own area",
+    body: "Open Draw areas (the pen icon) to mark an area you care about. Draw a circle by pressing the centre and dragging out, or a polygon by clicking corners and double-clicking to finish. Name it, then switch Monitoring on to collect data and raise alerts there. Areas from the configuration file are marked config and cannot be edited.",
+    anchor: '[data-win="draw"]',
+    open: "draw",
+  },
+  {
     id: "queue",
     phase: "Triage",
     title: "The alert queue",

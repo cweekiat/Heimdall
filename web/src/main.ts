@@ -21,6 +21,7 @@ import { renderTimeline } from "./timeline";
 import { mountToolbar, setAlertBadge } from "./toolbar";
 import type { Tool } from "./toolbar";
 import { Sources } from "./sources";
+import { Areas } from "./areas";
 import { Traffic } from "./traffic";
 import { Notices } from "./notices";
 import { filters, mountFilters, onFilters } from "./filters";
@@ -50,6 +51,7 @@ createWindow({ id: "board", title: T.areas, icon: "areas", body: $("board"), x: 
 createWindow({ id: "layers", title: T.layers, icon: "layers", body: layersBody, x: -60, y: EDGE_TOP + 8, w: 320, h: 520 });
 const sourcesWin = new Sources();
 const actionsWin = new ActionsBoard();
+const areasWin = new Areas(() => state.aois);
 createWindow({ id: "timeline", title: T.timeline, icon: "timeline", body: $("timeline"), x: EDGE_LEFT + 8, y: -12, w: 820, h: 220, minH: 140 });
 createWindow({
   id: "inspector",
@@ -73,6 +75,7 @@ const winToggles: Record<string, () => void> = {
   l: () => toggleWindow("layers"),
   u: () => toggleWindow("sources"),
   x: () => toggleWindow("actions"),
+  o: () => toggleWindow("draw"),
   t: () => toggleWindow("timeline"),
   h: shiftTool("shift", () => showShift()),
   "?": shiftTool("help", showHelp),
@@ -82,6 +85,7 @@ const tools: Tool[] = [
   { id: "board", icon: "areas", label: T.areas, key: "b", toggle: winToggles.b! },
   { id: "layers", icon: "layers", label: T.layers, key: "l", toggle: winToggles.l! },
   { id: "sources", icon: "sources", label: T.sources, key: "u", toggle: winToggles.u! },
+  { id: "draw", icon: "draw", label: T.drawAreas, key: "o", toggle: winToggles.o! },
   { id: "actions", icon: "actions", label: T.actions, key: "x", toggle: winToggles.x! },
   { id: "timeline", icon: "timeline", label: T.timeline, key: "t", toggle: winToggles.t! },
   { id: "shift", icon: "shift", label: T.shift, key: "h", toggle: winToggles.h! },
@@ -297,6 +301,7 @@ function draw(changed: Set<string>): void {
       alerts: filters.alerts ? visibleAlerts() : [],
       cells: state.cells,
       aois: state.aois,
+      aoAreas: areasWin.display(),
       selected: state.selected,
       evidence: state.detail?.evidence ?? [],
       tracks: state.tracks,
@@ -334,6 +339,21 @@ async function boot(): Promise<void> {
     const [{ OpsMap: OpsMapCls, legend }, ui] = await Promise.all([import("./map"), api.uiConfig()]);
     ops = new OpsMapCls($("map"), theme === "light" ? "light" : "dark", ui.basemap, ui.overlays, (id) => void selectAlert(id, false));
     $("legend").replaceChildren(legend());
+    areasWin.attach(ops);
+    areasWin.onChange = () => {
+      if (!ops) return;
+      ops.state.aoAreas = areasWin.display();
+      ops.render();
+    };
+    areasWin.onServerChange = () => {
+      void api.aois().then((next) => {
+        setAois(next);
+        patch({ aois: next });
+        areasWin.onChange();
+      });
+      void refreshAll().catch(() => undefined);
+    };
+    void areasWin.reload();
     wireMapExtras(ops);
     const traffic = new Traffic(ops, $("mapwrap"));
     const notices = new Notices(ops);
