@@ -225,6 +225,27 @@ produce nothing (the "gap only" case has no Evidence to attach to). Known limits
 alerting; snow, moonlight and lunar-phase effects are handled only by upstream pixel masking. Priors, not
 backtested (2021 Myanmar / Baltic control).
 
+## Confounders and observability (fuse/confounders.py, fuse/observability.py, ADR-007 s.4-5, task 021c)
+Pure helpers; they never create Evidence, never raise severity or change Admiralty. Config lives at
+`detectors.fusion.confounders` / `.observability`. 022b wires them into fusion.
+`assess(ev, context, cfg) -> (factor, notes, gaps)`. Context matches when
+`window_start - max_age_h <= ts <= window_end` (6 h; live Open-Meteo forecast + `past_days`, SWPC Kp).
+* GNSS_JAMMING: max Kp in the context; Kp >= 7 -> x0.5, elif Kp >= 5 -> x0.8 (tiers do not stack).
+  Equatorial scintillation: |lat| <= 20 and local solar time (UTC hour at window midpoint + lon/15) in
+  [19, 2) -> x0.85; needs no context event. No `space_weather` in range -> gap "space weather context
+  unavailable (lag)".
+* OUTAGE: weather within `storm_km` (50) with `weather_code` in {95, 96, 99} -> x0.7; for
+  `detector == "night_lights"` mean cloud_cover >= 80 -> x0.5. AIS_GAP: max wind >= 20 m/s -> x0.9.
+  No nearby weather -> gap "weather context unavailable (lag)". Other kinds -> (1, [], []).
+* factor = clamp(product, min_factor 0.3, 1); each single factor clamped to <= 1; NaN/inf/non-numeric
+  attrs ignored. Notes are templates over numbers ("Kp 6.0 (G2) during window"), relation `context`;
+  `text`/`title`/`url` are never read.
+`observability(ev, context, now, cfg)`: `imagery_footprint` events with `ts` within +/- 48 h of the
+evidence window whose polygon contains the evidence point (or vertex-overlaps its geometry; planar) ->
+note "Sentinel-2 scene acquired 12 h before ... ; cloud cover 35 %" (S2 only); then the next 3
+`overpass` events (start >= now, same AOI when both name one). Metadata only: assets, thumbnails and
+urls are never referenced. Context kinds never count as corroborating families.
+
 ## Fusion v0 (fuse/fusion.py) and Admiralty (fuse/admiralty.py)
 1. **Persistence gate** (set by the pipeline). Windows are 30 min at a 5-min step, so counting
    triggered windows would make one short burst "persist" for 6 windows. Per subject

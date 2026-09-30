@@ -173,4 +173,25 @@ detectors:
       china_msa: notice
       faa_nms_notam: notice
     # ADR-005 section D cross-source rules. Prior, not backtested
+    # task 021c (ADR-007 s.4-5): confounders only lower confidence; each value: prior, not calibrated — review after 022b backtest
+    confounders:
+      kp_minor: 5           # prior, not calibrated — review after 022b backtest
+      kp_minor_factor: 0.8  # prior, not calibrated — review after 022b backtest
+      kp_severe: 7          # prior, not calibrated — review after 022b backtest
+      kp_severe_factor: 0.5 # prior, not calibrated — review after 022b backtest
+      scint_lat_max: 20     # prior, not calibrated — review after 022b backtest
+      scint_hours: [19, 2]  # local solar time, wraps midnight. Prior, not calibrated — review after 022b backtest
+      scint_factor: 0.85    # prior, not calibrated — review after 022b backtest
+      storm_codes: [95, 96, 99]   # WMO thunderstorm codes. Prior, not calibrated — review after 022b backtest
+      storm_km: 50          # prior, not calibrated — review after 022b backtest
+      storm_factor: 0.7     # prior, not calibrated — review after 022b backtest
+      cloud_pct: 80         # prior, not calibrated — review after 022b backtest
+      cloud_factor: 0.5     # prior, not calibrated — review after 022b backtest
+      wind_ms: 20           # prior, not calibrated — review after 022b backtest
+      wind_factor: 0.9      # prior, not calibrated — review after 022b backtest
+      min_factor: 0.3       # prior, not calibrated — review after 022b backtest
+      max_age_h: 6          # forecast-API hourly weather (live, with past_days). Prior, not calibrated — review after 022b backtest
+    observability:
+      footprint_window_h: 48   # prior, not calibrated — review after 022b backtest
+      n_next: 3                # prior, not calibrated — review after 022b backtest
     corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, sar_km: 10, time_slack_h: 2}
