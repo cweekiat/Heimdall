@@ -17,13 +17,19 @@ api:
   port: 8000
   auth: none           # none | oidc (hosted)
 
+ui:
+  # Base map. openfreemap = OpenFreeMap vector tiles (third party sees viewed areas; user-accepted).
+  # carto = CARTO vector tiles; none = fully private blank local style (no third-party requests).
+  basemap: openfreemap   # openfreemap | carto | none
+  overlays: [borders]    # default-on overlays: borders | military | eez | seamarks | graticule
+
 aois:
   # role: primary = monitored & alerted; control = calibration/validation only
-  - {name: myanmar,        role: primary, lat: 20.5, lon: 96.5,  radius_nm: 250}
-  - {name: south_china_sea, role: primary, lat: 12.5, lon: 113.5, radius_nm: 250}
-  - {name: taiwan_luzon,   role: primary, lat: 22.5, lon: 120.5, radius_nm: 250}
-  - {name: malacca_sg,     role: primary, lat: 3.0,  lon: 100.8, radius_nm: 250}
-  - {name: baltic,         role: control, lat: 56.0, lon: 20.5,  radius_nm: 250}
+  - {name: myanmar,        label: "Myanmar", role: primary, lat: 20.5, lon: 96.5,  radius_nm: 250}
+  - {name: south_china_sea, label: "South China Sea", role: primary, lat: 12.5, lon: 113.5, radius_nm: 250}
+  - {name: taiwan_luzon,   label: "Taiwan / Luzon Strait", role: primary, lat: 22.5, lon: 120.5, radius_nm: 250}
+  - {name: malacca_sg,     label: "Malacca / Singapore Strait", role: primary, lat: 3.0,  lon: 100.8, radius_nm: 250}
+  - {name: baltic,         label: "Baltic (control)", role: control, lat: 56.0, lon: 20.5,  radius_nm: 250}
 
 detectors:
   jamming:

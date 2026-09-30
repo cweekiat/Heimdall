@@ -9,10 +9,12 @@ import signal
 import sys
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import duckdb
 
+from heimdall.adapters.composite_store import CompositeStore
 from heimdall.adapters.duckdb_store import DuckDBStore
 from heimdall.adapters.memory_bus import MemoryBus
 from heimdall.adapters.parquet_lake import ParquetLake
@@ -177,7 +179,11 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     bus = bus or MemoryBus()
     lake = ParquetLake(cfg.storage.lake_dir)
     try:
-        store = DuckDBStore(cfg.storage.duckdb_path)
+        # ADR-002: analyst state lives in its own file so pipeline upserts never overwrite it
+        analyst_path = Path(cfg.storage.duckdb_path).with_name("analyst.duckdb")
+        store: Store = CompositeStore(
+            DuckDBStore(cfg.storage.duckdb_path), DuckDBStore(analyst_path)
+        )
     except duckdb.Error as e:
         # DuckDB holds an exclusive file lock (ADR-002): another heimdall process may own it.
         msg = (
