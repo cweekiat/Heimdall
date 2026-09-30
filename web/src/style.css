@@ -12,9 +12,9 @@
   --bad: #f85149;
   --focus: #ffd33d;
   --sev-info: #8b98a5;
-  --sev-low: #58a6ff;
-  --sev-medium: #d29922;
-  --sev-high: #f0883e;
+  --sev-low: var(--sev-info); /* 014e: one attention hue; severity = intensity + chip shape */
+  --sev-medium: color-mix(in srgb, #f85149 55%, var(--sev-info));
+  --sev-high: color-mix(in srgb, #f85149 80%, var(--sev-info));
   --sev-critical: #f85149;
   --on-accent: #06121f;
 }
@@ -31,9 +31,9 @@ html[data-theme="light"] {
   --bad: #c62828;
   --focus: #b35900;
   --sev-info: #55606b;
-  --sev-low: #0b5cc7;
-  --sev-medium: #8a5a00;
-  --sev-high: #b34700;
+  --sev-low: var(--sev-info); /* 014e: one attention hue; severity = intensity + chip shape */
+  --sev-medium: color-mix(in srgb, #c62828 55%, var(--sev-info));
+  --sev-high: color-mix(in srgb, #c62828 80%, var(--sev-info));
   --sev-critical: #c62828;
   --on-accent: #ffffff;
 }
@@ -50,9 +50,9 @@ html[data-theme="hc"] {
   --bad: #f66;
   --focus: #fd0;
   --sev-info: #ccc;
-  --sev-low: #6cf;
-  --sev-medium: #fd0;
-  --sev-high: #f93;
+  --sev-low: var(--sev-info); /* 014e: one attention hue; severity = intensity + chip shape */
+  --sev-medium: color-mix(in srgb, #f66 55%, var(--sev-info));
+  --sev-high: color-mix(in srgb, #f66 80%, var(--sev-info));
   --sev-critical: #f66;
   --on-accent: #000;
 }
