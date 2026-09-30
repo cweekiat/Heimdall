@@ -154,7 +154,7 @@ detectors:
     min_history_nights: 5   # clean nights needed for a trusted baseline. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
     max_lag_days: 10        # latest night older than this -> no Evidence. Prior, not backtested — calibrate on 2021 Myanmar / Baltic control
   fusion:
-    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2}  # CLAUDE.md: >= 2 windows; ais_* prior, not backtested
+    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2, outage: 2}  # CLAUDE.md: >= 2 windows; ais_*, thermal, outage prior, not backtested
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior
     strong_score: 0.6         # Admiralty credibility 3 (single family strong & persistent) vs 4
     expire_after_min: 60      # open alerts with no fresh evidence for 60 min expire
@@ -204,3 +204,7 @@ detectors:
       footprint_window_h: 48   # prior, not calibrated — review after 022b backtest
       n_next: 3                # prior, not calibrated — review after 022b backtest
     corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, sar_km: 10, time_slack_h: 2, thermal_jam_km: 50, outage_nl_km: 30, outage_nl_slack_h: 48}  # thermal_jam_km, outage_nl_km, outage_nl_slack_h: prior, not backtested (task 022b)
+
+schedule:                   # task 022a: per-source daily run times (UTC)
+  black_marble:
+    run_utc: "06:00"        # prior: VNP46A2 for day D is published ~1-2 days later; one daily poll is enough

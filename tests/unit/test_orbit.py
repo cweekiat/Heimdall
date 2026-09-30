@@ -111,5 +111,8 @@ def test_registry() -> None:
         "ais_spoofing",
         "ais_gap",
         "warning_area",
+        "thermal",
+        "outage",
+        "night_lights",
     }
     assert DETECTORS["orbit"].version == orbit.VERSION

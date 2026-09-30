@@ -69,6 +69,7 @@ class Settings(BaseModel):
     ui: UiCfg = Field(default_factory=UiCfg)
     aois: list[AOI] = Field(default_factory=list)
     detectors: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    schedule: dict[str, dict[str, Any]] = Field(default_factory=dict)  # per source, e.g. run_utc
 
     def set_user_aois(self, user: list[AOI]) -> None:
         """Replace the user-drawn (active) AOIs; config AOIs are never touched."""

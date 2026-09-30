@@ -5,7 +5,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from heimdall.detect import ais_gap, ais_spoofing, jamming, orbit, spoofing, warning_area
+from heimdall.detect import (
+    ais_gap,
+    ais_spoofing,
+    jamming,
+    night_lights,
+    orbit,
+    outage,
+    spoofing,
+    thermal,
+    warning_area,
+)
 from heimdall.schemas import AlertKind, Evidence
 
 
@@ -34,6 +44,12 @@ DETECTORS: dict[str, DetectorSpec] = {
     "warning_area": DetectorSpec(
         "warning_area", warning_area.VERSION, AlertKind.WARNING_AREA, warning_area.detect
     ),
+    # P3 (ADR-007): detect(events, cfg, now, *, aoi); thermal also takes baseline_events
+    "thermal": DetectorSpec("thermal", thermal.VERSION, AlertKind.THERMAL, thermal.detect),
+    "outage": DetectorSpec("outage", outage.VERSION, AlertKind.OUTAGE, outage.detect),
+    "night_lights": DetectorSpec(
+        "night_lights", night_lights.VERSION, AlertKind.OUTAGE, night_lights.detect
+    ),
 }
 
 __all__ = [
@@ -42,7 +58,10 @@ __all__ = [
     "ais_gap",
     "ais_spoofing",
     "jamming",
+    "night_lights",
     "orbit",
+    "outage",
     "spoofing",
+    "thermal",
     "warning_area",
 ]

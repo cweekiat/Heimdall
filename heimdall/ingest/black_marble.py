@@ -13,6 +13,7 @@ import re
 import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
 from typing import Any
 
@@ -168,6 +169,16 @@ def merge_events(events: Sequence[GeoEvent]) -> list[GeoEvent]:
     return list(best.values())
 
 
+def _parse_hhmm(v: str | None) -> dtime | None:
+    if not v:
+        return None
+    try:
+        return datetime.strptime(str(v), "%H:%M").time()
+    except ValueError:
+        log.warning("black_marble_bad_run_utc", value=str(v)[:10])
+        return None
+
+
 class BlackMarbleConnector:
     domain = Domain.SPACE
 
@@ -186,6 +197,7 @@ class BlackMarbleConnector:
         client: RateLimitedClient | None = None,
         sleep: Callable[[float], Any] = asyncio.sleep,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        run_utc: str | None = None,
     ) -> None:
         c = {**DEFAULT_CFG, **(cfg or {})}
         self.name = name
@@ -197,6 +209,7 @@ class BlackMarbleConnector:
         self.collection = str(c.get("collection", "5200"))
         self.lookback_days = int(c.get("lookback_days", 5))
         self.poll_s = float(c.get("poll_s", 21600))
+        self.run_utc = _parse_hhmm(run_utc)  # daily schedule (config.yaml `schedule`), else poll_s
         self.keep_failed_s = float(c["keep_failed_h"]) * 3600.0
         self.cache_dir = cache_dir
         self.reliability = reliability
@@ -332,7 +345,16 @@ class BlackMarbleConnector:
             batch = await self.poll_once()
             if batch:
                 yield batch
-            await self._sleep(self.poll_s)
+            await self._sleep(self._next_sleep_s())
+
+    def _next_sleep_s(self) -> float:
+        if self.run_utc is None:
+            return self.poll_s
+        now = self._now()
+        nxt = datetime.combine(now.date(), self.run_utc, tzinfo=UTC)
+        if nxt <= now:
+            nxt += timedelta(days=1)
+        return (nxt - now).total_seconds()
 
     async def aclose(self) -> None:
         self._stop = True
@@ -347,6 +369,7 @@ def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connector:
         settings.aois,
         secret(str(cfg.get("auth", "EARTHDATA_TOKEN"))),
         cfg=cfg,
+        run_utc=settings.schedule.get(key, {}).get("run_utc"),
         rps=float(cfg.get("rps", 1)),
         reliability=SourceReliability(cfg.get("reliability", "A")),
         expected_latency_s=int(cfg.get("latency_s", 172800)),
