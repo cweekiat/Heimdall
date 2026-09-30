@@ -375,6 +375,10 @@ export class OpsMap {
     this.render();
   }
 
+  jumpTo(lon: number, lat: number, zoom: number): void {
+    this.map.jumpTo({ center: [lon, lat], zoom });
+  }
+
   flyTo(lon: number, lat: number): void {
     this.map.flyTo({ center: [lon, lat], zoom: Math.max(this.map.getZoom(), 5.5) });
   }

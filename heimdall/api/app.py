@@ -131,6 +131,7 @@ def create_app(
     sources: SourceControl | None = None,
     secrets: SecretStore | None = None,
     aoi_service: AoiService | None = None,
+    ui_extra: dict[str, Any] | None = None,
 ) -> FastAPI:
     st: Store = store
     pb: dict[str, Any] = (playbook if playbook is not None else config.playbook()).get(
@@ -496,7 +497,8 @@ def create_app(
     @app.get("/api/ui-config")
     def ui_config() -> dict[str, Any]:
         ui = config.settings().ui
-        return {"basemap": basemap or ui.basemap, "overlays": ui.overlays}
+        # ui_extra: optional start view / banner (e.g. a real-data replay), set by the host
+        return {"basemap": basemap or ui.basemap, "overlays": ui.overlays, **(ui_extra or {})}
 
     @app.get("/api/playbook")
     def get_playbook() -> list[dict[str, Any]]:

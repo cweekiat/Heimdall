@@ -110,3 +110,13 @@ def test_bin_and_partial_files_not_served(tmp_path: Path) -> None:
 def test_huge_range_does_not_500(client: TestClient) -> None:
     r = client.get("/basemap/world.pmtiles", headers={"Range": "bytes=" + "9" * 5000 + "-"})
     assert r.status_code < 500
+
+
+def test_ui_config_carries_replay_view() -> None:
+    from heimdall.adapters.memory_store import MemoryStore
+    from heimdall.api.app import create_app
+
+    extra = {"initial_view": {"lat": 25.0, "lon": 56.0, "zoom": 6.0}, "banner": "REPLAY"}
+    c = TestClient(create_app(MemoryStore(), ui_extra=extra), base_url="http://127.0.0.1")
+    body = c.get("/api/ui-config").json()
+    assert body["initial_view"]["lon"] == 56.0 and body["banner"] == "REPLAY"

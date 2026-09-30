@@ -62,6 +62,16 @@ uv run python -m heimdall.api.demo
 ```
 Open **http://127.0.0.1:8000**.
 
+### Real-data replay (Strait of Hormuz, 17 June 2025)
+Replays one real day of adsb.lol data through the actual detectors. Fetch it once (about 3.4 GB download,
+filtered locally and then deleted; ODbL), then serve it on its own port so it can run next to the live app:
+```bash
+./scripts/fetch_adsblol_day.sh 2025-06-17
+uv run python -m heimdall.api.demo --replay data/replay/hormuz/2025-06-17.parquet --port 8020
+```
+Open **http://127.0.0.1:8020**. The map opens on Hormuz with a REPLAY banner. Times are shifted onto
+today's clock so traffic moves; alert IDs keep the real date (`HMD-20250617-...`).
+
 ### Live monitoring
 One process runs ingest, detection and the API (see ADR-002; DuckDB is single-writer):
 ```bash

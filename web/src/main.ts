@@ -339,6 +339,14 @@ async function boot(): Promise<void> {
     const [{ OpsMap: OpsMapCls, legend }, ui] = await Promise.all([import("./map"), api.uiConfig()]);
     ops = new OpsMapCls($("map"), theme === "light" ? "light" : "dark", ui.basemap, ui.overlays, (id) => void selectAlert(id, false));
     $("legend").replaceChildren(legend());
+    if (ui.initial_view) ops.jumpTo(ui.initial_view.lon, ui.initial_view.lat, ui.initial_view.zoom);
+    if (ui.banner) {
+      const b = document.createElement("div");
+      b.className = "replay-banner";
+      b.setAttribute("role", "status");
+      b.textContent = ui.banner; // server text, rendered as text only
+      document.body.append(b);
+    }
     areasWin.attach(ops);
     areasWin.onChange = () => {
       if (!ops) return;

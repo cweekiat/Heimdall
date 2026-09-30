@@ -609,6 +609,20 @@ def load_replay(path: str | Path) -> ReplayDemoStore:
     return store
 
 
+def replay_view(store: Store, path: str | Path) -> dict[str, Any]:
+    """Start view centred on the replay's alerts, plus a banner saying what the data is."""
+    pts = [(a.lat, a.lon) for a in store.list_alerts() if a.lat is not None and a.lon is not None]
+    lat = sum(p[0] for p in pts) / len(pts) if pts else 0.0
+    lon = sum(p[1] for p in pts) / len(pts) if pts else 0.0
+    return {
+        "initial_view": {"lat": round(lat, 3), "lon": round(lon, 3), "zoom": 6.0},
+        "banner": (
+            f"REPLAY of real recorded data ({Path(path).stem}, adsb.lol, ODbL). "
+            "Times are shifted onto today's clock so the map moves; alert IDs keep the real date."
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover
     import uvicorn
 
@@ -616,10 +630,12 @@ def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--replay", help="replay parquet (data/replay/hormuz/DATE.parquet)")
+    ap.add_argument("--port", type=int, default=8000, help="port (8000 may be the live app)")
     args = ap.parse_args(argv)
     store = load_replay(args.replay) if args.replay else seed(LiveDemoStore())
-    app = create_app(store, sources=DemoSources())
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    ui_extra = replay_view(store, args.replay) if args.replay else None
+    app = create_app(store, sources=DemoSources(), ui_extra=ui_extra)
+    uvicorn.run(app, host="127.0.0.1", port=args.port)
 
 
 if __name__ == "__main__":  # pragma: no cover

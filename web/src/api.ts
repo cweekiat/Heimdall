@@ -288,7 +288,13 @@ export const api = {
   setStatus: (id: string, status: AlertStatus, reason?: string, shelve_until?: string) =>
     post<{ alert: Alert; note: Note }>(`/api/alerts/${encodeURIComponent(id)}/status`, { status, reason, shelve_until }),
   addNote: (id: string, text: string) => post<Note>(`/api/alerts/${encodeURIComponent(id)}/notes`, { text }),
-  uiConfig: () => req<{ basemap: "openfreemap" | "carto" | "none"; overlays: string[] }>("/api/ui-config"),
+  uiConfig: () =>
+    req<{
+      basemap: "openfreemap" | "carto" | "none";
+      overlays: string[];
+      initial_view?: { lat: number; lon: number; zoom: number };
+      banner?: string;
+    }>("/api/ui-config"),
   health: () => req<{ sources: SourceHealth[]; time: string }>("/api/health"),
   playbook: () => req<PlaybookAction[]>("/api/playbook"),
   track: (hex: string) => req<TrackPt[]>(`/api/tracks/${encodeURIComponent(hex)}`),
