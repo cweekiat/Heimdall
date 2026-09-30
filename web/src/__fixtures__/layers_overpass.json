@@ -1,0 +1,4 @@
+{"type":"FeatureCollection","truncated":false,"layer":"overpass","aoi":"myanmar","hours":48,"features":[
+{"type":"Feature","id":"celestrak|late","geometry":{"type":"Point","coordinates":[96.5,20.5]},"properties":{"kind":"overpass","source":"celestrak","ts":"2026-10-01T09:00:00+00:00","valid_from":"2026-10-01T09:00:00+00:00","valid_to":"2026-10-01T09:08:00+00:00","value":57,"sat_name":"SENTINEL-2A","sensor":"MSI","aoi":"myanmar","max_elev_deg":57}},
+{"type":"Feature","id":"celestrak|soon","geometry":{"type":"Point","coordinates":[96.5,20.5]},"properties":{"kind":"overpass","source":"celestrak","ts":"2026-09-30T23:00:00+00:00","valid_from":"2026-09-30T23:00:00+00:00","valid_to":"2026-09-30T23:08:00+00:00","value":55,"sat_name":"SENTINEL-1A","sensor":"C-SAR","aoi":"myanmar","max_elev_deg":55}}
+]}

@@ -339,6 +339,9 @@ export const api = {
   airTrail: (hex: string) => req<GeoFeature>(`/api/traffic/air/${encodeURIComponent(hex)}/trail?min=30`),
   seaTrail: (mmsi: number) => req<GeoFeature>(`/api/traffic/sea/${mmsi}/trail?min=120`),
   notices: () => req<FC<NoticeProps>>("/api/notices"),
+  /** P3 layer for one area (GeoJSON, see docs/tasks/023a). Parsed by p3model.parseLayer. */
+  layer: (layer: string, aoi: string, hours?: number) =>
+    req<unknown>(`/api/layers/${encodeURIComponent(layer)}?aoi=${encodeURIComponent(aoi)}${hours ? `&hours=${hours}` : ""}`),
   board: (sinceH = 72) => req<BoardAction[]>(`/api/actions?since_h=${sinceH}`),
   reject: (actionKey: string) => post<ActionRec>(`/api/actions/${encodeURIComponent(actionKey)}/reject`),
 };

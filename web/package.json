@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "lint": "tsc --noEmit && node scripts/check-words.mjs",
     "check:words": "node scripts/check-words.mjs",
-    "test": "node --test test/palette.test.ts test/explain.test.ts test/map3d.test.ts test/tour.test.ts test/aogeo.test.ts",
+    "test": "node --test test/palette.test.ts test/explain.test.ts test/map3d.test.ts test/tour.test.ts test/aogeo.test.ts test/p3layers.test.ts test/context.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

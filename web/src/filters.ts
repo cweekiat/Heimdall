@@ -4,6 +4,8 @@ import { h } from "./dom";
 import { icon } from "./icons";
 import type { IconName } from "./icons";
 import { T } from "./labels";
+import { P3_DEFAULT_ON, P3_LABEL, P3_LAYERS } from "./p3model";
+import type { P3Layer } from "./p3model";
 
 export const SHIP_CLASSES = ["cargo", "tanker", "passenger", "fishing", "military", "other"] as const;
 export const ALT_MAX = 45000;
@@ -22,6 +24,8 @@ export interface Filters {
   search: string;
   /** Source keys the analyst unticked. */
   hiddenSources: string[];
+  /** P3 satellite layers switched on (heat spots by default). */
+  p3: P3Layer[];
 }
 
 const KEY = "hm.filters.v1";
@@ -37,6 +41,7 @@ const DEFAULTS: Filters = {
   onlyAlerts: false,
   search: "",
   hiddenSources: [],
+  p3: [...P3_DEFAULT_ON],
 };
 
 function load(): Filters {
@@ -95,6 +100,8 @@ export function activeSources(all: SourceState[], domain: string): string[] | un
 export interface PanelCtx {
   counts: () => Record<string, number>;
   sources: () => SourceState[];
+  /** Optional extra block under the satellite toggles (next-pass chips). */
+  extra?: () => HTMLElement;
 }
 
 type ToggleKey = "air" | "sea" | "alerts" | "notices" | "milOnly" | "onlyAlerts";
@@ -167,8 +174,15 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
     },
     T.clearFilters,
   );
+  const p3chk = (l: P3Layer): HTMLElement => {
+    const i = h("input", { type: "checkbox" });
+    i.checked = filters.p3.includes(l);
+    i.addEventListener("change", () => setFilter({ p3: i.checked ? [...filters.p3.filter((x) => x !== l), l] : filters.p3.filter((x) => x !== l) }));
+    return h("label", { class: "chk" }, i, P3_LABEL[l]);
+  };
   root.replaceChildren(
     h("fieldset", {}, h("legend", {}, T.dataOnMap), chk(T.aircraft, "air", "plane"), chk(T.ships, "sea", "ship"), chk(T.alertMarkers, "alerts", "alerts"), chk(T.noticesLayer, "notices", "notice")),
+    h("fieldset", {}, h("legend", {}, "Satellite and outage data"), ...P3_LAYERS.map(p3chk), ctx.extra?.() ?? null),
     h("fieldset", {}, h("legend", {}, T.sourcesToShow), srcBox),
     h(
       "fieldset",
