@@ -13,7 +13,7 @@ def run(obs: list[VesselObs]) -> list[Evidence]:
 
 def test_covered_open_gap_fires() -> None:
     (e,) = run(V.dark_gap_covered())
-    assert e.kind == AlertKind.AIS_GAP and e.detector_version == "ais-gap-1.1.0"
+    assert e.kind == AlertKind.AIS_GAP and e.detector_version == "ais-gap-1.2.0"
     assert e.entities == [str(TARGET)]
     f = e.features
     assert abs(f["gap_h"] - 5.0) < 0.1 and f["open"] == 1.0 and f["covered_frac"] >= 0.5

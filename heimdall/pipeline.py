@@ -6,6 +6,7 @@ exclusively through the `Store` port.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -21,7 +22,7 @@ from heimdall.detect.common import (
 )
 from heimdall.fuse.admiralty import grades_from_sources
 from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
-from heimdall.geo import within_radius_nm
+from heimdall.geo import haversine_km, within_radius_nm
 from heimdall.ports import Store
 from heimdall.schemas import (
     AircraftObs,
@@ -147,6 +148,7 @@ def run_aoi(
     vessels: Sequence[VesselObs] = (),
     events: Sequence[GeoEvent] = (),
     vessels_all: Sequence[VesselObs] | None = None,
+    gaps: Sequence[dict[str, Any]] | None = None,
 ) -> TickResult:
     """One AOI step. `vessels`: AIS window for the AOI; `vessels_all`: the unfiltered AIS window
     for dark-gap detection (ships leaving the AOI keep reporting outside it; a gap belongs to the
@@ -179,14 +181,14 @@ def run_aoi(
     )
 
     ais_sp = ais_spoofing.detect(vessels, aicfg, now, None, aoi=aoi.name)
-    ais_gp = ais_gap.detect(
-        vessels if vessels_all is None else vessels_all,
-        agcfg,
-        now,
-        None,
-        aoi=aoi.name,
-        in_region=lambda la, lo: within_radius_nm(la, lo, aoi.lat, aoi.lon, aoi.radius_nm),
-    )
+    if gaps is None:
+        gaps = ais_gap.find_gaps(
+            vessels if vessels_all is None else vessels_all,
+            agcfg,
+            now,
+            lambda la, lo: within_radius_nm(la, lo, aoi.lat, aoi.lon, aoi.radius_nm),
+        )
+    ais_gp = ais_gap.evidence_from_gaps(gaps, agcfg, now, aoi=aoi.name)
     warn = warning_area.detect(events, wcfg, now, aoi=aoi)
 
     evs = _assign_persistence(store, aoi.name, [*jam, *spoof, *orb, *ais_sp, *ais_gp, *warn], step)
@@ -244,6 +246,31 @@ def run_aoi(
     return res
 
 
+def _assign_gaps(
+    aois: Sequence[AOI],
+    dets: Mapping[str, Mapping[str, Any]],
+    ves_all: Sequence[VesselObs],
+    now: datetime,
+) -> dict[str, list[dict[str, Any]]]:
+    """Find AIS gaps once per distinct `ais_gap` config over the unfiltered window and give each
+    to exactly one AOI: the nearest centre whose radius contains the ship's last fix."""
+    out: dict[str, list[dict[str, Any]]] = {a.name: [] for a in aois}
+    groups: dict[str, list[AOI]] = {}
+    for a in aois:
+        groups.setdefault(json.dumps(dets[a.name].get("ais_gap", {}), sort_keys=True), []).append(a)
+    for key, members in groups.items():
+        for g in ais_gap.find_gaps(ves_all, json.loads(key), now):
+            la, lo = g["last"].lat, g["last"].lon
+            inside = [
+                (haversine_km(la, lo, a.lat, a.lon), a.name)
+                for a in members
+                if within_radius_nm(la, lo, a.lat, a.lon, a.radius_nm)
+            ]
+            if inside:
+                out[min(inside)[1]].append(g)
+    return out
+
+
 def tick(
     store: Store,
     settings: Settings,
@@ -282,6 +309,7 @@ def tick(
         for e in store.events_window(now - timedelta(days=notice_days), now)
         if e.kind not in warning_area.NOTICE_KINDS or warning_area.is_active(e, now)
     ]
+    gaps_by_aoi = _assign_gaps(settings.aois, dets, ves_all, now)
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
         obs = [
@@ -301,6 +329,7 @@ def tick(
             ves,
             events_all,
             vessels_all=ves_all,
+            gaps=gaps_by_aoi[aoi.name],
         )
         total.evidence += r.evidence
         total.alerts += r.alerts

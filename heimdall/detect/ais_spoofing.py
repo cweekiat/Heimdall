@@ -21,7 +21,7 @@ Assumptions
   radius <= R_max fits in a square of side 4 R_max, so fixes are bucketed in 4 half-cell-shifted
   square grids (cell side 4 R_max, local km projection) and each bucket with enough vessels is
   tested; if the raw bucket fails, a RANSAC circle search (circumcircle of 3 vessels, radius in
-  `ring_radius_km`, inliers within `ring_cv_max * R` of the circle; <= 600 seeded samples) picks
+  `ring_radius_km`, inliers within `ring_cv_max * R` of the circle; <= 2000 seeded samples) picks
   the largest concentric set, which is then re-tested with the same CV/bearing/radius rules.
 * **A4 circle**: one MMSI, >= `circle_min_fixes` fixes, Kasa least-squares circle fit with
   relative RMSE <= `circle_rel_rmse_max`, |net signed turn| >= `circle_min_turn_deg` (>= 2 laps:
@@ -90,6 +90,9 @@ DEFAULTS: dict[str, Any] = {
     "ring_cv_max": 0.1,
     "ring_bearing_circvar_min": 0.7,
     "ring_radius_km": [0.2, 30.0],
+    "ring_poisson_p": 1e-3,
+    "ring_hollow_abs": 1,
+    "ring_hollow_frac": 0.5,
     "circle_min_fixes": 20,
     "circle_rel_rmse_max": 0.05,
     "circle_min_turn_deg": 720,
@@ -274,12 +277,63 @@ def _ring(bin_fixes: dict[int, VesselObs], c: dict[str, Any]) -> dict[str, Any] 
     return None
 
 
-_RING_SAMPLES = 600  # max circumcircle candidates per neighbourhood (exhaustive when fewer)
+_RING_SAMPLES = 2000  # max circumcircle candidates per neighbourhood (exhaustive when fewer)
+
+
+def _hull_area(pts: Sequence[tuple[float, float]]) -> float:
+    """Convex-hull area (monotone chain + shoelace); 0 for < 3 points or a line."""
+    p = sorted(set(pts))
+    if len(p) < 3:
+        return 0.0
+
+    def half(seq: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+        h: list[tuple[float, float]] = []
+        for q in seq:
+            while len(h) >= 2 and (
+                (h[-1][0] - h[-2][0]) * (q[1] - h[-2][1])
+                - (h[-1][1] - h[-2][1]) * (q[0] - h[-2][0])
+                <= 0
+            ):
+                h.pop()
+            h.append(q)
+        return h
+
+    hull = half(p)[:-1] + half(p[::-1])[:-1]
+    return (
+        abs(
+            sum(
+                x1 * y2 - x2 * y1
+                for (x1, y1), (x2, y2) in zip(hull, hull[1:] + hull[:1], strict=True)
+            )
+        )
+        / 2
+    )
+
+
+def _poisson_sf(k: int, lam: float) -> float:
+    """P(X >= k) for X ~ Poisson(lam), by the complement of the exact lower sum."""
+    if k <= 0:
+        return 1.0
+    term = math.exp(-lam)
+    cdf = term
+    for i in range(1, k):
+        term *= lam / i
+        cdf += term
+    return max(0.0, 1.0 - cdf)
 
 
 def _circle_inliers(xy: dict[int, tuple[float, float]], c: dict[str, Any]) -> list[int]:
-    """RANSAC circle: the largest set of points within `ring_cv_max * R` of a circle through three
-    of them, with R in `ring_radius_km`. Deterministic (fixed seed; exhaustive if few)."""
+    """RANSAC circle with a chance-alignment guard. Deterministic (fixed seed; exhaustive if few).
+
+    Candidate: circumcircle of three points with R in `ring_radius_km`; inliers lie within
+    `ring_cv_max * R` of it. A candidate is accepted only if (a) the inlier count is improbable
+    under local uniform traffic: Poisson upper tail p, times the family size (all C(n,3) triples
+    x in-range fraction; Bonferroni), < `ring_poisson_p`, with mean lam = density x band area,
+    band area = 4 pi R tol, density = other MMSIs / max(hull area, pi R^2) of the neighbourhood;
+    and (b) the interior is hollow: distinct MMSIs strictly inside
+    0.8 R <= max(`ring_hollow_abs`, `ring_hollow_frac` x expected interior count). The accepted
+    candidate with the smallest p (ties: most inliers) is returned; [] if none.
+    """
     ids = sorted(xy)
     lo, hi = c["ring_radius_km"]
     triples: Sequence[tuple[int, int, int]]
@@ -288,7 +342,9 @@ def _circle_inliers(xy: dict[int, tuple[float, float]], c: dict[str, Any]) -> li
     else:
         rng = random.Random(len(ids))
         triples = [tuple(sorted(rng.sample(ids, 3))) for _ in range(_RING_SAMPLES)]  # type: ignore[misc]
-    best: list[int] = []
+    n_valid = 0  # candidates in the radius range: Bonferroni family for the Poisson test
+    hull = _hull_area(list(xy.values()))
+    cands: list[tuple[list[int], float, float, float]] = []  # (inliers, p, dens, rad)
     for a, b, d in triples:
         (x1, y1), (x2, y2), (x3, y3) = xy[a], xy[b], xy[d]
         det = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
@@ -301,9 +357,25 @@ def _circle_inliers(xy: dict[int, tuple[float, float]], c: dict[str, Any]) -> li
         if not lo <= rad <= hi:
             continue
         tol = c["ring_cv_max"] * rad
-        inl = [m for m in ids if abs(math.hypot(xy[m][0] - cx, xy[m][1] - cy) - rad) <= tol]
-        if len(inl) > len(best):
-            best = inl
+        dist = {m: math.hypot(xy[m][0] - cx, xy[m][1] - cy) for m in ids}
+        inl = [m for m in ids if abs(dist[m] - rad) <= tol]
+        n_valid += 1
+        if len(inl) < c["ring_min_vessels"]:
+            continue
+        dens = (len(ids) - len(inl)) / max(hull, math.pi * rad * rad)
+        p = _poisson_sf(len(inl), dens * 4 * math.pi * rad * tol)
+        inside = sum(1 for m in ids if dist[m] < 0.8 * rad)
+        exp_in = dens * math.pi * (0.8 * rad) ** 2
+        if inside > max(c["ring_hollow_abs"], c["ring_hollow_frac"] * exp_in):
+            continue
+        cands.append((inl, p, dens, rad))
+    # family size: all triples (not just the sampled ones) x the fraction in the radius range
+    family = math.comb(len(ids), 3) * n_valid / max(1, len(triples))
+    best: list[int] = []
+    best_key = (2.0, 0)
+    for inl, p, _dens, _rad in cands:
+        if p * family < c["ring_poisson_p"] and (p, -len(inl)) < (best_key[0], -best_key[1]):
+            best, best_key = inl, (p, len(inl))
     return best
 
 

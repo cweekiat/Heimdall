@@ -10,7 +10,8 @@ Assumptions
 * A vessel moored/at anchor (nav_status 1 or 5) and slow (sog < 0.5 kn; unknown sog counts as
   slow) at its last fix switches its transponder off legitimately: skipped.
 * **Coverage test** (a gap in a hole in the receiver network is not a gap): the gap is cut into
-  hourly bins from the last fix (`ceil(gap_h)` bins, the final one partial); a bin is *covered*
+  hourly bins from the last fix (`ceil(gap_h)` bins; a trailing partial bin shorter than
+  `gap_min_bin_min` = 30 min is ignored, since a few minutes is rarely covered); a bin is *covered*
   if >= `gap_min_neighbors` other MMSIs were
   heard inside it within `gap_neighbor_km` of the last fix. Evidence only when the covered
   fraction >= `gap_covered_frac`; otherwise the gap is reported by `find_gaps` as
@@ -51,7 +52,7 @@ from heimdall.geo import KT_PER_KMH, haversine_km
 from heimdall.schemas import AlertKind, Coverage, Evidence, RecordRef, RuleResult, VesselObs
 
 NAME = "ais_gap"
-VERSION = "ais-gap-1.1.0"
+VERSION = "ais-gap-1.2.0"
 
 DEFAULTS: dict[str, Any] = {
     "h3_res": 4,
@@ -62,6 +63,7 @@ DEFAULTS: dict[str, Any] = {
     "gap_neighbor_km": 20,
     "gap_covered_frac": 0.5,
     "gap_live_h": 1.0,
+    "gap_min_bin_min": 30,
     "closed_report_h": 6,
     "anchored_nav_status": [1, 5],
     "anchored_sog_kn": 0.5,
@@ -164,6 +166,8 @@ def find_gaps(
                 if o.mmsi != mmsi and a.ts < o.ts < t_end
             ]
             n_bins = max(1, math.ceil(gap_h - 1e-9))
+            if n_bins > 1 and (n_bins - gap_h) * 60.0 > 60.0 - c["gap_min_bin_min"] + 1e-6:
+                n_bins -= 1  # trailing partial bin shorter than gap_min_bin_min: ignored
             per_bin: list[set[int]] = [set() for _ in range(n_bins)]
             for o in near:
                 k = int((o.ts - a.ts).total_seconds() // 3600)
@@ -194,12 +198,24 @@ def detect(
     in_region: Callable[[float, float], bool] | None = None,
 ) -> list[Evidence]:
     """Return AIS-gap Evidence for gaps that pass the anchored and coverage tests. Pure."""
+    return evidence_from_gaps(find_gaps(obs, cfg, now, in_region), cfg, now, aoi=aoi)
+
+
+def evidence_from_gaps(
+    gaps: Sequence[dict[str, Any]],
+    cfg: dict[str, Any],
+    now: datetime,
+    *,
+    aoi: str | None = None,
+) -> list[Evidence]:
+    """Evidence for the firing records of `find_gaps` (lets a caller compute gaps once and
+    partition them across AOIs). Pure."""
     c = _cfg(cfg)
     _, end = align_window(now, c["window_h"] * 60, c["step_min"])
     start = end - timedelta(hours=c["window_h"])
     res = c["h3_res"]
     evs: list[Evidence] = []
-    for g in find_gaps(obs, cfg, now, in_region):
+    for g in gaps:
         if not g["fire"]:
             continue
         a: VesselObs = g["last"]
