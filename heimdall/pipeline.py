@@ -12,8 +12,19 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
+from heimdall import orbits
 from heimdall.config import AOI, Settings
-from heimdall.detect import ais_gap, ais_spoofing, jamming, orbit, spoofing, warning_area
+from heimdall.detect import (
+    ais_gap,
+    ais_spoofing,
+    jamming,
+    night_lights,
+    orbit,
+    outage,
+    spoofing,
+    thermal,
+    warning_area,
+)
 from heimdall.detect.common import (
     Baseline,
     align_window,
@@ -22,7 +33,8 @@ from heimdall.detect.common import (
 )
 from heimdall.fuse.admiralty import grades_from_sources
 from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
-from heimdall.geo import haversine_km
+from heimdall.geo import h3_cell, h3_center, haversine_km
+from heimdall.logging import get_logger
 from heimdall.ports import Store
 from heimdall.schemas import (
     AircraftObs,
@@ -69,6 +81,12 @@ def persistence_key(aoi: str, ev: Evidence) -> str:
         return f"{aoi}|{ev.kind}|hex:{ev.entities[0]}"
     if ev.kind == AlertKind.AIS_SPOOFING and ev.features.get("per_vessel") and ev.entities:
         return f"{aoi}|{ev.kind}|mmsi:{ev.entities[0]}"
+    if ev.kind == AlertKind.THERMAL:
+        return f"{aoi}|{ev.kind}|r6:{ev.h3_cell}"
+    if ev.kind == AlertKind.OUTAGE:
+        if ev.entities:
+            return f"{aoi}|{ev.kind}|entity:{ev.entities[0].split(':', 1)[-1]}"
+        return f"{aoi}|{ev.kind}|r4:{ev.h3_cell}"
     return f"{aoi}|{ev.kind}|cell:{ev.h3_cell}"
 
 
@@ -137,6 +155,181 @@ def _active_jam_cells(
     return out
 
 
+FIRMS_METRIC = "firms_detections"  # thermal detections per r4 cell in the detector window
+NIGHT_METRIC = "night_lights_mean"  # latest Black Marble night mean radiance per r4 cell
+OVERPASS_METRIC = "overpass_refresh"  # last time overpasses were (re)computed
+OVERPASS_REFRESH_H = 6.0  # predictions move by seconds per day; recompute a few times a day
+log = get_logger("heimdall.pipeline")
+
+
+@dataclass
+class P3Windows:
+    """Event windows for the P3 detectors (ADR-007), shared by all AOIs of one tick."""
+
+    thermal: Sequence[GeoEvent] = ()  # detector window + baseline history in one list
+    outage: Sequence[GeoEvent] = ()
+    night: Sequence[GeoEvent] = ()
+
+
+def events_window(
+    store: Store, kinds: Sequence[str], lookback: timedelta, now: datetime
+) -> list[GeoEvent]:
+    """Events of `kinds` in [now - lookback, now]. The Store has no aggregate query, so this is a
+    bounded list; callers pass no more lookback than the detector needs."""
+    return store.events_window(now - lookback, now + timedelta(seconds=1), list(kinds))
+
+
+def _p3_windows(
+    store: Store, dets: Mapping[str, Mapping[str, Mapping[str, Any]]], now: datetime
+) -> P3Windows:
+    def mx(det: str, key: str, default: float) -> float:
+        return max(float(d.get(det, {}).get(key, default)) for d in dets.values())
+
+    t_days = mx("thermal", "baseline_days", thermal.DEFAULTS["baseline_days"]) + (
+        mx("thermal", "window_h", thermal.DEFAULTS["window_h"]) / 24 + 1
+    )
+    o_h = mx("outage", "window_h", outage.DEFAULTS["window_h"]) + 1
+    n_days = mx("night_lights", "baseline_nights", night_lights.DEFAULTS["baseline_nights"]) + 5
+    return P3Windows(
+        thermal=events_window(store, ["thermal"], timedelta(days=t_days), now),
+        outage=events_window(
+            store, ["outage_signal", "outage_annotation"], timedelta(hours=o_h), now
+        ),
+        night=events_window(store, ["night_lights"], timedelta(days=n_days), now),
+    )
+
+
+def update_overpasses(
+    store: Store, aois: Sequence[AOI], ccfg: Mapping[str, Any], now: datetime
+) -> int:
+    """CelesTrak post-ingest hook: predict `overpass` events per AOI from the newest OMM per
+    satellite and upsert them. Ids embed the rise second, which shifts when the elements are
+    refreshed, so a new pass reuses the id of an existing one for the same satellite/AOI within
+    10 minutes (no duplicates). Recomputed at most every `OVERPASS_REFRESH_H`."""
+    sats = ccfg.get("satellites") or {}
+    if not sats or not aois:
+        return 0
+    since = now - timedelta(hours=OVERPASS_REFRESH_H)
+    if any(ts >= since for ts, _ in store.metric_history("celestrak", OVERPASS_METRIC, since)):
+        return 0
+    horizon = float(ccfg.get("pass_horizon_h", 48))
+    min_elev = float(ccfg.get("min_elev_deg", 20))
+    latest: dict[int, GeoEvent] = {}
+    for e in events_window(store, ["orbit_elements"], timedelta(days=4), now):
+        n = e.attrs.get("norad_id")
+        if isinstance(n, int) and n in sats and (n not in latest or e.ts > latest[n].ts):
+            latest[n] = e
+    if not latest:
+        return 0
+    # whole-hour grid, 20 min back: no LEO pass above min_elev lasts that long, so none is cut
+    start = now.replace(minute=0, second=0, microsecond=0) - timedelta(minutes=20)
+    existing: dict[tuple[int, str], list[GeoEvent]] = {}
+    for e in events_window(store, ["overpass"], timedelta(days=3), now + timedelta(hours=horizon)):
+        existing.setdefault((int(e.attrs.get("norad_id", 0)), str(e.attrs.get("aoi"))), []).append(
+            e
+        )
+    rows: list[GeoEvent] = []
+    for norad, ev in sorted(latest.items()):
+        omm = ev.attrs.get("omm")
+        if not isinstance(omm, dict):
+            continue
+        for aoi in aois:
+            try:
+                found = orbits.passes(
+                    omm,
+                    (aoi.lat, aoi.lon),
+                    start,
+                    horizon,
+                    min_elev,
+                    aoi=aoi.name,
+                    sensor=str(sats[norad].get("sensor", "")),
+                )
+            except (ValueError, KeyError, TypeError) as e:  # bad elements: skip that satellite
+                log.warning("overpass_failed", norad=norad, error=type(e).__name__)
+                break
+            old = existing.get((norad, aoi.name), [])
+            for p in found:
+                near = [o for o in old if abs((o.ts - p.ts).total_seconds()) < 600]
+                rows.append(p.model_copy(update={"id": near[0].id}) if near else p)
+    n = store.insert_events(rows) if rows else 0
+    store.record_metric("celestrak", OVERPASS_METRIC, now, float(len(rows)))
+    return n
+
+
+def _assign_tick_persistence(
+    store: Store, aoi: str, evs: Sequence[Evidence], step: timedelta
+) -> list[Evidence]:
+    """Persistence for event-driven kinds = consecutive detection windows (`step` apart) in which
+    the subject triggered. Repeat ticks inside one window keep the count (idempotent)."""
+    out: list[Evidence] = []
+    for e in evs:
+        key = persistence_key(aoi, e)
+        end = e.window_end
+        lo, hi = end - step * 1.5, end - step * 0.5
+        prev = [v for ts, v in store.metric_history(key, PERSIST_TICKS, lo) if lo <= ts <= hi]
+        ticks = 1 + int(max(prev, default=0.0))
+        store.record_metric(key, PERSIST_TICKS, end, float(ticks))
+        feats = {**e.features, "persist_ticks": float(ticks)}
+        out.append(e.model_copy(update={"persistence": ticks, "features": feats}))
+    return out
+
+
+def _p3_evidence(
+    store: Store,
+    aoi: AOI,
+    p3: P3Windows,
+    detectors: Mapping[str, dict[str, Any]],
+    now: datetime,
+    res: TickResult,
+) -> list[Evidence]:
+    tcfg = dict(detectors.get("thermal", {}))
+    ocfg = dict(detectors.get("outage", {}))
+    ncfg = dict(detectors.get("night_lights", {}))
+    thm = thermal.detect(p3.thermal, p3.thermal, tcfg, now, aoi=aoi)
+    out = outage.detect(p3.outage, ocfg, now, aoi=aoi)
+    nl = night_lights.detect(p3.night, ncfg, now, aoi=aoi)
+    t_step = float(tcfg.get("step_min", thermal.DEFAULTS["step_min"]))
+    o_step = float(ocfg.get("step_min", outage.DEFAULTS["step_min"]))
+    evs = _assign_tick_persistence(store, aoi.name, thm, timedelta(minutes=t_step))
+    evs += _assign_tick_persistence(store, aoi.name, out, timedelta(minutes=o_step))
+    # night lights: the detector's N4 already counts consecutive dropped nights
+    evs += [
+        e.model_copy(update={"persistence": max(1, int(e.features.get("n_dropped_nights", 1)))})
+        for e in nl
+    ]
+
+    # metrics per r4 cell (history for later tuning)
+    _, w_end = align_window(
+        now, float(tcfg.get("window_h", thermal.DEFAULTS["window_h"])) * 60, t_step
+    )
+    w_start = w_end - timedelta(hours=float(tcfg.get("window_h", thermal.DEFAULTS["window_h"])))
+    counts: dict[str, int] = {}
+    for e in p3.thermal:
+        if (
+            e.lat is not None
+            and e.lon is not None
+            and w_start <= e.ts < w_end
+            and aoi.contains(e.lat, e.lon)
+        ):
+            cell = h3_cell(e.lat, e.lon, 4)
+            counts[cell] = counts.get(cell, 0) + 1
+    for cell, n in sorted(counts.items()):
+        store.record_metric(cell, FIRMS_METRIC, w_end, float(n))
+        res.metrics += 1
+    latest: dict[str, GeoEvent] = {}
+    for e in p3.night:
+        cell = str(e.attrs.get("h3_r4") or e.h3_r4 or "")
+        if not cell or e.value is None:
+            continue
+        clat, clon = h3_center(cell)
+        if aoi.contains(clat, clon) and (cell not in latest or e.ts > latest[cell].ts):
+            latest[cell] = e
+    for cell, e in sorted(latest.items()):
+        store.record_metric(cell, NIGHT_METRIC, e.ts, float(e.value or 0.0))
+        res.metrics += 1
+    return evs
+
+
 def run_aoi(
     store: Store,
     aoi: AOI,
@@ -149,6 +342,7 @@ def run_aoi(
     events: Sequence[GeoEvent] = (),
     vessels_all: Sequence[VesselObs] | None = None,
     gaps: Sequence[dict[str, Any]] | None = None,
+    p3: P3Windows | None = None,
 ) -> TickResult:
     """One AOI step. `vessels`: AIS window for the AOI; `vessels_all`: the unfiltered AIS window
     for dark-gap detection (ships leaving the AOI keep reporting outside it; a gap belongs to the
@@ -192,6 +386,8 @@ def run_aoi(
     warn = warning_area.detect(events, wcfg, now, aoi=aoi)
 
     evs = _assign_persistence(store, aoi.name, [*jam, *spoof, *orb, *ais_sp, *ais_gp, *warn], step)
+    if p3 is not None:
+        evs += _p3_evidence(store, aoi, p3, detectors, now, res)
 
     min_ac = int(jcfg.get("min_aircraft", 5))
     for cell, st in stats.items():
@@ -276,6 +472,7 @@ def tick(
     *,
     playbook: Mapping[str, Any] | None = None,
     source_grades: Mapping[str, str] | None = None,
+    sources_cfg: Mapping[str, Any] | None = None,
 ) -> TickResult:
     """One detection step at `now` for every configured AOI."""
     if playbook is None or source_grades is None:
@@ -313,6 +510,12 @@ def tick(
         if e.kind not in warning_area.NOTICE_KINDS or warning_area.is_active(e, now)
     ]
     gaps_by_aoi = _assign_gaps(settings.aois, dets, ves_all, now)
+    if sources_cfg is None:
+        from heimdall import config as _config
+
+        sources_cfg = _config.sources().get("sources", {})
+    update_overpasses(store, settings.aois, sources_cfg.get("celestrak", {}), now)
+    p3 = _p3_windows(store, dets, now)
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
         obs = [o for o in obs_all if aoi.contains(o.lat, o.lon)]
@@ -329,6 +532,7 @@ def tick(
             events_all,
             vessels_all=ves_all,
             gaps=gaps_by_aoi[aoi.name],
+            p3=p3,
         )
         total.evidence += r.evidence
         total.alerts += r.alerts
