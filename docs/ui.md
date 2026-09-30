@@ -79,7 +79,10 @@ Shortcuts are ignored while typing in a field; `Esc` always closes the topmost t
 - DuckDB is single-writer: observations/evidence/alerts come from a read-only store; analyst
   feedback and actions go to a separate analyst store via `CompositeStore`
   (`heimdall/adapters/composite_store.py`). Alerts are never copied: only a status override
-  (alert_id -> status, re-derived from the latest feedback) is applied over the pipeline alert.
+  (alert_id -> status) is applied over the pipeline alert. It is re-derived after a restart from the
+  latest journal status note, falling back to the latest feedback verdict. Pipeline upserts go to
+  the main store and never overwrite analyst status. Shelving expires to acknowledged with a
+  `system` status note in the journal. `heimdall.run` uses `data/analyst.duckdb` for analyst state.
 - SSE store calls run in `asyncio.to_thread`.
 - `create_app(store)` requires a store (the in-process API in `heimdall.run` passes its own);
   the standalone entry is `python -m heimdall.api.demo` only. `auth_check` middleware is a no-op

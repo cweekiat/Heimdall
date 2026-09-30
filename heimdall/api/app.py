@@ -35,7 +35,7 @@ LOCAL_HOSTS = ["127.0.0.1", "localhost"]
 
 class FeedbackIn(BaseModel):
     verdict: Literal["confirm", "dismiss"]
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 class StatusIn(BaseModel):
@@ -175,7 +175,8 @@ def create_app(
             shelve_until=until,
         )
         st.add_note(note)  # journal first: it is the audit trail and source of the override
-        st.upsert_alert(a.model_copy(update={"status": to}))
+        if not getattr(st, "derives_status_from_notes", False):
+            st.upsert_alert(a.model_copy(update={"status": to}))
         return note
 
     @app.post("/api/alerts/{alert_id}/status")

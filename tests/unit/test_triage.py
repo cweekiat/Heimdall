@@ -103,13 +103,57 @@ def test_composite_overlay_notes_and_shelve_expiry(tmp_path: Path) -> None:
     assert c.get("/api/alerts/alert-3").json()["alert"]["status"] == "under_review"
     restarted = CompositeStore(main, analyst).get_alert("alert-3")
     assert restarted is not None and restarted.status == S.UNDER_REVIEW
-    # shelve expiry returns to acknowledged
-    c.post(
+    # shelve via the API with a short expiry; a patched clock passes it
+    r = c.post(
         "/api/alerts/alert-4/status",
         json={"status": "shelved", "reason": "r", "shelve_until": _future(1)},
     )
-    comp._shelved_until["alert-4"] = datetime.now(UTC) - timedelta(seconds=1)
+    assert r.status_code == 200
+    assert c.get("/api/alerts/alert-4").json()["alert"]["status"] == "shelved"
+    # a pipeline upsert must not cancel the shelve
+    a4 = main.get_alert("alert-4")
+    assert a4 is not None
+    assert comp._shelved_until.get("alert-4") is not None
+    later = datetime.now(UTC) + timedelta(hours=2)
+    comp._now = lambda: later
     assert c.get("/api/alerts/alert-4").json()["alert"]["status"] == "acknowledged"
+    notes = c.get("/api/alerts/alert-4/notes").json()
+    assert notes[-1]["user"] == "system" and notes[-1]["status_to"] == "acknowledged"
+    # the expiry survives a restart (journalled)
+    again = CompositeStore(main, analyst, clock=lambda: later).get_alert("alert-4")
+    assert again is not None and again.status == S.ACKNOWLEDGED
+
+
+def test_live_composite_pipeline_upsert_keeps_ack(tmp_path: Path) -> None:
+    main = DuckDBStore(tmp_path / "m.duckdb")
+    seed(main)
+    comp = CompositeStore(main, DuckDBStore(tmp_path / "a.duckdb"))
+    c = TestClient(create_app(comp, playbook=PB, allowed_hosts=HOSTS))
+    assert c.post("/api/alerts/alert-3/status", json={"status": "acknowledged"}).status_code == 200
+    a = main.get_alert("alert-3")
+    assert a is not None
+    comp.upsert_alert(a.model_copy(update={"status": S.NEW, "last_seen": datetime.now(UTC)}))
+    assert c.get("/api/alerts/alert-3").json()["alert"]["status"] == "acknowledged"
+
+
+def test_feedback_fallback_when_no_status_note(tmp_path: Path) -> None:
+    from heimdall.schemas import Feedback
+
+    main = DuckDBStore(tmp_path / "m.duckdb")
+    seed(main)
+    analyst = DuckDBStore(tmp_path / "a.duckdb")
+    analyst.add_feedback(
+        Feedback(alert_id="alert-3", verdict="confirm", reason="x", ts=datetime.now(UTC))
+    )
+    got = CompositeStore(main, analyst).get_alert("alert-3")
+    assert got is not None and got.status == S.CONFIRMED
+
+
+def test_feedback_reason_max_length(client: TestClient) -> None:
+    r = client.post(
+        "/api/alerts/alert-1/feedback", json={"verdict": "dismiss", "reason": "x" * 1001}
+    )
+    assert r.status_code == 422
 
 
 def test_aoi_summary(client: TestClient) -> None:

@@ -3,13 +3,16 @@
 DuckDB is single-writer and the ingest process owns the main file, so the API must never write
 there. Analyst state (feedback, actions) lives in `analyst`. Alerts are never copied: only a
 status override (alert_id -> status) is kept and applied over the pipeline's current Alert, so
-pipeline updates (last_seen, confidence, evidence) always show through. Overrides survive restarts
-because they are re-derived from the latest analyst feedback verdict.
+pipeline updates (last_seen, confidence, evidence) always show through and pipeline upserts never
+overwrite analyst status. Overrides survive restarts: they are re-derived from the latest journal
+status note, falling back to the latest analyst feedback verdict when no status note exists.
+Shelving expires (ADR-003): the alert returns to acknowledged and a system note records it.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import uuid
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 from heimdall.ports import Store
@@ -28,9 +31,15 @@ from heimdall.schemas import (
 
 
 class CompositeStore:
-    def __init__(self, read: Store, analyst: Store) -> None:
+    # The API journals status changes as notes; this store derives the status from them.
+    derives_status_from_notes = True
+
+    def __init__(
+        self, read: Store, analyst: Store, clock: Callable[[], datetime] | None = None
+    ) -> None:
         self.read = read
         self.analyst = analyst
+        self._now: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
         self._overrides: dict[str, AlertStatus] = {}
         self._shelved_until: dict[str, datetime] = {}
 
@@ -84,19 +93,39 @@ class CompositeStore:
 
     # ---- alerts: pipeline alert + analyst status override
     def _override(self, alert_id: str) -> AlertStatus | None:
-        """Latest analyst status for the alert (from the journal); shelving expires."""
+        """Latest analyst status for the alert; an expired shelve returns to acknowledged."""
         if alert_id not in self._overrides:
             latest = [n for n in self.analyst.notes_for(alert_id) if n.status_to is not None]
-            if not latest:
-                return None
-            last = max(latest, key=lambda n: n.ts)
-            self._overrides[alert_id] = last.status_to  # type: ignore[assignment]
-            if last.status_to == AlertStatus.SHELVED and last.shelve_until:
-                self._shelved_until[alert_id] = last.shelve_until
+            if latest:
+                last = max(latest, key=lambda n: n.ts)
+                self._overrides[alert_id] = last.status_to  # type: ignore[assignment]
+                if last.status_to == AlertStatus.SHELVED and last.shelve_until:
+                    self._shelved_until[alert_id] = last.shelve_until
+            else:
+                fbs = self.analyst.feedback_for(alert_id)
+                if not fbs:
+                    return None
+                verdict = max(fbs, key=lambda f: f.ts).verdict
+                self._overrides[alert_id] = (
+                    AlertStatus.CONFIRMED if verdict == "confirm" else AlertStatus.DISMISSED
+                )
         st = self._overrides[alert_id]
         until = self._shelved_until.get(alert_id)
-        if st == AlertStatus.SHELVED and until is not None and until <= datetime.now(UTC):
-            return AlertStatus.ACKNOWLEDGED  # ADR-003: shelved returns to acknowledged on expiry
+        now = self._now()
+        if st == AlertStatus.SHELVED and until is not None and until <= now:
+            # ADR-003: shelved returns to acknowledged on expiry; journal it so there is no gap
+            self.add_note(
+                AnalystNote(
+                    id=uuid.uuid4().hex,
+                    alert_id=alert_id,
+                    ts=now,
+                    kind="status",
+                    user="system",
+                    text="shelve expired; returned to acknowledged",
+                    status_to=AlertStatus.ACKNOWLEDGED,
+                )
+            )
+            return AlertStatus.ACKNOWLEDGED
         return st
 
     def _apply(self, a: Alert) -> Alert:
@@ -104,9 +133,8 @@ class CompositeStore:
         return a if st is None or st == a.status else a.model_copy(update={"status": st})
 
     def upsert_alert(self, alert: Alert) -> None:
-        """Only the status is retained (as an override); the pipeline owns the alert itself."""
-        self._overrides[alert.id] = alert.status
-        self._shelved_until.pop(alert.id, None)
+        """Pipeline write. Goes to the main store; analyst status/shelve state is untouched."""
+        self.read.upsert_alert(alert)
 
     def get_alert(self, alert_id: str) -> Alert | None:
         a = self.read.get_alert(alert_id)
