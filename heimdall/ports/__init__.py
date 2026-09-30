@@ -6,6 +6,7 @@ require changes in detect/, patterns/ or fuse/. See docs/decisions/ADR-001-ports
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
 from typing import Protocol, runtime_checkable
@@ -24,6 +25,7 @@ from heimdall.schemas import (
     GeoEvent,
     SourceHealth,
     SourceReliability,
+    SourceState,
     VesselObs,
 )
 
@@ -132,3 +134,14 @@ class Connector(Protocol):
         ...
 
     async def aclose(self) -> None: ...
+
+
+@runtime_checkable
+class SourceControl(Protocol):
+    """Runtime on/off control and status of configured sources (task 012a)."""
+
+    def list(self) -> builtins.list[SourceState]: ...
+
+    async def set_enabled(self, key: str, enabled: bool) -> SourceState:
+        """Start or stop the source pump and persist the override. Unknown key raises KeyError."""
+        ...

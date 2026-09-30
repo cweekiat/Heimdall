@@ -1,0 +1,299 @@
+"""Live traffic + notice endpoints (task 012a). GeoJSON, latest fix per entity, capped.
+
+Only Store-port calls are used; free text (notice bodies) is passed through as data and flagged
+`untrusted: true`.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from collections.abc import Callable, Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Path, Query
+
+from heimdall import config
+from heimdall.geo import haversine_km
+from heimdall.ports import Store
+from heimdall.schemas import AircraftObs, AlertStatus, VesselObs
+
+CAP = 5000
+NOTICE_KINDS = ["nav_warning", "notam"]
+NOTICE_LOOKBACK = timedelta(days=30)
+TEXT_MAX = 2000
+_OPEN = (AlertStatus.NEW, AlertStatus.ACKNOWLEDGED, AlertStatus.UNDER_REVIEW)
+_FUTURE = timedelta(minutes=5)  # tolerate small clock skew on fix timestamps
+
+BBox = tuple[float, float, float, float]
+
+
+def parse_bbox(raw: str) -> BBox:
+    try:
+        w, s, e, n = (float(x) for x in raw.split(","))
+    except ValueError as err:
+        raise HTTPException(422, "bbox must be w,s,e,n") from err
+    if not all(math.isfinite(v) for v in (w, s, e, n)):
+        raise HTTPException(422, "bbox must be finite")
+    if not (-90 <= s < n <= 90 and -180 <= w <= 180 and -180 <= e <= 180):
+        raise HTTPException(422, "bbox out of range")
+    return w, s, e, n
+
+
+def in_bbox(lat: float, lon: float, bb: BBox) -> bool:
+    w, s, e, n = bb
+    if not s <= lat <= n:
+        return False
+    return w <= lon <= e if w <= e else (lon >= w or lon <= e)  # w > e crosses the antimeridian
+
+
+def _source_filter(raw: str | None) -> set[str] | None:
+    if not raw:
+        return None
+    keys = {k.strip().lower() for k in raw.split(",") if k.strip()}
+    if not all(re.fullmatch(r"[a-z0-9_.]{1,40}", k) for k in keys):
+        raise HTTPException(422, "invalid sources")
+    return {k.replace(".", "_") for k in keys}
+
+
+def _pkey(provider: str) -> str:
+    return provider.lower().replace(".", "_")
+
+
+def ship_class(ship_type: int | None) -> str:
+    if ship_type is None:
+        return "other"
+    if ship_type == 35:
+        return "military"
+    if ship_type == 30:
+        return "fishing"
+    if 60 <= ship_type <= 69:
+        return "passenger"
+    if 70 <= ship_type <= 79:
+        return "cargo"
+    if 80 <= ship_type <= 89:
+        return "tanker"
+    return "other"
+
+
+def gps_bad(o: AircraftObs) -> bool:
+    return (o.nic is not None and o.nic < 7) or (o.nac_p is not None and o.nac_p < 8)
+
+
+def _fc(features: list[dict[str, Any]], total: int) -> dict[str, Any]:
+    return {"type": "FeatureCollection", "features": features, "truncated": total > len(features)}
+
+
+def _point(lat: float, lon: float, props: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+        "properties": props,
+    }
+
+
+def _centroid(geom: dict[str, Any] | None) -> tuple[float, float] | None:
+    pts = list(_coords(geom.get("coordinates") if geom else None))
+    if not pts:
+        return None
+    return sum(p[1] for p in pts) / len(pts), sum(p[0] for p in pts) / len(pts)
+
+
+def _coords(c: Any) -> Iterable[tuple[float, float]]:
+    if isinstance(c, list | tuple) and len(c) >= 2 and all(isinstance(v, int | float) for v in c):
+        yield float(c[0]), float(c[1])
+    elif isinstance(c, list | tuple):
+        for x in c:
+            yield from _coords(x)
+
+
+def traffic_router(store: Store, now: Callable[[], datetime] | None = None) -> APIRouter:
+    r = APIRouter()
+    clock = now or (lambda: datetime.now(UTC))
+
+    def in_alert_entities() -> set[str]:
+        t = clock()
+        ids: set[str] = set()
+        for al in store.list_alerts(since=t - timedelta(hours=24), status=list(_OPEN), limit=1000):
+            ids.update(e.lower() for ev in store.get_evidence(al.evidence_ids) for e in ev.entities)
+        return ids
+
+    @r.get("/api/traffic/air")
+    def air(
+        bbox: str,
+        max_age_s: int = Query(60, ge=1, le=86400),
+        sources: str | None = None,
+    ) -> dict[str, Any]:
+        bb, want, t = parse_bbox(bbox), _source_filter(sources), clock()
+        rows = store.aircraft_window(t - timedelta(seconds=max_age_s), t + _FUTURE)
+        latest: dict[str, AircraftObs] = {}
+        provs: dict[str, set[str]] = {}
+        for o in sorted(rows, key=lambda x: x.ts):
+            if want is not None and _pkey(o.provider) not in want:
+                continue
+            latest[o.hex] = o
+            provs.setdefault(o.hex, set()).add(o.provider)
+        hot = in_alert_entities()
+        picked = sorted(
+            (o for o in latest.values() if in_bbox(o.lat, o.lon, bb)),
+            key=lambda x: x.ts,
+            reverse=True,
+        )
+        feats = [
+            _point(
+                o.lat,
+                o.lon,
+                {
+                    "hex": o.hex,
+                    "flight": (o.flight or "").strip() or None,
+                    "registration": o.registration,
+                    "type_code": o.type_code,
+                    "mil": o.mil,
+                    "alt_baro": o.alt_baro,
+                    "gs": o.gs,
+                    "track": o.track,
+                    "on_ground": o.on_ground,
+                    "provider": o.provider,
+                    "providers": sorted(provs[o.hex]),
+                    "age_s": max(0.0, round((t - o.ts).total_seconds(), 1)),
+                    "gps_bad": gps_bad(o),
+                    "in_alert": o.hex.lower() in hot,
+                },
+            )
+            for o in picked[:CAP]
+        ]
+        return _fc(feats, len(picked))
+
+    @r.get("/api/traffic/sea")
+    def sea(
+        bbox: str,
+        max_age_s: int = Query(900, ge=1, le=86400),
+        sources: str | None = None,
+    ) -> dict[str, Any]:
+        bb, want, t = parse_bbox(bbox), _source_filter(sources), clock()
+        rows = store.vessels_window(t - timedelta(seconds=max_age_s), t + _FUTURE)
+        latest: dict[int, VesselObs] = {}
+        for v in sorted(rows, key=lambda x: x.ts):
+            if want is None or _pkey(v.provider) in want:
+                latest[v.mmsi] = v
+        hot = in_alert_entities()
+        picked = sorted(
+            (v for v in latest.values() if in_bbox(v.lat, v.lon, bb)),
+            key=lambda x: x.ts,
+            reverse=True,
+        )
+        feats = [
+            _point(
+                v.lat,
+                v.lon,
+                {
+                    "mmsi": v.mmsi,
+                    "name": v.name,
+                    "ship_type": v.ship_type,
+                    "ship_class": ship_class(v.ship_type),
+                    "sog": v.sog,
+                    "cog": v.cog,
+                    "heading": v.heading,
+                    "destination": v.destination,
+                    "provider": v.provider,
+                    "age_s": max(0.0, round((t - v.ts).total_seconds(), 1)),
+                    "in_alert": str(v.mmsi) in hot,
+                },
+            )
+            for v in picked[:CAP]
+        ]
+        return _fc(feats, len(picked))
+
+    def _trail(coords: list[list[float]], props: dict[str, Any]) -> dict[str, Any]:
+        if not coords:
+            raise HTTPException(404, "no recent positions")
+        if len(coords) == 1:
+            coords = coords * 2
+        return {
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": coords},
+            "properties": props,
+        }
+
+    @r.get("/api/traffic/air/{hex_id}/trail")
+    def air_trail(
+        hex_id: str = Path(pattern=r"^~?[0-9a-fA-F]{6}$"), min: int = Query(30, ge=1, le=1440)
+    ) -> dict[str, Any]:
+        t, h = clock(), hex_id.lower()
+        rows = [
+            o for o in store.aircraft_window(t - timedelta(minutes=min), t + _FUTURE) if o.hex == h
+        ]
+        rows.sort(key=lambda o: o.ts)
+        return _trail([[o.lon, o.lat] for o in rows], {"hex": h, "n": len(rows)})
+
+    @r.get("/api/traffic/sea/{mmsi}/trail")
+    def sea_trail(
+        mmsi: int = Path(ge=0, le=999_999_999), min: int = Query(120, ge=1, le=1440)
+    ) -> dict[str, Any]:
+        t = clock()
+        rows = [
+            v
+            for v in store.vessels_window(t - timedelta(minutes=min), t + _FUTURE)
+            if v.mmsi == mmsi
+        ]
+        rows.sort(key=lambda v: v.ts)
+        return _trail([[v.lon, v.lat] for v in rows], {"mmsi": mmsi, "n": len(rows)})
+
+    @r.get("/api/notices")
+    def notices(at: str | None = None, aoi: str | None = None) -> dict[str, Any]:
+        t = clock()
+        if at:
+            try:
+                t = datetime.fromisoformat(at.replace("Z", "+00:00"))
+            except ValueError as e:
+                raise HTTPException(422, f"invalid at: {at}") from e
+            t = t if t.tzinfo else t.replace(tzinfo=UTC)
+        area = None
+        if aoi:
+            match = [a for a in config.settings().aois if a.name == aoi]
+            if not match:
+                raise HTTPException(404, "unknown aoi")
+            area = match[0]
+        feats: list[dict[str, Any]] = []
+        events = store.events_window(t - NOTICE_LOOKBACK, t + timedelta(seconds=1), NOTICE_KINDS)
+        for ev in sorted(events, key=lambda e: e.ts, reverse=True):
+            if ev.attrs.get("status") == "cancelled":
+                continue
+            if (ev.valid_from and ev.valid_from > t) or (ev.valid_to and ev.valid_to < t):
+                continue
+            c = _centroid(ev.geometry) or (
+                (ev.lat, ev.lon) if ev.lat is not None and ev.lon is not None else None
+            )
+            if area is not None and (
+                c is None or haversine_km(c[0], c[1], area.lat, area.lon) > area.radius_nm * 1.852
+            ):
+                continue
+            geom = ev.geometry or (
+                {"type": "Point", "coordinates": [ev.lon, ev.lat]} if c else None
+            )
+            feats.append(
+                {
+                    "type": "Feature",
+                    "geometry": geom,
+                    "properties": {
+                        "id": ev.id,
+                        "source": ev.source,
+                        "kind": ev.kind,
+                        "category": ev.attrs.get("category"),
+                        "ref": ev.attrs.get("ref"),
+                        "title": ev.title,
+                        "valid_from": ev.valid_from.isoformat() if ev.valid_from else None,
+                        "valid_to": ev.valid_to.isoformat() if ev.valid_to else None,
+                        "url": ev.url,
+                        "parse_status": ev.attrs.get("parse_status"),
+                        "alt_lower_ft": ev.attrs.get("alt_lower_ft"),
+                        "alt_upper_ft": ev.attrs.get("alt_upper_ft"),
+                        "text": (ev.text or "")[:TEXT_MAX],
+                        "untrusted": True,
+                    },
+                }
+            )
+        return _fc(feats[:CAP], len(feats))
+
+    return r

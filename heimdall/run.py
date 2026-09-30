@@ -8,7 +8,7 @@ import importlib
 import signal
 import sys
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -22,12 +22,14 @@ from heimdall.adapters.memory_bus import MemoryBus
 from heimdall.adapters.parquet_lake import ParquetLake
 from heimdall.config import Settings
 from heimdall.config import settings as load_settings
+from heimdall.config import sources as load_sources
 from heimdall.geo import haversine_km
 from heimdall.ingest.adsb import merge_providers
 from heimdall.ingest.registry import build_connectors
 from heimdall.logging import configure_logging, get_logger, start_metrics_server
-from heimdall.ports import Bus, Connector, Lake, Store
+from heimdall.ports import Bus, Connector, Lake, SourceControl, Store
 from heimdall.schemas import AircraftObs, GeoEvent, VesselObs
+from heimdall.sources_ctl import SourceManager
 
 log = get_logger("heimdall.run")
 
@@ -194,9 +196,11 @@ class Writer:
             self.flush()
 
 
-async def health_loop(conns: Sequence[Connector], store: Store) -> None:
+async def health_loop(
+    conns: Sequence[Connector] | Callable[[], Sequence[Connector]], store: Store
+) -> None:
     while True:
-        for c in conns:
+        for c in conns() if callable(conns) else conns:
             store.upsert_health(c.health())
         await asyncio.sleep(HEALTH_S)
 
@@ -215,7 +219,7 @@ async def tick_loop(store: Store, cfg: Settings, step_min: int) -> None:
             log.error("tick_failed", error=str(e))
 
 
-def start_api(store: Store, cfg: Settings) -> Any:
+def start_api(store: Store, cfg: Settings, sources: SourceControl | None = None) -> Any:
     """Build the in-process API server (ADR-002) if heimdall.api.app is available."""
     try:
         from heimdall.api.app import create_app
@@ -233,7 +237,7 @@ def start_api(store: Store, cfg: Settings) -> Any:
             yield
 
     config = uvicorn.Config(
-        create_app(store), host=cfg.api.host, port=cfg.api.port, log_config=None
+        create_app(store, sources=sources), host=cfg.api.host, port=cfg.api.port, log_config=None
     )
     return _Server(config)
 
@@ -257,7 +261,21 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         log.error("store_unavailable", error=str(e), path=cfg.storage.duckdb_path)
         print(msg, file=sys.stderr)
         raise SystemExit(2) from e
-    conns = build_connectors(cfg)
+    src_cfg = load_sources()
+    all_src = src_cfg.get("sources", {})
+
+    def build_one(key: str) -> Connector | None:
+        # a toggled-on source overrides `enabled: false` from sources.yaml
+        forced = {"sources": {key: {**all_src[key], "enabled": True}}}
+        built = build_connectors(cfg, forced, enabled={key})
+        return built[0] if built else None
+
+    manager = SourceManager(
+        all_src,
+        build_one,
+        lambda c: pump(c, bus),
+        Path(cfg.storage.duckdb_path).parent / "state" / "sources.json",
+    )
     writer = Writer(bus, lake, store)
     step_min = int(cfg.detectors.get("jamming", {}).get("step_min", 5))
 
@@ -270,14 +288,14 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     tasks = [
         asyncio.create_task(writer.consume()),
         asyncio.create_task(writer.flush_loop()),
-        asyncio.create_task(health_loop(conns, store)),
+        asyncio.create_task(health_loop(lambda: manager.connectors, store)),
         asyncio.create_task(tick_loop(store, cfg, step_min)),
-        *(asyncio.create_task(pump(c, bus)) for c in conns),
     ]
-    server = start_api(store, cfg)
+    await manager.start()
+    server = start_api(store, cfg, manager)
     if server is not None:
         tasks.append(asyncio.create_task(server.serve()))
-    log.info("started", connectors=[c.name for c in conns], step_min=step_min)
+    log.info("started", connectors=[c.name for c in manager.connectors], step_min=step_min)
     await stop.wait()
     log.info("shutting_down")
     if server is not None:
@@ -285,9 +303,9 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     for t in tasks:
         t.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
-    for c in conns:
+    for c in manager.connectors:
         store.upsert_health(c.health())
-        await c.aclose()
+    await manager.stop()
     writer.flush()
     await bus.close()
     store.close()

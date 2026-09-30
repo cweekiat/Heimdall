@@ -1,0 +1,156 @@
+"""Runtime source manager (task 012a): one pump task per connector, on/off at runtime.
+
+Implements `heimdall.ports.SourceControl`. Overrides persist in a small JSON file
+(`data/state/sources.json`), are read at startup and win over `enabled` in `sources.yaml`.
+A needs_key source may be switched on; its connector then makes no requests (ADR-004).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import builtins
+import contextlib
+import json
+import os
+from collections.abc import Callable, Coroutine, Mapping
+from pathlib import Path
+from typing import Any
+
+from heimdall.logging import get_logger
+from heimdall.ports import Connector
+from heimdall.schemas import Domain, SourceReliability, SourceState
+
+log = get_logger("heimdall.sources_ctl")
+
+Builder = Callable[[str], Connector | None]
+Pump = Callable[[Connector], Coroutine[Any, Any, None]]
+
+
+class SourceManager:
+    def __init__(
+        self,
+        cfg: Mapping[str, Mapping[str, Any]],
+        build: Builder,
+        pump: Pump,
+        state_path: Path | None = None,
+    ) -> None:
+        self._cfg = cfg
+        self._build = build
+        self._pump = pump
+        self._path = state_path
+        self._enabled: dict[str, bool] = {
+            k: dict(c).get("enabled", True) is not False for k, c in cfg.items()
+        }
+        for k, v in self._load().items():
+            if k in self._enabled:
+                self._enabled[k] = v
+        self._conns: dict[str, Connector] = {}
+        self._tasks: dict[str, asyncio.Task[None]] = {}
+
+    # ------------------------------------------------------------ persistence
+    def _load(self) -> dict[str, bool]:
+        if self._path is None or not self._path.exists():
+            return {}
+        try:
+            raw = json.loads(self._path.read_text())
+        except (OSError, ValueError) as e:
+            log.warning("sources_state_unreadable", error=str(e))
+            return {}
+        return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, bool)}
+
+    def _save(self) -> None:
+        if self._path is None:
+            return
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self._enabled, sort_keys=True))
+        os.replace(tmp, self._path)
+
+    # ------------------------------------------------------------ lifecycle
+    @property
+    def connectors(self) -> builtins.list[Connector]:
+        return list(self._conns.values())
+
+    @property
+    def tasks(self) -> builtins.list[asyncio.Task[None]]:
+        return list(self._tasks.values())
+
+    def _start(self, key: str) -> None:
+        if key in self._tasks:
+            return
+        conn = self._build(key)
+        if conn is None:
+            return
+        self._conns[key] = conn
+        self._tasks[key] = asyncio.create_task(self._pump(conn))
+
+    async def _stop(self, key: str) -> None:
+        task = self._tasks.pop(key, None)
+        conn = self._conns.pop(key, None)
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        if conn is not None:
+            await conn.aclose()
+
+    async def start(self) -> None:
+        for key, on in self._enabled.items():
+            if on:
+                self._start(key)
+
+    async def stop(self) -> None:
+        for key in list(self._tasks):
+            await self._stop(key)
+
+    # ------------------------------------------------------------ SourceControl
+    def _state(self, key: str) -> SourceState:
+        cfg = self._cfg[key]
+        on = self._enabled[key]
+        domain = Domain(cfg.get("domain", "events"))
+        rel = SourceReliability(cfg.get("reliability", "F"))
+        conn = self._conns.get(key)
+        label = str(cfg.get("label", key))
+        if not on:
+            return SourceState(
+                key=key, label=label, domain=domain, enabled=on, status="off", reliability=rel
+            )
+        if conn is None:
+            return SourceState(
+                key=key,
+                label=label,
+                domain=domain,
+                enabled=on,
+                status="disabled",
+                detail="not installed",
+                reliability=rel,
+            )
+        h = conn.health()
+        return SourceState(
+            key=key,
+            label=label,
+            domain=domain,
+            enabled=on,
+            status=h.status,
+            detail=h.detail,
+            last_ok=h.last_ok,
+            records_last_hour=h.records_last_hour,
+            error_rate=h.error_rate,
+            reliability=h.reliability,
+            needs_key=h.status == "needs_key",
+        )
+
+    def list(self) -> builtins.list[SourceState]:
+        return [self._state(k) for k in self._cfg]
+
+    async def set_enabled(self, key: str, enabled: bool) -> SourceState:
+        if key not in self._cfg:
+            raise KeyError(key)
+        if self._enabled[key] != enabled or (enabled and key not in self._tasks):
+            self._enabled[key] = enabled
+            if enabled:
+                self._start(key)
+            else:
+                await self._stop(key)
+            self._save()
+        return self._state(key)
