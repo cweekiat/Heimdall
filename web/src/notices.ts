@@ -4,6 +4,7 @@ import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { api } from "./api";
 import type { NoticeProps } from "./api";
 import { h } from "./dom";
+import { rgba } from "./theme/palette";
 import { filters } from "./filters";
 import { T } from "./labels";
 import type { OpsMap } from "./map";
@@ -17,7 +18,6 @@ interface Notice {
   hatch: number[][][];
 }
 
-const COLOUR: [number, number, number] = [176, 156, 236];
 
 function polygons(g: { type: string; coordinates: unknown } | null): Ring[][] {
   if (!g) return [];
@@ -99,8 +99,8 @@ export class Notices {
         data: shapes.map((n) => ({ type: "Feature", properties: n, geometry: { type: "MultiPolygon", coordinates: n.polys } })) as never,
         filled: true,
         stroked: true,
-        getFillColor: [...COLOUR, 26],
-        getLineColor: [...COLOUR, 230],
+        getFillColor: rgba("notice", 0.1),
+        getLineColor: rgba("notice", 0.9),
         lineWidthMinPixels: 1.5,
         pickable: pick,
         onClick: (i) => i.object && this.open((i.object as { properties: Notice }).properties),
@@ -109,7 +109,7 @@ export class Notices {
         id: "notice-hatch",
         data: shapes.flatMap((n) => n.hatch),
         getPath: (d) => d as [number, number][],
-        getColor: [...COLOUR, 120],
+        getColor: rgba("notice", 0.47),
         widthMinPixels: 1,
       }),
       new ScatterplotLayer<Notice>({
@@ -119,8 +119,8 @@ export class Notices {
         getRadius: 8,
         radiusUnits: "pixels",
         stroked: true,
-        getFillColor: [...COLOUR, 70],
-        getLineColor: [...COLOUR, 240],
+        getFillColor: rgba("notice", 0.27),
+        getLineColor: rgba("notice", 0.94),
         getLineWidth: 2,
         lineWidthUnits: "pixels",
         pickable: pick,

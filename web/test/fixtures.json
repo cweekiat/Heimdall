@@ -1,0 +1,48 @@
+{
+  "area": {
+    "alert": {
+      "id": "a1",
+      "ref": "HMD-20260930-0007",
+      "kind": "gnss_jamming",
+      "severity": "high",
+      "confidence": 0.8,
+      "admiralty": { "reliability": "B", "credibility": 2 },
+      "title": "t",
+      "summary": "s",
+      "aoi": "baltic",
+      "first_seen": "2026-09-30T14:10:00+00:00",
+      "last_seen": "2026-09-30T15:40:00+00:00",
+      "sources": [
+        { "connector": "adsb_lol", "family": "adsb", "admiralty": { "reliability": "B", "credibility": 2 } },
+        { "connector": "gpsjam", "family": "gnss_index", "admiralty": { "reliability": "C", "credibility": 3 } }
+      ],
+      "footprint": { "kind": "area_cell", "description": "Area cell 842a" }
+    },
+    "evidence": [
+      {
+        "window_start": "2026-09-30T14:10:00+00:00",
+        "window_end": "2026-09-30T15:40:00+00:00",
+        "rules": [{ "rule": "r", "value": 0.37, "baseline": 0.02, "passed": true }],
+        "coverage": { "n_observed": 100, "n_quality": 100, "providers": [], "confidence": 0.9 }
+      }
+    ]
+  },
+  "track": {
+    "alert": {
+      "id": "a2",
+      "ref": "HMD-20260930-0008",
+      "kind": "ais_spoofing",
+      "severity": "medium",
+      "confidence": 0.6,
+      "admiralty": { "reliability": "B", "credibility": 3 },
+      "title": "t",
+      "summary": "s",
+      "aoi": "scs",
+      "first_seen": "2026-09-30T09:00:00+00:00",
+      "last_seen": "2026-09-30T09:30:00+00:00",
+      "sources": [{ "connector": "aisstream", "family": "ais", "admiralty": { "reliability": "B", "credibility": 3 } }],
+      "footprint": { "kind": "single_track", "description": "Track 5630xxxxx" }
+    },
+    "evidence": []
+  }
+}

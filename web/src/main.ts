@@ -7,7 +7,9 @@ import { ago, h } from "./dom";
 import { icon, iconButton } from "./icons";
 import { renderEntity, renderInspector } from "./inspector";
 import { fmtLatLon, toMgrs } from "./geoutil";
+import { explainBlock } from "./explain";
 import { installKeys } from "./keys";
+import { setMode } from "./theme/palette";
 import { alertTitle, aoiName, CORROBORATION_LABEL, setAois, sourceLabel, T, truthLabel } from "./labels";
 import type { OpsMap } from "./map";
 import { showHelp, showShift } from "./overlays";
@@ -30,6 +32,7 @@ type Theme = (typeof THEMES)[number];
 const stored = localStorage.getItem("theme") as Theme | null;
 let theme: Theme = stored && THEMES.includes(stored) ? stored : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 document.documentElement.dataset.theme = theme;
+setMode(theme === "light" ? "light" : "dark");
 let ops: OpsMap | null = null;
 function cycleTheme(): void {
   theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]!;
@@ -145,7 +148,7 @@ function wireMapExtras(m: OpsMap): void {
     hover.style.top = `${y + 12}px`;
     hover.replaceChildren(
       ...as.slice(0, 4).map((a) =>
-        h("div", {}, h("strong", {}, `${PRIORITY[a.severity]!.icon} ${alertTitle(a)}`), h("div", {}, `${sourceLabel(a.admiralty.reliability)} · ${truthLabel(a.admiralty.credibility)} · ${CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status} · ${ago(a.last_seen)}`)),
+        h("div", {}, h("strong", {}, `${PRIORITY[a.severity]!.icon} ${alertTitle(a)}`), explainBlock(a), h("div", {}, `${sourceLabel(a.admiralty.reliability)} · ${truthLabel(a.admiralty.credibility)} · ${CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status} · ${ago(a.last_seen)}`)),
       ),
       ...(as.length > 4 ? [h("div", { class: "note" }, `+${as.length - 4} more (click to zoom)`)] : []),
     );

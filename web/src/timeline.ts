@@ -1,6 +1,7 @@
 // Timeline: stacked histogram of alerts by kind over the last 24 h, brush -> global time window,
 // playback (1x = 1 min of data per second, 10x, 60x) and a "now" lock.
 import { h } from "./dom";
+import { css } from "./theme/palette";
 import { kindLabel } from "./labels";
 import { patch, state } from "./store";
 
@@ -10,8 +11,9 @@ const W = 960;
 const H = 76;
 const PAD_B = 14;
 
-const PALETTE = ["#f85149", "#db6dff", "#58a6ff", "#3fb8c8", "#78c878", "#ff8c00", "#ffd33d", "#ffa0c8", "#c8c8c8", "#ffffff"];
-const colorFor = (kinds: string[], k: string): string => PALETTE[kinds.indexOf(k) % PALETTE.length]!;
+// One hue (alert red); the alert types are told apart by stack order and the key's opacity steps.
+const opacityFor = (kinds: string[], k: string): number => 1 - (kinds.indexOf(k) % 5) * 0.16;
+const colorFor = (kinds: string[], k: string): string => css("alert", opacityFor(kinds, k));
 
 let timer: number | null = null;
 let collapsed = false;
@@ -116,7 +118,7 @@ export function renderTimeline(root: HTMLElement): void {
   }
   const w = state.window;
   const px = (ms: number): number => ((Math.min(t1, Math.max(t0, ms)) - t0) / SPAN) * W;
-  const sel = rect(w ? px(w.from) : 0, 0, w ? px(w.to) - px(w.from) : 0, H - PAD_B, "rgba(88,166,255,0.22)", "tl-sel");
+  const sel = rect(w ? px(w.from) : 0, 0, w ? px(w.to) - px(w.from) : 0, H - PAD_B, css("neutral", 0.22), "tl-sel");
   const setSel = (a: number, b: number): void => {
     sel.setAttribute("x", String(px(a)));
     sel.setAttribute("width", String(Math.max(0, px(b) - px(a))));

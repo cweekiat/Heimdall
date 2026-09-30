@@ -4,6 +4,7 @@ import { api } from "./api";
 import type { SourceState } from "./api";
 import { ago, h } from "./dom";
 import { icon, iconButton } from "./icons";
+import { KeysSection } from "./keysui";
 import type { IconName } from "./icons";
 import { T } from "./labels";
 import { table } from "./panels";
@@ -27,6 +28,7 @@ export class Sources {
   private error = "";
   private timer = 0;
   private busy = false;
+  private keys = new KeysSection({ list: () => api.keys(), put: (n, v) => api.putKey(n, v), del: (n) => api.deleteKey(n) });
 
   constructor() {
     this.body = createWindow({
@@ -39,6 +41,7 @@ export class Sources {
       h: 420,
       onOpen: () => {
         void this.refresh();
+        void this.keys.load();
         this.timer = window.setInterval(() => {
           if (document.visibilityState !== "hidden") void this.refresh();
         }, 10_000);
@@ -123,6 +126,7 @@ export class Sources {
         h("div", { class: "row" }, h("p", { class: "note" }, T.sourcesNote), iconButton("reset", T.refresh, () => void this.refresh())),
         this.error ? h("div", { class: "fail", role: "alert" }, this.error) : null,
         this.list.length === 0 && !this.error ? h("div", { class: "empty" }, T.placeholderSources) : table(["", "Source", "Status", "Last update", "Per hour", "Collect"], rows),
+        this.keys.el,
       ),
     );
   }

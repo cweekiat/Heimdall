@@ -1,6 +1,8 @@
 // Shared UI helpers, alert queue and data-health view.
 import type { Alert } from "./api";
 import { ago, fmtTime, h } from "./dom";
+import { css } from "./theme/palette";
+import { explainBlock } from "./explain";
 import { alertTitle, aoiName, confidenceLabel, CORROBORATION_LABEL, kindLabel, PRIORITY_WORD, SOURCE_LABEL, T, truthLabel } from "./labels";
 import { patch, selectAlert, state, triage } from "./store";
 
@@ -117,13 +119,13 @@ export function sparkline(values: (number | null)[], baseline: number | null): S
     if (dash) p.setAttribute("stroke-dasharray", dash);
     svg.append(p);
   };
-  if (baseline !== null) mk(`M0 ${y(baseline)} H100`, "#9fb0c0", "3 2");
+  if (baseline !== null) mk(`M0 ${y(baseline)} H100`, css("notice"), "3 2");
   let d = "";
   values.forEach((v, i) => {
     if (v === null) return;
     d += `${d ? "L" : "M"}${(i / (values.length - 1)) * 100} ${y(v)} `;
   });
-  mk(d, "#58a6ff");
+  mk(d, css("neutral"));
   return svg;
 }
 
@@ -224,6 +226,7 @@ function renderQueueList(list: HTMLElement): void {
         "button",
         { class: `card sev-${a.severity}`, "data-id": a.id, "aria-pressed": String(a.id === state.selected), onclick: () => void selectAlert(a.id) },
         h("div", { class: "t" }, `${pr.icon} `, alertTitle(a)),
+        explainBlock(a),
         h(
           "div",
           { class: "m" },

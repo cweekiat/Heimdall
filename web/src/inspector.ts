@@ -9,6 +9,7 @@ import { icon, iconButton } from "./icons";
 import type { IconName } from "./icons";
 import { alertTitle, aoiName, CORROBORATION_LABEL, confidenceLabel, coverageLabel, KIND_ICON, kindLabel, sourceLabel, T, truthLabel } from "./labels";
 import { chart, PRIORITY, STATUS_LABEL, table } from "./panels";
+import { explainBlock } from "./explain";
 import { technicalDetails } from "./technical";
 import { addNote, loadDetail, patch, state, triage } from "./store";
 
@@ -62,6 +63,7 @@ function tabNow(d: AlertDetail): Kid[] {
       factRow("seen", T.seenFor(mins), "How long it has persisted"),
       factRow("coverage", T.dataCoverage(covWord), "How much data supports this"),
     ),
+    explainBlock(a, d.evidence),
     h("p", { class: "plain" }, plainSentence(d)),
     ev?.counterfactual && h("p", { class: "clears" }, h("strong", {}, `${T.clearsWhen}: `), ev.counterfactual),
     h("h3", {}, "Things involved"),
