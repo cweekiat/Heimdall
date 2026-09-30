@@ -6,9 +6,9 @@ import asyncio
 
 import httpx
 
+from heimdall.config import AOI
 from heimdall.ingest.adsb import AdsbAggregatorConnector
 from heimdall.ingest.http import RateLimitedClient
-from heimdall.config import AOI
 
 
 def test_403_stops_polling_and_reports_needs_key() -> None:
