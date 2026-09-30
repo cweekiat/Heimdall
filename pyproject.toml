@@ -18,6 +18,8 @@ dependencies = [
   "sse-starlette>=2.1",
   "structlog>=24.4",
   "prometheus-client>=0.21",
+  "h5py>=3.16.0",
+  "sgp4>=2.27",
 ]
 
 [dependency-groups]

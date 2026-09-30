@@ -329,6 +329,7 @@ KEY_CONNECTORS: dict[str, str] = dict(
         ("OPENSKY_CLIENT_SECRET", "opensky_global"),
         ("FIRMS_MAP_KEY", "firms"),
         ("CLOUDFLARE_RADAR_TOKEN", "cloudflare_radar"),
+        ("EARTHDATA_TOKEN", "black_marble"),  # task 019: NASA Earthdata bearer token (LAADS)
     ]
 )
 
