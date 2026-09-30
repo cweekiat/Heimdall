@@ -255,7 +255,7 @@ def create_app(
 
     @app.post("/api/alerts/clear")
     def clear_alerts() -> dict[str, int]:
-        """Expire every open alert (not a verdict: DISMISSED stays analyst-only). Audited per alert."""
+        """Expire every open alert (not a verdict; DISMISSED is analyst-only), audited."""
         open_states = [
             AlertStatus.NEW,
             AlertStatus.ACKNOWLEDGED,
