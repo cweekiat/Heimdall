@@ -40,6 +40,7 @@ class AOI(BaseModel):
 class StorageCfg(BaseModel):
     duckdb_path: str = "data/heimdall.duckdb"
     lake_dir: str = "data/lake"
+    global_retention_days: int = 7  # 024g: worldwide display data (lake/global/...), not AOI data
     bus: str = "memory"
     store: str = "duckdb"
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -61,3 +62,13 @@ class ParquetLake:
                 out.extend(str(p) for p in sorted(d.glob("part-*.parquet")))
             t += timedelta(hours=1)
         return out
+
+    def purge_global(self, before: datetime) -> int:
+        """Remove `global/*` date partitions strictly older than `before`'s date (024g janitor)."""
+        cutoff = before.astimezone(UTC).strftime("%Y-%m-%d")
+        n = 0
+        for d in (self.root / "global").glob("*/date=*"):
+            if d.name[len("date=") :] < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+                n += 1
+        return n

@@ -3,6 +3,7 @@
 storage:
   duckdb_path: data/heimdall.duckdb
   lake_dir: data/lake
+  global_retention_days: 7   # 024g: lake/global/* + is_global store rows; AOI data is kept
   bus: memory          # memory | redis (scale-out)
   store: duckdb        # duckdb | clickhouse (scale-out)
 

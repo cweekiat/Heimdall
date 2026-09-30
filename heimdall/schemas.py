@@ -96,6 +96,8 @@ class AircraftObs(BaseModel):
     seen_pos: float | None = None  # s since position last updated
     h3_r4: str = ""
     h3_r6: str = ""
+    # 024g: worldwide display-only row (OpenSky). AOI detectors skip it (no NIC/NACp).
+    is_global: bool = False
 
     @property
     def is_true_adsb(self) -> bool:
@@ -119,6 +121,7 @@ class VesselObs(BaseModel):
     destination: str | None = None
     h3_r4: str = ""
     h3_r6: str = ""
+    is_global: bool = False  # 024g: outside every AOI, downsampled, display only
 
 
 class GeoEvent(BaseModel):
@@ -322,6 +325,8 @@ KEY_CONNECTORS: dict[str, str] = dict(
         ("GFW_TOKEN", "gfw"),
         ("FAA_NMS_KEY", "faa_nms_notam"),
         ("FAA_NMS_SECRET", "faa_nms_notam"),
+        ("OPENSKY_CLIENT_ID", "opensky_global"),
+        ("OPENSKY_CLIENT_SECRET", "opensky_global"),
     ]
 )
 

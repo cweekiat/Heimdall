@@ -49,6 +49,10 @@ class CompositeStore:
     def insert_vessels(self, rows: Sequence[VesselObs]) -> int:
         return self.read.insert_vessels(rows)
 
+    def purge_global(self, before: datetime) -> int:
+        fn = getattr(self.read, "purge_global", None)
+        return int(fn(before)) if fn else 0
+
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
         return self.read.insert_events(rows)
 
