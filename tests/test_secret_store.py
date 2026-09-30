@@ -43,3 +43,12 @@ def test_unset_and_corrupt_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     store = FileSecretStore(p)
     assert store.get("AISSTREAM_KEY") is None
     assert {k.name: k for k in store.status()}["AISSTREAM_KEY"].is_set is False
+
+
+def test_corrupt_file_is_not_overwritten(tmp_path: Path) -> None:
+    p = tmp_path / "keys.json"
+    p.write_text("{not json")
+    store = FileSecretStore(p)
+    with pytest.raises(RuntimeError):
+        store.set("AISSTREAM_KEY", "abcdefghijklmnop")
+    assert p.read_text() == "{not json"

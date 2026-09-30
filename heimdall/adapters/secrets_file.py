@@ -24,12 +24,20 @@ class FileSecretStore:
         self._path = path
         self._lock = threading.Lock()
 
-    def _read(self) -> dict[str, str]:
+    def _read(self, strict: bool = False) -> dict[str, str]:
+        """Missing file -> {}. Corrupt file -> {} for reads, but raise before a write
+        (strict) so one bad save can never silently wipe the other keys."""
         try:
             raw = json.loads(self._path.read_text())
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as e:
+            if strict:
+                raise RuntimeError("secrets file unreadable; refusing to overwrite") from e
             return {}
         if not isinstance(raw, dict):
+            if strict:
+                raise RuntimeError("secrets file malformed; refusing to overwrite")
             return {}
         return {str(k): v for k, v in raw.items() if isinstance(v, str) and v}
 
@@ -57,14 +65,14 @@ class FileSecretStore:
 
     def set(self, name: str, value: str) -> None:
         with self._lock:
-            data = self._read()
+            data = self._read(strict=True)
             data[name] = value
             self._write(data)
         log.info("secret_set", name=name)
 
     def delete(self, name: str) -> None:
         with self._lock:
-            data = self._read()
+            data = self._read(strict=True)
             if data.pop(name, None) is not None:
                 self._write(data)
         log.info("secret_deleted", name=name)
@@ -86,7 +94,7 @@ class FileSecretStore:
                     name=name,
                     connector=conn,
                     is_set=True,
-                    last4=val[-4:] if len(val) >= 8 else None,
+                    last4=val[-4:] if len(val) >= 12 else None,
                     origin=origin,  # type: ignore[arg-type]
                 )
             )
