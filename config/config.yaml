@@ -58,6 +58,23 @@ detectors:
     baseline_min_samples: 288 # 1 day of 5-min ticks before z is enforced; until then "no baseline" gap. Prior
     full_coverage_aircraft: 15  # coverage confidence saturates at 15 quality aircraft (docs/detectors.md)
     single_provider_factor: 0.8 # confidence penalty when only one aggregator sees the cell. Prior
+    # Emitter localisation, radio-horizon fit d = 4.12 (sqrt(h)+sqrt(h_j)) km (task 029a). All priors, not backtested
+    loc_enabled: true
+    loc_min_degraded: 3       # bad aircraft with altitude; fewer -> centroid fallback. Prior, not backtested
+    loc_min_healthy: 2        # healthy aircraft at similar altitude for the outside test. Prior, not backtested
+    loc_degraded_radius_km: 200 # degraded fixes used: within this of the cell's source centroid, any cell. Prior, not backtested
+    loc_radius_km: 400        # candidate r6 cells within this of the degraded-fix centroid (task spec)
+    loc_max_candidates: 16000 # cap on the grid (radius shrinks to fit); keeps the 5-min tick fast
+    loc_jammer_height_m: 10   # assumed ground emitter height. Prior, not backtested
+    loc_horizon_km: 4.12      # standard 4/3-earth radio-horizon constant, km per sqrt(m)
+    loc_top_k: 25             # minimum top-scoring cells forming the uncertainty ellipse. Prior, not backtested
+    loc_agreement_tol: 0.03   # cells within this of the best agreement are the feasible region; point = its centroid. Prior, not backtested
+    loc_min_agreement: 0.6    # below this the fit is rejected and the centroid is used. Prior, not backtested
+    loc_alt_band_m: 3000      # healthy fixes count only within this altitude of a degraded fix. Prior, not backtested
+    loc_max_fixes_per_ac: 6   # per-aircraft thinning (weights keep each aircraft equal). Prior, not backtested
+    loc_max_healthy_ac: 100   # nearest healthy aircraft used. Prior, not backtested
+    loc_healthy_radius_km: 800 # healthy aircraft considered within this of the centroid. Prior, not backtested
+    loc_soft_weight: 0.05     # soft-margin tie-break weight. Prior, not backtested
   spoofing:
     min_dt_s: 5
     teleport_kt: 1323         # Mach 2 @ ISA SL
