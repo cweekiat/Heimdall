@@ -10,6 +10,7 @@ to the hosts in config/sources.yaml.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 import traceback
 
@@ -37,10 +38,8 @@ async def probe(conn: object, seconds: float) -> str:
         res += f" | health={h.status} detail={h.detail!r} last_error={str(h.last_error)[:200]!r}"
     except Exception as e:
         res += f" | health() failed: {e}"
-    try:
+    with contextlib.suppress(Exception):
         await conn.aclose()  # type: ignore[attr-defined]
-    except Exception:
-        pass
     return res
 
 
