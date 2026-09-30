@@ -4,9 +4,9 @@ sources:
   adsb_lol:        {domain: air,    reliability: B, latency_s: 5,     base: "https://api.adsb.lol",             auth: none,            rps: 1,   phase: 1, verified: true}
   adsb_fi:         {domain: air,    reliability: B, latency_s: 5,     base: "https://opendata.adsb.fi/api",     auth: none,            rps: 1,   phase: 1, verified: true}
   airplanes_live:  {domain: air,    reliability: B, latency_s: 5,     base: "https://api.airplanes.live",       auth: none,            rps: 1,   phase: 1, verified: false}
-  adsb_lol_history:{domain: air,    reliability: B, latency_s: 86400, base: "https://github.com/adsblol",       auth: none,                      phase: 1, verified: false}
+  adsb_lol_history:{domain: air,    reliability: B, latency_s: 86400, base: "https://github.com/adsblol",       auth: none,                      phase: 1, verified: true}
   opensky:         {domain: air,    reliability: B, latency_s: 10,    base: "https://opensky-network.org/api",  auth: OPENSKY_CLIENT_ID, phase: 1, verified: false}
-  gpsjam:          {domain: air,    reliability: B, latency_s: 86400, base: "https://gpsjam.org",               auth: none,                      phase: 1, verified: false}
+  gpsjam:          {domain: air,    reliability: B, latency_s: 86400, base: "https://gpsjam.org",               auth: none,                      phase: 1, verified: true}
   faa_nms_notam:   {domain: air,    reliability: A, latency_s: 300,   base: "https://nms.aim.faa.gov",          auth: FAA_NMS_KEY,               phase: 2, verified: false}
   aisstream:       {domain: sea,    reliability: B, latency_s: 5,     base: "wss://stream.aisstream.io/v0/stream", auth: AISSTREAM_KEY,          phase: 2, verified: false}
   gfw:             {domain: sea,    reliability: B, latency_s: 86400, base: "https://gateway.api.globalfishingwatch.org/v3", auth: GFW_TOKEN,   phase: 2, verified: false}

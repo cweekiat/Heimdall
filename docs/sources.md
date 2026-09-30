@@ -5,15 +5,20 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 ## adsb_lol
 
-**Status:** verified (Baltic: OK, Myanmar: OK; military endpoint: 503)
+**Status:** verified (general endpoints OK; military endpoint: 503)
 
 **Base URL:** `https://api.adsb.lol`
 
 **Endpoints:**
-- `/v2/point/{lat}/{lon}/{radius_nm}` — Aircraft within radius (nautical miles)
+- `/v2/point/{lat}/{lon}/{radius_nm}` — Aircraft within radius (nautical miles) ✓
 - `/v2/mil/point/{lat}/{lon}/{radius_nm}` — Military aircraft (503 Service Unavailable)
 - `/v2/closest/{lat}/{lon}` — Nearest aircraft
 - `/v2/hex/{icao_hex}` — Single aircraft by hex code
+
+**Military Aircraft Fallback:**
+- `/v2/point` + filter by `dbFlags` (bit mask for military designation)
+- Slower than dedicated endpoint but functional
+- Requires client-side filtering; check flag value for military indicators
 
 **Authentication:** None (public)
 
@@ -28,11 +33,12 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 **Fixture Path:** `tests/fixtures/adsb_lol/point_56_20.5_250_baltic.json`, `point_20.5_96.5_250_myanmar.json` (50 aircraft samples)
 
 **Gotchas:** 
-- Military endpoint returns 503 
+- `/v2/mil` endpoint consistently returns 503; use `/v2/point` with `dbFlags` filtering as workaround
 - Response format mirrors ADSBexchange v2 API
 - Max radius typically 250 nm
+- Military designation via `dbFlags` not as comprehensive as dedicated `/v2/mil`
 
-**Source:** [adsb.lol API docs](https://www.adsb.lol/docs/open-data/api/), [GitHub](https://github.com/adsblol/api)
+**Source:** [adsb.lol API docs](https://www.adsb.lol/docs/open-data/api/), [GitHub](https://github.com/adsblol/api), [dbFlags reference](https://github.com/adsblol/api#dbflags)
 
 ---
 
@@ -76,67 +82,80 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 ## airplanes_live
 
-**Status:** broken (requires contact/approval)
+**Status:** needs-key (contact approval required; no self-serve registration)
 
 **Base URL:** `https://api.airplanes.live`
 
 **Endpoints:**
-- `/api/v2/point/{lat}/{lon}/{radius_nm}` — Aircraft within radius
-- `/api/v2/hex/{icao_hex}` — Single aircraft
-- `/api/v2/closest/{lat}/{lon}` — Nearest aircraft
+- `/v2/point/{lat}/{lon}/{radius_nm}` — Aircraft within radius
+- `/v2/hex/{icao_hex}` — Single aircraft
+- `/v2/closest/{lat}/{lon}` — Nearest aircraft
 
-**Authentication:** Contact required; responds with: "Please contact us at contact@airplanes.live. Your email MUST include any links, a description of the project, and any information you deem appropriate."
+**Authentication:** 
+- No API key mechanism; contact approval only
+- Email contact@airplanes.live with: project description, intended use, links, organization info
+- Response: "Please contact us at contact@airplanes.live. Your email MUST include any links, a description of the project, and any information you deem appropriate."
 
-**Rate Limit:** 1 request/second (stated)
+**Rate Limit:** 1 request/second (stated; subject to approval)
 
 **Fields of Interest:** ADSBexchange v2 compatible: `hex`, `type`, `alt_baro`, `alt_geom`, `nic`, `nac_p`, `track`, `gs`, `squawk`
 
-**Latency:** 5 seconds
+**Latency:** 5 seconds (estimated)
 
-**License:** Requires prior approval; terms unclear
+**License:** Requires prior approval; terms provided post-contact
 
-**Fixture Path:** None (access denied)
+**Fixture Path:** None (access requires approval)
 
 **Gotchas:** 
-- No self-serve access; contact required for all use
-- Responses indicate active vetting of requesters
-- May have undisclosed ToS/commercial restrictions
+- No self-serve access; mandatory contact/vetting process
+- Approval turnaround time unclear (days? weeks?)
+- Commercial use restrictions likely; clarify before committing
+- API endpoint documentation behind approval wall (403 Forbidden)
+- Alternative: use adsb_lol or adsb.fi for unrestricted data
 
-**Source:** [Airplanes.live API](https://airplanes.live/api/), [GitHub](https://github.com/airplanes-live/api), [API docs](https://airplanes.live/api-docs/) (403 Forbidden)
+**Source:** [Airplanes.live](https://airplanes.live/), [Contact form](https://airplanes.live/contact), [GitHub](https://github.com/airplanes-live/api)
 
 ---
 
 ## adsb_lol_history
 
-**Status:** unverified (archived repository)
+**Status:** verified (2026 releases confirmed; split-archive format)
 
 **Base URL:** `https://github.com/adsblol/` (GitHub releases)
 
 **Repository Structure:**
 - Separate repos per year: `globe_history_2023`, `globe_history_2024`, `globe_history_2025`, `globe_history_2026`
-- Each release = 1 day of flight data (gzip-compressed JSON)
-- Files: `/traces/` (per-aircraft), `/heatmap/` (replay data)
+- Each release = 1 day of flight data (readsb output)
+- Releases named `v{YYYY}.{MM}.{DD}-planes-readsb-{env}-0` (e.g., `v2026.09.28-planes-readsb-prod-0`)
 
-**File Format:** 
-- Gzip-compressed JSON (readsb output)
-- Per-aircraft JSON files for date
-- Format documented in [wiedehopf/readsb README-json.md](https://github.com/wiedehopf/readsb/blob/dev/README-json.md#trace-jsons)
+**File Format & Delivery:**
+- Split into multi-part tar archives (.tar.aa, .tar.ab, etc.) to fit GitHub asset size limits
+- Latest (2026-09-28): 2 GB (tar.aa) + 1.9 GB (tar.ab)
+- Each part must be downloaded and concatenated: `cat *.tar.a* | tar xz`
+- Readsb JSON format; schema in [wiedehopf/readsb README-json.md](https://github.com/wiedehopf/readsb/blob/dev/README-json.md#trace-jsons)
+- Per-aircraft traces + static data
 
-**Release Naming:** Daily releases, e.g., `2025-01-15`; RELEASES.md index provided
+**Release Variants:**
+- `staging`: Pre-production data
+- `prod`: Production (recommended)
+- `mlatonly`: MLAT-only positions
+
+**Range Requests:** Not supported (GitHub redirects to CDN; 302 on Range header)
 
 **Rate Limit:** N/A (GitHub releases, no API rate limit for reads)
 
 **License:** ODbL 1.0 + CC0 1.0 (dual-licensed)
 
-**Fixture Path:** None (archive-only; files typically >50 MB per day)
+**Fixture Path:** None (files >50 MB; document asset naming/sizes only)
 
 **Gotchas:** 
-- `globe_history_2025` archived Jan 5, 2026; read-only
-- Readsb format; JSON schema in wiedehopf repo
-- Individual day files can exceed 50 MB; plan accordingly
+- Multi-part downloads required; must concatenate before extraction
+- Individual day files exceed 50 MB; bandwidth-heavy (~4 GB/day for prod+staging)
+- Range requests not supported; full downloads only
 - No live API; static releases only
+- Readsb format requires decompression + JSON parsing
 
-**Source:** [adsblol/globe_history_2025](https://github.com/adsblol/globe_history_2025), [Release list](https://github.com/adsblol/globe_history_2025/releases), [Historical docs](https://www.adsb.lol/docs/open-data/historical/)
+**Source:** [adsblol/globe_history_2026](https://github.com/adsblol/globe_history_2026), [Latest release](https://github.com/adsblol/globe_history_2026/releases/latest), [Readsb docs](https://github.com/wiedehopf/readsb/blob/dev/README-json.md)
 
 ---
 
@@ -183,39 +202,43 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 ## gpsjam
 
-**Status:** unverified (data format unclear)
+**Status:** verified (daily CSV pattern confirmed; data accessible)
 
 **Base URL:** `https://gpsjam.org`
 
 **Data Access:**
 - **Web interface:** Interactive map at https://gpsjam.org/
-- **Daily data:** Reported as 1 CSV file per day (format undocumented)
-- **Hexagonal aggregation:** Interference mapped to hexagonal cells
-- **Date range:** Feb 14, 2022 to present; manual updates ~midnight UTC
+- **Daily data URL pattern:** `https://gpsjam.org/data/{YYYY}-{MM}-{DD}-h3_4.csv` (gzip-compressed)
+- **Hexagonal aggregation:** Interference mapped to H3 hexagonal cells (level 4)
+- **Date range:** Feb 14, 2022 to present; updates ~24 hours after aggregation window closes (UTC)
 
 **Data Format:**
-- CSV (1 file/day per docs); exact columns not documented
+- CSV (gzip-compressed; Content-Encoding: gzip)
+- Header row: `hex,count_good_aircraft,count_bad_aircraft`
+- Hex: H3 cell ID (hexadecimal string, 16 chars)
+- count_good_aircraft: aircraft in the cell that day with good navigation accuracy
+- count_bad_aircraft: aircraft with degraded accuracy (low NIC); GPSJam colour = (bad-1)/total: green <2 %, yellow 2-10 %, red >10 %
 - Aggregates 24-hour ADS-B position accuracy data from ADS-B Exchange
-- Hex cells color-coded: green (0-2% errors), yellow (2-10%), red (>10%), gray (insufficient data)
 
 **Authentication:** None (public web interface)
 
-**Rate Limit:** N/A for web view; no API documented
+**Rate Limit:** Not documented; assume standard web rate limits (1-2 req/sec)
 
-**Fields of Interest:** Date, hex grid ID, accuracy percentiles, aircraft count
+**Fields of Interest:** `hex`, `count_good_aircraft`, `count_bad_aircraft`
 
-**Latency:** 24 hours (daily update)
+**Latency:** 24 hours (daily update, next-day UTC 00:00)
 
 **License:** Not explicitly stated; research-friendly use suggested
 
-**Fixture Path:** None (daily download mechanism not confirmed)
+**Fixture Path:** `tests/fixtures/gpsjam/2026_09_29.csv` (1 KB sample; first 50 rows)
 
 **Gotchas:** 
-- No documented public data download API or CSV URL pattern
-- Data updates manual (not real-time)
-- Measures aircraft interference at altitude; ground-level impacts differ
-- Limited historical depth (Feb 2022 onwards)
-- Some dates incomplete or missing
+- Files are gzip-compressed; decompress after download (Content-Encoding header set)
+- H3 resolution is fixed at level 4 (~1,770 km² per cell, edge ~22 km); no parameter for other resolutions
+- Measures aircraft interference at cruise altitude; ground-level impacts differ significantly
+- Some dates incomplete or missing (check for 0-row files)
+- Manual update process (not real-time); occasional gaps in historical data
+- File size typically 50-500 KB compressed
 
 **Source:** [GPSJam GitHub](https://github.com/guofengji/gpsjam.org), [Bellingcat Toolkit docs](https://bellingcat.gitbook.io/toolkit/more/all-tools/gpsjam), [GPSJam.org](https://gpsjam.org/)
 
@@ -348,14 +371,17 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 ## nga_msi
 
-**Status:** broken (Swagger endpoint returns 503)
+**Status:** broken (portal under maintenance; no JSON API confirmed)
 
-**Base URL:** `https://msi.nga.mil/api`
+**Base URL:** `https://msi.nga.mil`
 
-**Intended Endpoints:**
-- `/swagger-ui.html` — Interactive API docs (503 Service Unavailable)
-- `/publications/download` — PDF/data downloads (functional)
-- `/in-force-ntm` — In-force Notices to Mariners (presumed; not confirmed)
+**Intended Endpoints (Status: Unavailable):**
+- `/api/publications/broadcast-warn?output=json&navArea=P` — HYDROPAC warnings (returns HTML error page)
+- `/api/publications/broadcast-warn?output=json&navArea=11` — NAVAREA XI (returns HTML error page)
+- `/api/swagger-ui.html` — Interactive API docs (503 Service Unavailable)
+- `/api/publications/download` — PDF/data downloads (status unclear)
+
+**Current Status:** Portal displays "MSI IS CURRENTLY UNDER MAINTENANCE" with notices to use PDF downloads instead.
 
 **Authentication:** None (public navigation warnings)
 
@@ -363,34 +389,46 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 **Fields of Interest:** Notice ID, effective date, area (NAVAREA), coordinates, hazard type, chart corrections
 
-**Latency:** 1 hour (Notice publication/distribution)
+**Latency:** 1 hour (Notice publication/distribution, when operational)
 
 **License:** U.S. Government public data (no copyright)
 
 **Fixture Path:** None (API unreachable; Swagger returns 503)
 
+**Alternative Access:**
+- NTM PDF releases available: https://msi.nga.mil/ (apology_objects path)
+- Latest NTM releases linked on home page
+- Consider scraping/parsing PDF NTMs as fallback
+
 **Gotchas:** 
-- Swagger UI currently unavailable (503)
-- Navigation warnings (HYDROPAC, NAVAREA XI) may be in PDF format only
-- No JSON endpoint confirmed; may require scraping HTML notices
+- JSON API endpoint not operational; portal under maintenance (as of Sept 2026)
+- No confirmed JSON endpoint for automated queries
+- Navigation warnings (HYDROPAC, NAVAREA XI) may be PDF-only
 - Commercial use restrictions may apply to derived products
 - U.S. domestic notices; international NAVAREA data may be sparse
+- Maintenance window duration unknown; may persist
 
-**Source:** [NGA MSI Home](https://msi.nga.mil/home), [Swagger UI](https://msi.nga.mil/api/swagger-ui.html) (503), [Maritime Safety Products](https://www.nga.mil/resources/Maritime_Safety_Products_and_Services.html)
+**Source:** [NGA MSI Home](https://msi.nga.mil/home), [Maritime Safety Products](https://www.nga.mil/resources/Maritime_Safety_Products_and_Services.html), [NTM Archive](https://msi.nga.mil/api/publications)
 
 ---
 
 ## china_msa
 
-**Status:** unverified (limited content; HTML sample minimal)
+**Status:** blocked (access denied by firewall/geo-block)
 
 **Base URL:** `https://www.msa.gov.cn`
 
-**Endpoints:**
+**Intended Endpoints:**
 - `/msacncms_wap/pages/info_warn.do?channelId=9C219298-B27F-460E-995A-99401B3FF6AF` — Navigation warnings (航行警告)
 - Regional MSA offices: Shanghai, Tianjin, Guangdong, Fujian; separate channels
+- Regional warning listings: Sansha/Hainan (三沙/海南), Guangdong (广东), Fujian (福建)
 
-**Authentication:** None (public)
+**Access Status:** HTTP 403 ERROR: ACCESS DENIED
+- Direct curl requests blocked
+- Likely geo-IP block (non-China origin) or firewall restriction
+- Browser-based JavaScript may work if run from China IP
+
+**Authentication:** None required (public); access blocked at network level
 
 **Content Format:** HTML pages (no JSON API documented)
 
@@ -399,21 +437,27 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 - Regional coverage: East China Sea, Yangtze River, South China Sea, coastal waters
 - Issuing offices: Shanghai MSA, Tianjin MSA, Guangdong MSA, Fujian MSA
 
-**Latency:** 3600 seconds (daily/weekly updates)
+**Latency:** 3600 seconds (daily/weekly updates, when accessible)
 
 **License:** Chinese government public data
 
-**Fixture Path:** `tests/fixtures/china_msa/sample_nav_warnings.html` (HTML sample, 207 bytes; minimal content)
+**Fixture Path:** None (access blocked)
+
+**Workarounds:**
+- Use VPN/proxy from China IP to bypass geo-block
+- Archive.org Wayback Machine may have historical snapshots
+- Contact China MSA directly for data access
+- Monitor via news/satellite imagery as alternative
 
 **Gotchas:** 
+- Access blocked by network-level firewall (403); not account/auth issue
 - No JSON/API endpoint; HTML only (requires scraping)
-- Page returned minimal content (207 bytes); may require session/authentication
 - Regional warnings scattered across multiple MSA office URLs
 - Content in Simplified Chinese; no English mirror
-- Geopolitical sensitivity (South China Sea territorial claims); data may be restricted
+- Geopolitical sensitivity (South China Sea territorial claims); data restricted by design
 - Update frequency unclear; no RSS/API for monitoring
 
-**Source:** [China MSA Navigation Warnings](https://www.msa.gov.cn/), [Sansha/Hainan/Guangdong/Fujian regions](https://en.msa.gov.cn/), [MSA Wikipedia](https://en.wikipedia.org/wiki/China_Maritime_Safety_Administration)
+**Source:** [China MSA Home](https://www.msa.gov.cn/), [MSA Wikipedia](https://en.wikipedia.org/wiki/China_Maritime_Safety_Administration), Requires China-based IP or VPN
 
 ---
 
@@ -421,14 +465,14 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 | Source | Status | Key Gotcha |
 |--------|--------|-----------|
-| adsb_lol | verified | Military endpoint 503 |
+| adsb_lol | verified | /v2/mil returns 503; use /v2/point + dbFlags filter |
 | adsb_fi | verified | Non-commercial only; v2 deprecated |
-| airplanes_live | broken | Requires contact approval |
-| adsb_lol_history | unverified | GitHub releases; >50 MB/day files |
+| airplanes_live | needs-key | Contact approval required; no self-serve access |
+| adsb_lol_history | verified | Multi-part tar archives; >2 GB each; no range requests |
 | opensky | needs-key | 4,000 calls/day (auth); strict limits |
-| gpsjam | unverified | No documented data download API |
+| gpsjam | verified | Daily gzip CSV at /data/YYYY-MM-DD-h3_4.csv |
 | faa_nms_notam | needs-key | FAA approval required; no public API docs |
 | aisstream | needs-key | WebSocket-only; 3-conn/acct limit |
 | gfw | needs-key | Rate limits shared; commercial license |
-| nga_msi | broken | Swagger 503; no JSON endpoint confirmed |
-| china_msa | unverified | HTML-only; no API; geopolitical sensitivities |
+| nga_msi | broken | Portal under maintenance; no JSON API confirmed |
+| china_msa | blocked | Geo-IP 403 block; requires China-based IP or VPN |
