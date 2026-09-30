@@ -80,6 +80,11 @@ export function effect(c: Confounder): string {
   return `confidence lowered ×${+c.factor.toFixed(2)}`;
 }
 
+/** The note may already end with "; confidence lowered x0.8"; drop it so the factor shows once. */
+export function stripEffect(note: string): string {
+  return note.replace(/[;,]?\s*confidence lowered\s*[x×]?\s*[\d.]*\s*$/i, "").trim();
+}
+
 /** Spell out shorthand: a bare "Kp 6" becomes "geomagnetic storm (Kp 6)". */
 export function gloss(note: string): string {
   return /Kp\s?\d/.test(note) && !/geomagnetic/i.test(note) ? note.replace(/Kp\s?(\d)/, "geomagnetic storm (Kp $1)") : note;
@@ -112,7 +117,7 @@ export function renderContext(ctx: AlertContext | null, opts: CtxOpts = {}): HTM
     { class: "ctx" },
     h("h3", {}, "Things that could explain this"),
     ctx.confounders.length
-      ? h("ul", {}, ...ctx.confounders.map((c) => h("li", {}, `${gloss(c.note)} `, h("span", { class: "note" }, `(${effect(c)})`))))
+      ? h("ul", {}, ...ctx.confounders.map((c) => h("li", {}, `${gloss(stripEffect(c.note))} `, h("span", { class: "note" }, `(${effect(c)})`))))
       : h("div", { class: "note" }, EMPTY_WEATHER),
     ctx.gaps.length ? h("ul", { class: "note" }, ...ctx.gaps.map((g) => h("li", {}, g))) : null,
     h("h3", {}, "Can this be checked?"),

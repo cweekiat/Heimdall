@@ -22,7 +22,7 @@ from heimdall import config
 from heimdall.adapters.memory_store import MemoryStore
 from heimdall.backtest.replay import ReplayStore
 from heimdall.backtest.replay_io import read_bundle, read_obs_parquet
-from heimdall.geo import BBox, Ident
+from heimdall.geo import BBox, Ident, in_bbox
 from heimdall.ports import Store
 from heimdall.schemas import (
     ActionRequest,
@@ -71,6 +71,13 @@ def _ellipse(lat: float, lon: float) -> dict[str, object]:
         for t in range(31)
     ]
     return {"type": "Polygon", "coordinates": [pts]}
+
+
+def _wanted(key: str | int, ident: Ident | None) -> bool:
+    """Synthetic movers honour the Store's ident filter (one id or a set of ids)."""
+    if ident is None:
+        return True
+    return key in ident if isinstance(ident, frozenset) else key == ident
 
 
 def seed(store: Store, seed_value: int = 7) -> Store:
@@ -625,7 +632,11 @@ class LiveDemoStore(MemoryStore):
             return rows
         for ts in _grid(start, end, datetime.now(UTC)):
             for n, (hx, mv, kw) in enumerate(self.air):
+                if not _wanted(hx, ident):
+                    continue
                 lat, lon, trk = mv.at(ts.timestamp())
+                if bbox is not None and not in_bbox(lat, lon, bbox):
+                    continue
                 rows.append(
                     AircraftObs(
                         ts=ts,
@@ -657,9 +668,11 @@ class LiveDemoStore(MemoryStore):
         dark_at = self.boot - timedelta(minutes=3)
         for ts in _grid(start, end, datetime.now(UTC)):
             for mmsi, mv, kw in self.sea:
-                if mmsi == self.dark_id and ts > dark_at:
+                if (mmsi == self.dark_id and ts > dark_at) or not _wanted(mmsi, ident):
                     continue
                 lat, lon, cog = mv.at(ts.timestamp())
+                if bbox is not None and not in_bbox(lat, lon, bbox):
+                    continue
                 rows.append(
                     VesselObs(
                         ts=ts,
