@@ -1,9 +1,10 @@
 // Live aircraft and ship layers (deck.gl IconLayer) plus their detail cards.
 // Polls only the visible box: air every 5 s, ships every 30 s. Pauses while the tab is hidden and
 // never overlaps requests. Colours are cool/neutral: red and amber stay reserved for alerts.
+import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { api } from "./api";
-import type { AirProps, FC, SeaProps, SourceState } from "./api";
+import type { AirProps, DensityCell, FC, SeaProps, SourceState, TrafficResp } from "./api";
 import { rgba } from "./theme/palette";
 import { altitudeMeters, dropLines, view } from "./map3d";
 import { h } from "./dom";
@@ -22,11 +23,12 @@ export type Selected = { kind: "air"; id: string } | { kind: "sea"; id: number }
 const AIR_MS = 2000; // match the ~2 s writer flush; server-side query is bbox-limited
 const SEA_MS = 30000;
 const DECLUTTER_ZOOM = 5;
+export const DENSITY_BELOW_ZOOM = 5; // matches heimdall/api/traffic.py: below this the API returns H3 cells
 
 // ---- sprite atlas, generated in code (white masks, tinted per feature by deck). Passed as a
 // canvas, not a data: URL, because deck would fetch() the URL and CSP connect-src blocks data:.
 const TILE = 64;
-const NAMES = ["plane", "diamond", "arrow", "dot"] as const;
+const NAMES = ["plane", "diamond", "ship"] as const;
 function atlas(): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = TILE * NAMES.length;
@@ -74,19 +76,17 @@ function atlas(): HTMLCanvasElement {
     g.stroke();
   });
   at(2, () => {
-    // ship arrow pointing up
+    // ship silhouette pointing up: pointed bow, flat stern, small bridge notch
     g.beginPath();
     g.moveTo(0, -28);
-    g.lineTo(18, 24);
-    g.lineTo(0, 14);
-    g.lineTo(-18, 24);
-    g.closePath();
+    g.quadraticCurveTo(13, -14, 13, -4);
+    g.lineTo(13, 26);
+    g.lineTo(-13, 26);
+    g.lineTo(-13, -4);
+    g.quadraticCurveTo(-13, -14, 0, -28);
     g.fill();
-  });
-  at(3, () => {
-    g.beginPath();
-    g.arc(0, 0, 14, 0, Math.PI * 2);
-    g.fill();
+    g.globalCompositeOperation = "destination-out";
+    g.fillRect(-6, 8, 12, 4); // bridge line so it reads as a hull, not an arrow
   });
   return c;
 }
@@ -130,6 +130,8 @@ const ageWord = (s: number): string => (s < 90 ? `${Math.round(s)} s ago` : `${M
 export class Traffic {
   private air: Air[] = [];
   private sea: Sea[] = [];
+  private airCells: DensityCell[] = [];
+  private seaCells: DensityCell[] = [];
   private sources: SourceState[] = [];
   private counts: Record<string, number> = {};
   private trail: number[][] = [];
@@ -203,8 +205,9 @@ export class Traffic {
       return;
     }
     if (!filters.air) {
-      if (this.air.length) {
+      if (this.air.length || this.airCells.length) {
         this.air = [];
+        this.airCells = [];
         this.recount();
         this.ops.render();
       }
@@ -213,7 +216,10 @@ export class Traffic {
     this.busy.air = true;
     try {
       const only = activeSources(this.sources, "air");
-      this.air = only && only.length === 0 ? [] : flat(await api.air(this.ops.bbox(), only ?? []));
+      const r: TrafficResp<AirProps> | null =
+        only && only.length === 0 ? null : await api.air(this.ops.bbox(), only ?? [], this.ops.zoom());
+      if (r && r.type === "density") [this.air, this.airCells] = [[], r.cells];
+      else [this.air, this.airCells] = [r ? flat(r) : [], []];
     } catch {
       /* keep the last picture; the status strip shows source health */
     } finally {
@@ -233,8 +239,9 @@ export class Traffic {
       return;
     }
     if (!filters.sea) {
-      if (this.sea.length) {
+      if (this.sea.length || this.seaCells.length) {
         this.sea = [];
+        this.seaCells = [];
         this.recount();
         this.ops.render();
       }
@@ -243,7 +250,10 @@ export class Traffic {
     this.busy.sea = true;
     try {
       const only = activeSources(this.sources, "sea");
-      this.sea = only && only.length === 0 ? [] : flat(await api.sea(this.ops.bbox(), only ?? []));
+      const r: TrafficResp<SeaProps> | null =
+        only && only.length === 0 ? null : await api.sea(this.ops.bbox(), only ?? [], this.ops.zoom());
+      if (r && r.type === "density") [this.sea, this.seaCells] = [[], r.cells];
+      else [this.sea, this.seaCells] = [r ? flat(r) : [], []];
     } catch {
       /* keep the last picture */
     } finally {
@@ -284,6 +294,30 @@ export class Traffic {
     return view.mode === "3d" ? altitudeMeters(r.alt_baro, r.on_ground, view.exaggeration) : 0;
   }
 
+  /** Zoomed out: H3 density cells (opacity by log count); cells holding military get an amber outline. */
+  private densityLayers(): unknown[] {
+    const mk = (id: string, cells: DensityCell[], alpha: number): unknown[] => {
+      if (!cells.length) return [];
+      const max = Math.log1p(Math.max(...cells.map((c) => c.count)));
+      const a = (c: DensityCell): number => alpha * (0.15 + 0.85 * (Math.log1p(c.count) / max));
+      return [
+        new H3HexagonLayer<DensityCell>({
+          id,
+          data: cells,
+          getHexagon: (d) => d.h3,
+          getFillColor: (d) => rgba("neutral", a(d)),
+          getLineColor: (d) => (d.mil > 0 ? rgba("military", 0.9) : rgba("neutral", 0)),
+          stroked: true,
+          filled: true,
+          extruded: false,
+          lineWidthMinPixels: 1,
+          pickable: false,
+        }),
+      ];
+    };
+    return [...mk("air-density", this.airCells, 0.85), ...mk("sea-density", this.seaCells, 0.5)];
+  }
+
   // ---- deck layers
   layers(tool: string, zoom: number): unknown[] {
     const pick = tool === "none";
@@ -296,17 +330,21 @@ export class Traffic {
     if (this.trail.length > 1) {
       out.push(new PathLayer<{ p: number[][] }>({ id: "trail", data: [{ p: this.trail }], getPath: (d) => d.p as [number, number][], getColor: rgba("neutral", 0.9), widthMinPixels: 2.5 }));
     }
+    out.push(...this.densityLayers());
     out.push(
       new IconLayer<{ row: Sea; n: number }>({
         id: "ships",
         data: ds,
         iconAtlas: this.icons,
         iconMapping: MAPPING,
-        getIcon: (d) => ((d.row.sog ?? 0) > 0.5 ? "arrow" : "dot"),
+        getIcon: () => "ship",
         getPosition: (d) => [d.row.lon, d.row.lat],
         getAngle: (d) => -(d.row.cog ?? d.row.heading ?? 0),
-        getSize: (d) => ((d.row.sog ?? 0) > 0.5 ? 24 : 16),
-        getColor: (d) => (isMil(d.row) ? rgba("military", 0.95) : rgba("neutral", 0.9)),
+        getSize: (d) => ((d.row.sog ?? 0) > 0.5 ? 22 : 15),
+        getColor: (d) => {
+          const moving = (d.row.sog ?? 0) > 0.5; // moored or slow: same hull, smaller and dimmer
+          return isMil(d.row) ? rgba("military", moving ? 0.95 : 0.6) : rgba("neutral", moving ? 0.9 : 0.5);
+        },
         sizeUnits: "pixels",
         pickable: pick,
         onHover: (i) => this.hover(i.object ? `${(i.object as { row: Sea }).row.name ?? `MMSI ${(i.object as { row: Sea }).row.mmsi}`} · ${fmtSpeed((i.object as { row: Sea }).row.sog)}` : null, i.x, i.y),

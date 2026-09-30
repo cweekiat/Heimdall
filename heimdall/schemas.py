@@ -322,6 +322,8 @@ KEY_CONNECTORS: dict[str, str] = dict(
         ("GFW_TOKEN", "gfw"),
         ("FAA_NMS_KEY", "faa_nms_notam"),
         ("FAA_NMS_SECRET", "faa_nms_notam"),
+        ("OPENSKY_CLIENT_ID", "opensky_global"),
+        ("OPENSKY_CLIENT_SECRET", "opensky_global"),
     ]
 )
 
