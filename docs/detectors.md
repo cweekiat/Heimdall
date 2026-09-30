@@ -124,8 +124,14 @@ one RecordRef per anomalous MMSI fix (capped at 40), a counterfactual and covera
   AOI (background traffic moves a global centroid): fixes are bucketed in 4 half-cell-shifted square
   grids (cell side 4 x 30 km, local km projection) and each bucket with >= 5 vessels is tested;
   if the raw bucket fails, a RANSAC circle search (circumcircle of 3 vessels with R in the radius
-  range, inliers within `ring_cv_max` x R, <= 600 seeded samples, exhaustive if fewer) selects the
-  largest concentric set, which must then pass the same CV/bearing/radius rules. Duplicate sets
+  range, inliers within `ring_cv_max` x R, <= 2000 seeded samples, exhaustive if fewer) proposes concentric
+  sets. **Chance-alignment guard** (dense ordinary traffic contains many accidental rings): a
+  candidate with k inliers is kept only if (a) Poisson upper tail P(X >= k), mean lam = rho x
+  4 pi R tol (tol = `ring_cv_max` x R, rho = other MMSIs / max(hull area of the neighbourhood,
+  pi R^2)), times the Bonferroni family size C(n,3) x (in-range fraction of sampled triples), is
+  < `ring_poisson_p` (1e-3), and (b) the interior is hollow: distinct MMSIs strictly inside 0.8 R
+  <= max(`ring_hollow_abs` (1), `ring_hollow_frac` (0.5) x rho pi (0.8 R)^2). The kept candidate
+  with the smallest p (ties: most inliers) must then pass the same CV/bearing/radius rules. Duplicate sets
   from the shifted grids are merged by MMSI set and by r4 cell.
 * **A4 circle** (per MMSI, `per_vessel`=1): >= 20 fixes, Kasa least-squares circle fit (centred
   normal equations, 3x3 elimination; degenerate -> none) with relative RMSE <= 0.05, radius <= 5 km
@@ -133,7 +139,7 @@ one RecordRef per anomalous MMSI fix (capped at 40), a counterfactual and covera
   purse-seine set gives ~360 and does not fire). Score 0.6 + 0.4 turn/1440.
 Not detected: identity spoofing (MMSI/IMO mismatch), land mask. All thresholds are priors, not backtested.
 
-## AIS dark gap (detect/ais_gap.py, `ais-gap-1.1.0`)
+## AIS dark gap (detect/ais_gap.py, `ais-gap-1.2.0`)
 Lookback `window_h` (24). Gap = consecutive fixes of one MMSI with dt >= `gap_min_h` (2), or *open*
 (no fix from the last fix to the aligned `now`, >= 2 h). A closed gap is reported for
 `closed_report_h` (6) after it ended. Skipped if at the last fix nav_status in {1, 5} and sog < 0.5 kn
@@ -141,7 +147,9 @@ Lookback `window_h` (24). Gap = consecutive fixes of one MMSI with dt >= `gap_mi
 a bin is covered iff >= `gap_min_neighbors` (3) *other* MMSIs were heard in it within
 `gap_neighbor_km` (20) of the last fix; Evidence only if covered bins / bins >= `gap_covered_frac`
 (0.5), else `find_gaps` reports reason "no reception evidence" and nothing is emitted. Bins are
-`ceil(gap_h)` (the final partial hour counts as a bin; `int` used to drop it). **Feed-live test**
+`ceil(gap_h)` (the final partial hour counts as a bin), except that a trailing partial bin shorter
+than `gap_min_bin_min` (30 min) is ignored (a few minutes is rarely covered and would drag the
+covered fraction down). **Feed-live test**
 (open gaps only): >= `gap_min_neighbors` other MMSIs must be heard near the last fix within the
 final `gap_live_h` (1 h) before `now`, else reason "feed not live" (a receiver outage or a source
 toggled off must not turn every ship dark). **AOI assignment**: gaps are computed on the
@@ -233,8 +241,10 @@ confidence 0.6.
 ## Pipeline (pipeline.py)
 `tick(store, settings, now)`: one `aircraft_window` pull covering the longest window, one
 `vessels_window` (24 h) and one `events_window` (`notice_lookback_days` 30, notices filtered to
-active); per AOI
-(radius filter; AIS gap gets the unfiltered vessel window plus an AOI predicate) run jamming (with `active` cells from `evidence_history`), spoofing, orbit (with
+active); AIS gaps are found **once per tick** (per distinct `ais_gap` config) on the unfiltered
+vessel window and each gap is assigned to exactly one AOI: the nearest centre whose radius contains
+the ship's last fix (`_assign_gaps`), so overlapping AOIs never double-report; per AOI
+(radius filter) run jamming (with `active` cells from `evidence_history`), spoofing, orbit (with
 the jamming Evidence), AIS spoofing, AIS gap (last fix within the AOI radius) and warning areas;
 set `aoi` + persistence (subject `aoi|ais_gap|mmsi:<mmsi>`, `aoi|ais_spoofing|mmsi:<mmsi>` for the
 per-vessel A1/A4, per cell for A2/A3); record `ais_vessels` (distinct MMSIs) per r4 cell; record `jam_ratio` per cell with total ≥

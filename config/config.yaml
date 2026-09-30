@@ -100,6 +100,9 @@ detectors:
     ring_cv_max: 0.1        # radial-distance CV of a spoofed ring. Prior, not backtested
     ring_bearing_circvar_min: 0.7
     ring_radius_km: [0.2, 30]
+    ring_poisson_p: 1.0e-3  # chance-alignment guard for RANSAC ring (013a2). Prior, not backtested
+    ring_hollow_abs: 1      # interior MMSIs allowed inside 0.8R regardless of density
+    ring_hollow_frac: 0.5   # ... or this fraction of the expected interior count
     circle_min_fixes: 20
     circle_rel_rmse_max: 0.05
     circle_min_turn_deg: 720   # >= 2 laps; a purse-seine set is one lap. Prior, not backtested
