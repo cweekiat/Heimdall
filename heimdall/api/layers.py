@@ -22,7 +22,13 @@ LAYER_KINDS: dict[str, list[str]] = {
     "thermal": ["thermal"],
     "imagery": ["imagery_footprint"],
     "overpass": ["overpass"],
+    # task 030: spectrum layers (ADR-008). Regional (Indo-Pacific box), not per area.
+    "hf": ["hf_spots"],
+    "sar_rfi": ["sar_rfi"],
+    "satnogs": ["sat_observation"],
+    "smap": ["l_band_rfi"],
 }
+REGIONAL = frozenset({"hf", "sar_rfi", "satnogs", "smap"})  # aoi=all returns every feature
 # explicit per-kind attr whitelist (ADR-007 table); anything else is dropped
 ATTRS: dict[str, tuple[str, ...]] = {
     "thermal": ("satellite", "instrument", "confidence", "daynight"),
@@ -35,6 +41,26 @@ ATTRS: dict[str, tuple[str, ...]] = {
         "cloud_cover",
     ),
     "overpass": ("norad_id", "sat_name", "sensor", "aoi", "max_elev_deg"),
+    "hf_spots": ("band_mhz", "mode", "n", "paths", "n_rx", "n_tx", "snr_med", "mean_dist_km"),
+    "sar_rfi": (
+        "platform",
+        "orbit_state",
+        "relative_orbit",
+        "rfi_detected",
+        "max_power_ratio",
+        "stac_item_id",
+    ),
+    "sat_observation": (
+        "status",
+        "norad_cat_id",
+        "sat_name",
+        "rf_band",
+        "frequency_hz",
+        "mode",
+        "max_altitude_deg",
+        "station_id",
+    ),
+    "l_band_rfi": ("h3", "n_footprints", "n_rfi_h", "n_rfi_v", "rfi_frac", "tb_h_mean_k"),
 }
 _SCALAR = (str, int, float, bool, type(None))
 NEXT_H = 48
@@ -141,7 +167,9 @@ def layers_router(st: Store) -> APIRouter:
         areas = config.settings().aois
         rows: list[tuple[GeoEvent, str]] = []
         for e in events:
-            if area is not None:
+            if every and layer in REGIONAL:
+                rows.append((e, ""))
+            elif area is not None:
                 if _in_aoi(e, area):
                     rows.append((e, aoi))
             else:

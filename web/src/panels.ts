@@ -6,6 +6,8 @@ import { explainBlock } from "./explain";
 import { alertTitle, aoiName, confidenceLabel, CORROBORATION_LABEL, kindLabel, PRIORITY_WORD, SOURCE_LABEL, T, truthLabel } from "./labels";
 import { api } from "./api";
 import { patch, refreshAll, selectAlert, state, triage } from "./store";
+import { filters as mapFilters } from "./filters";
+import { inBand } from "./spectrummodel";
 
 const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 export const priority = (a: Alert): number => SEV_RANK[a.severity]! * a.confidence;
@@ -142,6 +144,7 @@ export function visibleAlerts(): Alert[] {
     .filter(
       (a) =>
         (!f.aoi || a.aoi === f.aoi) &&
+        inBand(a, mapFilters.band) &&
         (!f.kind || a.kind === f.kind) &&
         (!f.status || (f.status === "open" ? ["new", "acknowledged", "under_review"].includes(a.status) : a.status === f.status)) &&
         (!f.grade || a.admiralty.reliability === f.grade) &&
