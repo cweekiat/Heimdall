@@ -1,6 +1,18 @@
 # Data sources (maintained by source-scout)
 Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken · unverified.
 
+## Source set after the RF pivot (ADR-008, 2026-09-30)
+Rule: keep a source only if it senses RF effects, explains them away (confounder), or verifies them physically.
+
+| Status | Sources |
+|---|---|
+| **Kept** | adsb_lol, adsb_fi, opensky, opensky_global, adsb_lol_history (backtest, GNSS day builds), gpsjam (validation reference only), aisstream, faa_nms_notam, nga_msi, swpc, open_meteo, firms, celestrak, stac (sentinel-1-grd only) |
+| **Planned, unverified** | P5: cygnss, smap_rfi · P6: wspr_live, pskreporter_mqtt, kiwisdr_dir · P7: gdelt |
+| **Removed in 027** | airplanes_live, gfw, china_msa, ioda, cloudflare_radar, black_marble, STAC sentinel-2-l2a; placeholders taiwan_mnd, japan_jso, reliefweb, acled, telegram |
+| **Not adopted** | SatNOGS, KiwiSDR live receiver sessions, PSK Reporter REST, SMOS, GIRO ionosondes |
+
+Sections of removed sources are kept below for history and marked **Removed in 027**.
+
 ---
 
 ## adsb_lol
@@ -81,6 +93,8 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 ---
 
 ## airplanes_live
+
+> **Removed in 027 (ADR-008).** Kept for history.
 
 **Status:** needs-key (contact approval required; no self-serve registration)
 
@@ -328,6 +342,8 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 ## gfw (Global Fishing Watch)
 
+> **Removed in 027 (ADR-008).** Kept for history.
+
 **Status:** needs-key (verified auth flow)
 
 **Base URL:** `https://gateway.api.globalfishingwatch.org/v3`
@@ -413,6 +429,8 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 ---
 
 ## china_msa
+
+> **Removed in 027 (ADR-008).** Kept for history.
 
 **Status:** blocked (access denied by firewall/geo-block)
 
@@ -537,6 +555,8 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 ## ioda
 
+> **Removed in 027 (ADR-008).** Kept for history.
+
 **Status:** unverified
 
 **Base URL:** `https://api.ioda.inetintel.cc.gatech.edu/v2`
@@ -563,6 +583,8 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 ---
 
 ## cloudflare_radar
+
+> **Removed in 027 (ADR-008).** Kept for history.
 
 **Status:** unverified (needs key)
 
@@ -620,6 +642,8 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 
 ## earth_search (STAC)
 
+> **ADR-008:** only `sentinel-1-grd` is kept (RF interference annotations). `sentinel-2-l2a` is removed in 027.
+
 **Status:** unverified
 
 **Base URL:** `https://earth-search.aws.element84.com/v1`
@@ -647,6 +671,8 @@ Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken 
 ---
 
 ## black_marble
+
+> **Removed in 027 (ADR-008).** Kept for history.
 
 **Status:** unverified (needs Earthdata access)
 
@@ -722,3 +748,32 @@ Unauthenticated GETs from this machine:
 | black_marble | ladsweb `/api/v2/content/details/allData/5200/VNP46A1` | 200 listing. File download needs an Earthdata token |
 | cloudflare_radar | `/client/v4/radar/annotations/outages` | 400 without a token, as expected. Needs a free API token with Radar read |
 | open_meteo | `/v1/forecast` (see above) | 200, verified |
+
+---
+
+## Planned sources (ADR-008), unverified
+Filled in by source-scout (tasks 032 and 035) before any connector is built. Each needs the user's approval of its host.
+
+### cygnss (P5)
+NASA CYGNSS GNSS-reflectometry constellation. L1 data includes the receiver noise floor; a rise indicates L1
+interference seen from orbit (±38° latitude, covers SE Asia). Access: NASA PO.DAAC with the Earthdata token. Latency
+about a day. To verify: mission still delivering, product and field names, file sizes.
+
+### smap_rfi (P5)
+NASA SMAP L-band (1.41 GHz) radiometer brightness-temperature products with RFI flags → a map of L-band emitters and
+its changes. Access: NSIDC DAAC with the Earthdata token. To verify: which level (L1B/L1C) carries usable RFI flags,
+NRT latency, file sizes.
+
+### wspr_live (P6)
+Public ClickHouse database of WSPR spots (`https://db1.wspr.live/`, SQL over HTTP GET, no key): time, tx/rx callsign
+and grid, frequency, SNR, drift. To verify: rate/usage policy, latency, query limits.
+
+### pskreporter_mqtt (P6)
+Live PSK Reporter spots over MQTT (`mqtt.pskreporter.info`), instead of the REST query API (one query per ~5 min).
+To verify: topic layout, message rate, usage terms.
+
+### kiwisdr_dir (P6)
+KiwiSDR public receiver directory (`rx.kiwisdr.com`). Directory only: per-receiver location and published SNR
+figures as a global HF noise-floor sample. **No connections to individual receivers** (volunteer slots). To verify:
+fields, update frequency, terms.
+

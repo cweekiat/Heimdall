@@ -1,21 +1,31 @@
 # Heimdall
 
-**Multi-domain OSINT monitor for electronic warfare and military activity, Southeast Asia first.**
+**Multi-band RF / electronic-warfare surveillance engine built on free, open data, Southeast Asia first.**
 
-Heimdall watches free, open data (ADS-B today; AIS, navigational warnings, NOTAMs, satellite and
-news sources in later phases) and raises **explainable, cross-checked alerts** for:
+Heimdall watches receivers that already listen to the spectrum, such as aircraft and ship transponders, amateur HF
+stations and satellites. It infers interference and emitters from how those receivers degrade, and raises
+**explainable, cross-checked alerts**:
 
-- **GNSS jamming**: cells where aircraft lose GPS integrity (NIC/NACp), compared with that cell's own baseline
-- **GNSS spoofing**: five independent signals (teleports, altitude divergence, MLAT gap, convergence, impossible tracks)
-- **Military loitering**: tanker, AEW and ISR orbits and racetracks, flagged when new or near jamming
+| Band | What Heimdall watches | Status |
+|---|---|---|
+| L-band 1090 MHz → GNSS L1 | Aircraft ADS-B integrity (NIC/NACp): **GNSS jamming** cells with an emitter estimate, **GNSS spoofing** (five independent signals), military tanker/AEW/ISR orbits | live |
+| VHF marine 162 MHz | Ship AIS: **AIS spoofing** (impossible speeds, positions on land), **dark gaps** | live |
+| GNSS L1, daily | A GPSJam-style daily interference map rebuilt from Heimdall's own ingest, plus a rolling last-24 h view | planned (P4) |
+| L-band from orbit | CYGNSS L1 noise floor (jamming seen from space), SMAP 1.4 GHz interference flags | planned (P5) |
+| C-band 5.4 GHz | Sentinel-1 radar interference annotations | planned (P5) |
+| HF 3–30 MHz | WSPR, PSK Reporter and KiwiSDR noise measurements (experimental "unexplained HF anomaly") | planned (P6) |
+
+Official notices (FAA NOTAMs, NGA navigational warnings) corroborate alerts. Space weather and weather are checked as
+natural explanations. NASA FIRMS fire data verifies physical events.
 
 It covers these areas of interest: Myanmar, the South China Sea, the Taiwan/Luzon Strait and the
 Malacca/Singapore Strait. The **Baltic** is a calibration control. The results appear in a
 C4I-style analyst console with a live operational map, an alert board, evidence, and a triage
 workflow.
 
-> Status: **Phase 1 done (v0.1.0); Phase 2 (maritime + warnings) in progress.** See [CLAUDE.md](CLAUDE.md) for the phase table and
-> [docs/CHANGELOG.md](docs/CHANGELOG.md) for history.
+> Status: **P3 done (v0.3.0); v0.3.1 is the pre-pivot baseline. P4 (spectrum core) is next.** The pivot is recorded in
+> [ADR-008](docs/decisions/ADR-008-rf-spectrum-pivot.md), the plan in [docs/roadmap-rf.md](docs/roadmap-rf.md).
+> See [CLAUDE.md](CLAUDE.md) for the phase table and [docs/CHANGELOG.md](docs/CHANGELOG.md) for history.
 
 ---
 
@@ -43,13 +53,18 @@ Optional API keys (Phase 2+). Each keyed source switches itself off and shows "n
 cp env.example .env           # then fill in only the keys you have; never commit .env
 ```
 
-| Source | Key(s) in `.env` | Free sign-up | Without a key |
+Keys can also be entered in the UI (**Data sources**), which stores them locally in `data/secrets/keys.json`.
+
+| Source | Key(s) | Free sign-up | Without a key |
 |---|---|---|---|
 | AISStream (live ships) | `AISSTREAM_KEY` | aisstream.io | shows **needs key**, makes no requests |
-| Global Fishing Watch (gaps, loitering, encounters) | `GFW_TOKEN` | globalfishingwatch.org (non-commercial) | needs key |
+| OpenSky (global aircraft) | `OPENSKY_CLIENT_ID`, `OPENSKY_CLIENT_SECRET` | opensky-network.org → Account → API client | needs key; AOI aircraft still come from adsb.lol/adsb.fi |
 | FAA NOTAMs | `FAA_NMS_KEY`, `FAA_NMS_SECRET` | FAA NMS API (approval) | needs key |
+| NASA FIRMS (fires) | `FIRMS_MAP_KEY` | firms.modaps.eosdis.nasa.gov | needs key |
+| NASA Earthdata (CYGNSS, SMAP from P5) | `EARTHDATA_TOKEN` | urs.earthdata.nasa.gov | needs key |
 | NGA MSI nav warnings | none | — | runs (portal was under maintenance at last check → shows **down**) |
-| China MSA nav warnings | none | — | off by default (`enabled: false`): blocks non-China IPs |
+
+Global Fishing Watch, Cloudflare Radar and China MSA are being removed in task 027 (ADR-008); their keys are no longer needed.
 
 Phase 1 needs **no keys**: adsb.lol and adsb.fi are free and keyless. airplanes.live now grants access by approval only, so it is off (`enabled: false` in `config/sources.yaml`) until you have it.
 
@@ -199,15 +214,20 @@ your permission. See [docs/guardrails.md](docs/guardrails.md).
 
 | Phase | Scope |
 |---|---|
-| P1 | ADS-B ingest, jamming/spoofing/orbit detectors, Baltic calibration, C4I UI |
-| P2 | AIS (AISStream, Global Fishing Watch), NGA / China MSA warnings, FAA NOTAMs, AIS spoofing and dark gaps, cross-domain fusion |
-| P3 | FIRMS fires, weather, internet outages (IODA, Cloudflare), night lights, Sentinel-1/2 with pass prediction |
-| P4 | GDELT, Taiwan MND, Japan JSO, ReliefWeb; surges, change points, hot spots, lead-lag |
-| P5 | Cited Claude briefs, daily SITREP, feedback-driven tuning |
+| P1–P3 (done) | ADS-B and AIS ingest, jamming/spoofing/orbit/AIS detectors, notices, fusion with Admiralty grading, FIRMS, weather, space weather, Sentinel-1 footprints and passes, global traffic, C4I console |
+| P4 | Spectrum core: remove non-RF sources, band on every alert, jammer localisation, AIS circle spoofing, ship-to-ship transfers, interference notices, band ladder UI, GPSJam-style daily map |
+| P5 | Space RF: CYGNSS, SMAP, Sentinel-1 interference annotations |
+| P6 | HF: WSPR, PSK Reporter, KiwiSDR directory |
+| P7 | Cross-band fusion, GDELT, cited Claude briefs, daily SITREP, feedback-driven tuning |
+
+Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
 
 ## Known limitations
 - ADS-B and AIS coverage over open SE Asian seas is sparse (for example, Myanmar sees about 3–10 aircraft within 250 NM). Confidence is lowered to match, and sparse-region defaults are being calibrated in task 006.
 - Thresholds are priors until the Baltic backtest (task 006) calibrates them.
+- Every sensor is a volunteer or satellite receiver: where there are no receivers there is no data, and that is
+  never read as "no interference". The planned HF detectors will be experimental and never name an emitter type.
+- Internet-outage, night-light, Sentinel-2 and Global Fishing Watch sources are being removed in task 027 (ADR-008).
 - Data is for situational awareness from open sources only; verify before acting.
 
 ### Drawing areas of operation

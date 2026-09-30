@@ -194,6 +194,8 @@ cover mask (crop burning suppressed only via the baseline); persistence is fusio
 priors, not backtested (calibrate on the FIRMS archive, task 016).
 
 ## Internet outage (detect/outage.py, `outage-1.0.0`, ADR-007, task 021b)
+
+> **Retiring in 027 (ADR-008):** its source is removed. Kept here for history.
 `detect(events, cfg, now, *, aoi)` over IODA `outage_signal` (value = observed/baseline; recomputed from
 attrs if None) and Cloudflare `outage_annotation` GeoEvents, window `window_h` (6 h). Entity =
 `entity_type:entity_code`, located at the mean event lat/lon and required within AOI radius +
@@ -210,6 +212,8 @@ attrs if None) and Cloudflare `outage_annotation` GeoEvents, window `window_h` (
   re-sanitised to `[A-Za-z0-9_-]`.
 
 ## Night-lights drop (detect/night_lights.py, `night-lights-1.0.0`, ADR-007, task 021b)
+
+> **Retiring in 027 (ADR-008):** its source is removed. Kept here for history.
 Per r4 cell, nightly `night_lights` events (mean radiance of clean pixels, `attrs.date`, `valid_frac`).
 Valid night: N3 `valid_frac >= min_valid_frac` (0.5); invalid nights are skipped everywhere. Forward pass:
 B = median of the last `baseline_nights` (30) *clean* (not-dropped) valid nights, needing >=
@@ -417,3 +421,24 @@ another date. Data: adsb.lol, ODbL 1.0 ("Contains information from adsb.lol, mad
   ~1/day) ..."; IODA outage "Internet outage (country:MM) ...: n independent measurements down for h
   h, lowest r of normal"; night-lights "Night-time lights ... fell to r of normal for n clear nights".
   Entity labels are re-sanitised; no free text is echoed.
+
+## Planned detectors (ADR-008, `docs/roadmap-rf.md`)
+Math is added here when each ships. Thresholds start as priors in `config/config.yaml`.
+- **Jammer localisation** (029a, extends jamming): radio-horizon fit. An aircraft at height h (m) is in line of sight
+  of a ground jammer up to d ≈ 4.12·(√h + √h_j) km; grid-search the point that best separates degraded (inside) from
+  healthy (outside) aircraft. Falls back to the centroid.
+- **AIS positions on land and circle spoofing** (029b, extends ais_spoofing): land mask; ring fit of many MMSIs
+  around a common centre.
+- **Ship-to-ship transfer** (029c, `detect/sts.py`): pair < 500 m, both < 2 kn, ≥ 2 h, outside anchorages, a tanker
+  involved; boosts from prior gaps and identity changes.
+- **Interference notices** (029d, extends warning_area): GNSS interference/testing NOTAMs and NAVAREA warnings
+  classified by regex (text untrusted).
+- **GNSS interference map** (031, descriptive, not a detector): GPSJam-style daily and last-24 h H3 r4 map sharing the
+  jamming detector's per-aircraft classification; `% bad = 100·(bad − 1)/total`.
+- **CYGNSS L1 noise floor** (P5): per-cell robust z of noise floor vs baseline; space-weather explain-away.
+- **SMAP 1.4 GHz RFI** (P5): RFI-flag fraction per cell, persistent-emitter map and change detection.
+- **Sentinel-1 RFI** (P5): product interference annotations per scene footprint (pixel streaks need user approval).
+- **HF path anomaly** (P6, experimental): per-path SNR and spot-count baselines by hour and band, mapped at the
+  ionospheric midpoint; explained away by solar flares (SWPC X-ray) and storms (Kp); output "unexplained HF anomaly",
+  never an emitter type.
+
