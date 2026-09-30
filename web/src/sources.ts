@@ -26,6 +26,7 @@ export class Sources {
   private confirm: string | null = null;
   private error = "";
   private timer = 0;
+  private busy = false;
 
   constructor() {
     this.body = createWindow({
@@ -38,18 +39,31 @@ export class Sources {
       h: 420,
       onOpen: () => {
         void this.refresh();
-        this.timer = window.setInterval(() => void this.refresh(), 10_000);
+        this.timer = window.setInterval(() => {
+          if (document.visibilityState !== "hidden") void this.refresh();
+        }, 10_000);
       },
       onClose: () => window.clearInterval(this.timer),
+    });
+    this.wireVisibility();
+  }
+
+  private wireVisibility(): void {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && isOpen("sources")) void this.refresh();
     });
   }
 
   async refresh(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
     try {
       this.list = await api.sources();
       this.error = "";
     } catch (e) {
       this.error = String(e);
+    } finally {
+      this.busy = false;
     }
     this.onChange();
     if (isOpen("sources")) this.render();

@@ -10,6 +10,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (typeof v === "function") el.addEventListener(k.replace(/^on/, ""), v);
+    else if (k === "style" && typeof v === "string") el.style.cssText = v;
     else if (v === true) el.setAttribute(k, "");
     else if (v !== false) el.setAttribute(k, v);
   }

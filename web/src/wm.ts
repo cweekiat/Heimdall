@@ -74,7 +74,7 @@ function clamp(g: Geo): Geo {
   const w = Math.min(g.w, vw() - 8);
   const hh = Math.min(g.h, vh() - EDGE_TOP - 8);
   const x = Math.min(vw() - KEEP, Math.max(KEEP - w, g.x));
-  const y = Math.min(vh() - TITLE_H, Math.max(0, g.y));
+  const y = Math.min(vh() - TITLE_H, Math.max(EDGE_TOP, g.y));
   return { x, y, w, h: hh };
 }
 
@@ -102,7 +102,6 @@ function apply(w: Win): void {
     return;
   }
   const g = clamp(w.geo);
-  w.geo = g;
   el.style.left = `${g.x}px`;
   el.style.top = `${g.y}px`;
   el.style.width = `${g.w}px`;
@@ -175,7 +174,7 @@ export function createWindow(spec: WinSpec): HTMLElement {
       hd,
       () => {
         if (w.min) return null;
-        g0 = { ...w.geo };
+        g0 = clamp(w.geo);
         return (dx, dy) => {
           const minW = spec.minW ?? 240;
           const minH = spec.minH ?? 120;
@@ -200,7 +199,7 @@ export function createWindow(spec: WinSpec): HTMLElement {
   pointerDrag(
     bar,
     () => {
-      const g0 = { ...w.geo };
+      const g0 = clamp(w.geo);
       raise(w);
       return (dx, dy) => {
         w.geo = clamp(snap({ ...g0, x: g0.x + dx, y: g0.y + dy }));
