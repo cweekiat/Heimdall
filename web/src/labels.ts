@@ -14,6 +14,10 @@ export const KIND_LABEL: Record<string, string> = {
   warning_area: "Warning area",
   composite: "Several signs in one place",
   spectrum_anomaly: "Radio band far from normal",
+  mil_deployment: "Military aircraft flowing in",
+  mil_surge: "More military aircraft than usual",
+  mil_high_interest: "High-interest aircraft airborne",
+  mil_buildup: "Possible military build-up",
 };
 
 export const KIND_ICON: Record<string, IconName> = {
@@ -23,6 +27,10 @@ export const KIND_ICON: Record<string, IconName> = {
   ais_spoofing: "ship",
   ais_gap: "ship",
   composite: "waypoints",
+  mil_deployment: "plane",
+  mil_surge: "plane",
+  mil_high_interest: "plane",
+  mil_buildup: "waypoints",
 };
 
 /** Source reliability (letter) in words. */

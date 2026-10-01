@@ -510,3 +510,18 @@ Natural explanations: Kp ≥ 5 (HF) / ≥ 7 (GNSS), R ≥ 1 (HF). For hf, sat_do
 emits SPECTRUM_ANOMALY Evidence: score = min(1, z/6); confidence = min(0.6, n / 4·min_n), ×0.5 if explained; gaps say
 "never names an emitter type"; persistence 3 ticks. Fusion caps a single-band spectrum alert at medium (ADR-008 s4).
 All thresholds are priors (config `detectors.spectrum_state`). API: `GET /api/spectrum/status`.
+
+## Military air activity (task 039, `detect/military.py`, `military-1.0.0`)
+Per theatre (config presets + analyst areas), over decimated military tracks (5 min, 72 h, `heimdall/miltrack.py`,
+persisted in `data/state/mil_tracks.json`). Roles from plane-alert-db category/tags, then ICAO type (`milroles.py`).
+- **MIL_DEPLOYMENT**: aircraft of a strategic role seen > 150 km outside the theatre and later inside it within 48 h;
+  fires at tanker 6, airlift 6, bomber 2, ISR 3, command post 1. Score n / (3 x threshold).
+- **MIL_SURGE**: distinct aircraft of a role airborne in the theatre over 6 h vs its own hourly baseline (14 days, ≥ 3
+  days before judging): fires at ≥ minimum count, ratio ≥ 2 and z ≥ 3.
+- **MIL_HIGH_INTEREST**: bomber, E-4B/E-6B, head of state, "dictator alert" or nuclear-category aircraft airborne in
+  the theatre in the last hour (score 0.7 strategic, 0.4 otherwise).
+- **MIL_BUILDUP**: ≥ 3 of 6 indicator groups within 72 h (tanker, airlift, bomber/command post, ISR ≥ 2 airborne,
+  active military/airspace notice, GNSS-jamming alert in the theatre), at least one a movement. Checklist only.
+Confidence 0.6 (ADS-B coverage; aircraft flying dark are not seen). Alerts are fused per theatre by
+`military_step.py`; per-area fusion never expires them. All thresholds are priors (Midnight Hammer reporting:
+~30 tankers to Europe/Azores in ~48 h), not backtested.

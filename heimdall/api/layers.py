@@ -74,7 +74,7 @@ ATTRS: dict[str, tuple[str, ...]] = {
         "base_db",
         "base_mad_db",
         "base_days",
-    ),  # fmt: skip
+    ),
     "l_band_rfi": ("h3", "n_footprints", "n_rfi_h", "n_rfi_v", "rfi_frac", "tb_h_mean_k"),
 }
 _SCALAR = (str, int, float, bool, type(None))

@@ -303,6 +303,15 @@ def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: s
             f"Unexplained change in {len(group)} band indicator(s) over this area: "
             f"{'; '.join(parts)}; {pers}; {cov}. Experimental: it never names an emitter."
         )
+    if kind in (AlertKind.MIL_DEPLOYMENT, AlertKind.MIL_SURGE, AlertKind.MIL_HIGH_INTEREST):
+        parts = list(dict.fromkeys(r.description for e in group for r in e.rules[:1]))
+        return f"{'; '.join(parts)}. Seen from ADS-B only; {cov}."
+    if kind == AlertKind.MIL_BUILDUP:
+        hits = [r.description for r in lead.rules if r.passed]
+        return (
+            f"{len(hits)} independent build-up indicators: {'; '.join(hits)}. Indicator checklist "
+            f"only: it does not predict a target or a strike; {cov}."
+        )
     return f"{kind} in H3 {cell}: {len(group)} evidence items; {pers}; {cov}."
 
 
@@ -316,6 +325,10 @@ _TITLES = {
     AlertKind.THERMAL: "Unusual fire activity",
     AlertKind.OUTAGE: "Connectivity or power outage",
     AlertKind.SPECTRUM_ANOMALY: "Spectrum anomaly",
+    AlertKind.MIL_DEPLOYMENT: "Military deployment wave",
+    AlertKind.MIL_SURGE: "Military activity surge",
+    AlertKind.MIL_HIGH_INTEREST: "High-interest military aircraft",
+    AlertKind.MIL_BUILDUP: "Possible military build-up",
 }
 
 

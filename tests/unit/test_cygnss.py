@@ -146,15 +146,29 @@ def _ev(
 ) -> GeoEvent:
     cell = h3.latlng_to_cell(lat, lon, 3)
     a: dict[str, object] = {
-        "h3": cell, "n": 150, "n_sats": 4, "ocean_frac": 1.0, "rfi_frac": 0.1,
-        "base_db": None, "base_mad_db": None, "base_days": 0, "base_rfi_frac": None,
-    }  # fmt: skip
+        "h3": cell,
+        "n": 150,
+        "n_sats": 4,
+        "ocean_frac": 1.0,
+        "rfi_frac": 0.1,
+        "base_db": None,
+        "base_mad_db": None,
+        "base_days": 0,
+        "base_rfi_frac": None,
+    }
     a.update(attrs)
     t = datetime(2026, 9, day, tzinfo=UTC)
     return GeoEvent(
-        id=f"cygnss|2026-09-{day}|{cell}", ts=t, source="cygnss", domain="spectrum",
-        kind="l1_noise", lat=lat, lon=lon, value=value, attrs=a,
-    )  # fmt: skip
+        id=f"cygnss|2026-09-{day}|{cell}",
+        ts=t,
+        source="cygnss",
+        domain="spectrum",
+        kind="l1_noise",
+        lat=lat,
+        lon=lon,
+        value=value,
+        attrs=a,
+    )
 
 
 def test_level_rule_fires_on_open_ocean_with_persistence() -> None:
@@ -192,9 +206,13 @@ def test_change_rule_on_land_vs_own_baseline() -> None:
 
 def test_solar_radio_event_lowers_confidence() -> None:
     sw = GeoEvent(
-        id="sw", ts=datetime(2026, 9, 27, 9, tzinfo=UTC), source="swpc", domain="space",
-        kind="space_weather", attrs={"r_scale": 3},
-    )  # fmt: skip
+        id="sw",
+        ts=datetime(2026, 9, 27, 9, tzinfo=UTC),
+        source="swpc",
+        domain="space",
+        kind="space_weather",
+        attrs={"r_scale": 3},
+    )
     (plain,) = det.detect([_ev(27, 3.7)], {}, NOW, aoi=Aoi())
     (expl,) = det.detect([_ev(27, 3.7)], {}, NOW, aoi=Aoi(), space_weather=[sw])
     assert expl.coverage.confidence == pytest.approx(plain.coverage.confidence * 0.5, abs=1e-3)
@@ -206,13 +224,25 @@ def test_solar_radio_event_lowers_confidence() -> None:
 
 def _adsb_jam() -> Evidence:
     return Evidence(
-        id="adsb-jam", kind=AlertKind.GNSS_JAMMING, detector="jamming", detector_version="x",
-        window_start=NOW - timedelta(minutes=30), window_end=NOW, aoi="gulf",
-        h3_cell=h3.latlng_to_cell(27.3, 51.8, 4), h3_res=4, lat=27.3, lon=51.8, score=0.8,
-        counterfactual="x", coverage=Coverage(confidence=0.8, providers=["adsb_lol"]),
-        records=[RecordRef(source="adsb_lol", id="4b1805@x")], persistence=3, created_at=NOW,
+        id="adsb-jam",
+        kind=AlertKind.GNSS_JAMMING,
+        detector="jamming",
+        detector_version="x",
+        window_start=NOW - timedelta(minutes=30),
+        window_end=NOW,
+        aoi="gulf",
+        h3_cell=h3.latlng_to_cell(27.3, 51.8, 4),
+        h3_res=4,
+        lat=27.3,
+        lon=51.8,
+        score=0.8,
+        counterfactual="x",
+        coverage=Coverage(confidence=0.8, providers=["adsb_lol"]),
+        records=[RecordRef(source="adsb_lol", id="4b1805@x")],
+        persistence=3,
+        created_at=NOW,
         bands=[Band.L1_GNSS],
-    )  # fmt: skip
+    )
 
 
 def test_cygnss_corroborates_adsb_jamming_as_independent_family() -> None:

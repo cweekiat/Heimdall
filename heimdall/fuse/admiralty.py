@@ -45,6 +45,10 @@ KIND_DOMAIN: dict[AlertKind, Domain] = {
     AlertKind.OUTAGE: Domain.CYBER,
     AlertKind.EVENT_SURGE: Domain.EVENTS,
     AlertKind.SPECTRUM_ANOMALY: Domain.SPECTRUM,
+    AlertKind.MIL_DEPLOYMENT: Domain.AIR,
+    AlertKind.MIL_SURGE: Domain.AIR,
+    AlertKind.MIL_HIGH_INTEREST: Domain.AIR,
+    AlertKind.MIL_BUILDUP: Domain.AIR,
 }
 
 # provider names used in observations -> keys in config/sources.yaml

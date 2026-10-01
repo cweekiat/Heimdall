@@ -73,6 +73,7 @@ class Store(Protocol):
         bbox: BBox | None = None,
         ident: Ident | None = None,
         local_only: bool = False,
+        mil_only: bool = False,
     ) -> list[AircraftObs]: ...
     def vessels_window(
         self,
