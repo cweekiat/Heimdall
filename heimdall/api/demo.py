@@ -791,9 +791,10 @@ class LiveDemoStore(MemoryStore):
         bbox: BBox | None = None,
         ident: Ident | None = None,
         local_only: bool = False,
+        mil_only: bool = False,
     ) -> list[AircraftObs]:
         rows = super().aircraft_window(
-            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only
+            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only, mil_only=mil_only
         )
         if h3_r4 is not None:
             return rows
@@ -818,7 +819,7 @@ class LiveDemoStore(MemoryStore):
                         **kw,
                     )
                 )
-        return rows
+        return [r for r in rows if r.mil] if mil_only else rows
 
     def vessels_window(
         self,
@@ -959,13 +960,14 @@ class ReplayDemoStore(ReplayStore):
         bbox: BBox | None = None,
         ident: Ident | None = None,
         local_only: bool = False,
+        mil_only: bool = False,
     ) -> list[AircraftObs]:
         if end - start >= self.span:
             return []
         out: list[AircraftObs] = []
         for r0, r1, shift in self._segments(start, end):
             rows = super().aircraft_window(
-                r0, r1, h3_r4, bbox=bbox, ident=ident, local_only=local_only
+                r0, r1, h3_r4, bbox=bbox, ident=ident, local_only=local_only, mil_only=mil_only
             )
             out += [o.model_copy(update={"ts": o.ts + shift}) for o in rows]
         return out

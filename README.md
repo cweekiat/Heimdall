@@ -161,6 +161,17 @@ military only, altitude band, ship types); they never change what is collected. 
 place that switches collection on or off. Warnings and NOTAMs appear as hatched areas. Spectrum watch and the
 area status board open from **Area of Ops**.
 
+**Military air activity** (rail button or `m`). Every aircraft the ADS-B networks flag as military, worldwide, refreshed
+each minute: contacts, roles (tankers, bombers, surveillance, command posts, transport, fighters, government/VIP),
+types, operator countries, high-interest aircraft and per-theatre counts; click an aircraft or theatre to fly there.
+Identities come from the community plane-alert-db list (ODbL). Build-up indicators raise alerts per theatre: aircraft
+**flowing in** (e.g. 6+ tankers arriving from outside within 48 h, as before the June 2025 strike on Iran), **more
+than usual** of a role (against that theatre's own 14-day baseline), **high-interest aircraft** airborne (bombers,
+E-4B/E-6B, heads of state) and **possible build-up** when three or more independent indicators coincide (tankers,
+transport, bombers, surveillance, notices, GPS jamming). Theatres are presets in `config/config.yaml`
+(`detectors.military.theatres`) plus every area you draw. These are indicator checklists: they never predict a
+target or a strike, and aircraft flying with transponders off are not seen.
+
 New here? The console offers a guided tour on first visit (relaunch it from the `?` icon), and [docs/walkthrough.md](docs/walkthrough.md) walks the same monitor, triage, verify, decide, log workflow in prose.
 
 The full API and UI reference is in [docs/ui.md](docs/ui.md).
@@ -218,7 +229,8 @@ your permission. See [docs/guardrails.md](docs/guardrails.md).
 |---|---|
 | P1–P3 (done) | ADS-B and AIS ingest, jamming/spoofing/orbit/AIS detectors, notices, fusion with Admiralty grading, FIRMS, weather, space weather, Sentinel-1 footprints and passes, global traffic, C4I console |
 | P4 | Spectrum core: remove non-RF sources, band on every alert, jammer localisation, AIS circle spoofing, ship-to-ship transfers, interference notices, band ladder UI, GPSJam-style daily map |
-| P5 | Space RF: CYGNSS, SMAP, Sentinel-1 interference annotations |
+| P5 (done) | Space RF: CYGNSS GNSS interference from orbit, SMAP, Sentinel-1 interference annotations |
+| Military (039) | Worldwide military aircraft (readsb `/v2/mil`), plane-alert-db identities, deployment / surge / high-interest / build-up indicators per theatre |
 | P6 | HF: WSPR, PSK Reporter, KiwiSDR directory |
 | P7 | Cross-band fusion, GDELT, cited Claude briefs, daily SITREP, feedback-driven tuning |
 
@@ -230,6 +242,8 @@ Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
 - Every sensor is a volunteer or satellite receiver: where there are no receivers there is no data, and that is
   never read as "no interference". The planned HF detectors will be experimental and never name an emitter type.
 - Internet-outage, night-light, Sentinel-2 and Global Fishing Watch sources are being removed in task 027 (ADR-008).
+- Military tracking only sees aircraft that broadcast ADS-B and are flagged military; strike packages often fly
+  dark and use decoys. Theatre thresholds are priors and the surge baseline needs 3 days of data.
 - Data is for situational awareness from open sources only; verify before acting.
 
 ### Drawing areas of operation

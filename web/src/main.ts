@@ -43,6 +43,7 @@ import { Notices } from "./notices";
 import { P3Layers } from "./p3layers";
 import { SpectrumLayers } from "./spectrum";
 import { SpectrumWatch } from "./watch";
+import { MilitaryPanel } from "./military";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
 import { ctxHooks } from "./context";
 import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, hasSavedGeometry, isOpen, onWmChange, openWindow, placeWindow, toggleWindow, winRect } from "./wm";
@@ -78,6 +79,8 @@ createWindow({ id: "queue", title: T.alerts, icon: "alerts", body: $("queue"), x
 createWindow({ id: "board", title: T.areas, icon: "areas", body: $("board"), x: EDGE_LEFT + 8, y: EDGE_TOP + 8, w: 340, h: 340 });
 createWindow({ id: "layers", title: T.layers, icon: "filter", body: layersBody, x: EDGE_LEFT + 8, y: EDGE_TOP + 8, w: 360, h: 700 });
 const sourcesWin = new Sources();
+// 039: worldwide military air activity (contacts, roles, theatres, high-interest aircraft)
+const milWin = new MilitaryPanel({ flyTo: (lon, lat) => ops?.flyTo(lon, lat) });
 const areasWin = new Areas(() => state.aois);
 areasWin.busyHook = (label, p) => loading.busy(label, p);
 areasWin.openWatch = () => openWindow("watch");
@@ -108,6 +111,7 @@ const winToggles: Record<string, () => void> = {
   o: () => toggleWindow("draw"),
   t: () => toggleWindow("timeline"),
   w: () => toggleWindow("watch"),
+  m: () => toggleWindow("military"),
   ",": () => toggleWindow("settings"),
   g: () => ops?.toggleGlobe(),
   "0": () => ops?.home(),
@@ -118,6 +122,7 @@ const winToggles: Record<string, () => void> = {
 // Left rail: pages only. Alerts, timeline and shift report live top right; filters by the search box.
 const tools: Tool[] = [
   { id: "draw", icon: "draw", label: T.drawAreas, key: "o", toggle: winToggles.o!, hint: "Draw, list and monitor areas" },
+  { id: "military", icon: "plane", label: "Military", key: "m", toggle: winToggles.m!, hint: "Military aircraft worldwide, roles, theatres" },
   { id: "sources", icon: "sources", label: T.sources, key: "u", toggle: winToggles.u!, hint: "Source health, on/off, API keys" },
   { id: "settings", icon: "settings", label: "Settings", key: ",", toggle: winToggles[","]!, hint: "Theme, map overlays, layout" },
 ];
@@ -585,6 +590,7 @@ async function boot(): Promise<void> {
       safe("spectrum", () => spec.start());
       safe("watch", () => watch.start());
       safe("satellites", () => sats.start());
+      safe("military", () => milWin.start());
     });
     void refreshSpaceWeather();
     setInterval(() => void refreshSpaceWeather(), 300_000);

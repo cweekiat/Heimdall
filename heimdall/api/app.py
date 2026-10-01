@@ -28,6 +28,7 @@ from heimdall.api.basemap import basemap_router
 from heimdall.api.gnss import gnss_router
 from heimdall.api.keys import keys_router
 from heimdall.api.layers import layers_router
+from heimdall.api.military import military_router
 from heimdall.api.satellites import satellites_router
 from heimdall.api.spectrum import spectrum_router
 from heimdall.api.traffic import traffic_router
@@ -524,6 +525,7 @@ def create_app(
     app.include_router(layers_router(st))
     app.include_router(satellites_router(st))
     app.include_router(spectrum_router(st))
+    app.include_router(military_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(
         aois_router(

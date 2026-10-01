@@ -69,9 +69,10 @@ class CompositeStore:
         bbox: BBox | None = None,
         ident: Ident | None = None,
         local_only: bool = False,
+        mil_only: bool = False,
     ) -> list[AircraftObs]:
         return self.read.aircraft_window(
-            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only
+            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only, mil_only=mil_only
         )
 
     def vessels_window(

@@ -379,6 +379,8 @@ export const api = {
   gnssDays: () => req<{ days: string[]; last24h: boolean }>("/api/gnss/days"),
   /** Spectrum status board (task 033). Parsed by spectrummodel.parseStatus. */
   spectrumStatus: () => req<unknown>("/api/spectrum/status"),
+  /** 039: worldwide military aircraft with identity, roles, countries, theatres. */
+  military: () => req<MilitarySummary>("/api/military"),
   /** Estimated jammer locations from open GNSS-jamming alerts (GeoJSON ellipses). */
   jammers: () => req<unknown>("/api/jammers"),
   spaceWeather: () =>
@@ -388,3 +390,50 @@ export const api = {
   board: (sinceH = 72) => req<BoardAction[]>(`/api/actions?since_h=${sinceH}`),
   reject: (actionKey: string) => post<ActionRec>(`/api/actions/${encodeURIComponent(actionKey)}/reject`),
 };
+
+/** 039: one military aircraft (identity from plane-alert-db, ODbL, and the type code). */
+export interface MilAircraft {
+  hex: string;
+  flight: string | null;
+  type: string | null;
+  type_name: string | null;
+  registration: string | null;
+  role: string;
+  country: string | null;
+  operator: string | null;
+  category: string | null;
+  tags: string[];
+  lat: number;
+  lon: number;
+  alt: number | null;
+  on_ground: boolean;
+  gs: number | null;
+  track: number | null;
+  ts: string;
+  high_interest: boolean;
+  known: boolean;
+}
+export interface MilTheatre {
+  name: string;
+  lat: number;
+  lon: number;
+  radius_km: number;
+  radius_nm: number;
+  n: number;
+  roles: Record<string, number>;
+}
+export interface MilitarySummary {
+  generated: string;
+  window_min: number;
+  contacts: number;
+  airborne: number;
+  on_ground: number;
+  identified: number;
+  roles: Record<string, number>;
+  types: { type: string; name: string | null; n: number }[];
+  countries: { country: string; n: number }[];
+  high_interest: MilAircraft[];
+  theatres: MilTheatre[];
+  aircraft: MilAircraft[];
+  attribution: string;
+}

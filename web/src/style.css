@@ -1775,3 +1775,30 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
 .ents { flex-wrap: wrap; gap: 6px; }
 .ents .chip { display: inline-flex; align-items: center; gap: 4px; }
 .ent-aircraft[aria-pressed="false"], .ent-vessel[aria-pressed="false"] { border-color: var(--sev-critical); }
+
+/* 039: military air activity panel */
+.mil-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.mil-stats div { display: flex; flex-direction: column; padding: 6px; border: 1px solid var(--line, #2a313a); border-radius: 6px; }
+.mil-stats b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.mil-stats span { font-size: 11px; opacity: 0.7; }
+.mil-sec { margin: 10px 0; }
+.mil-sec h4 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; }
+.mil-bars { display: flex; flex-direction: column; gap: 2px; }
+.mil-bar { position: relative; display: flex; justify-content: space-between; gap: 8px; padding: 3px 6px; font: inherit; font-size: 12px; color: inherit; background: none; border: 0; text-align: left; overflow: hidden; border-radius: 3px; }
+button.mil-bar { cursor: pointer; }
+button.mil-bar[aria-pressed="true"] { outline: 1px solid var(--accent, #58a6ff); }
+.mil-bar-fill { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--military, #f0a020) 22%, transparent); z-index: 0; }
+.mil-bar-label, .mil-bar-n { position: relative; z-index: 1; }
+.mil-bar-n { font-variant-numeric: tabular-nums; }
+.mil-search { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 5px 8px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line, #2a313a); border-radius: 4px; }
+.mil-ac, .mil-th { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; width: 100%; padding: 4px 6px; font: inherit; font-size: 12px; color: inherit; background: none; border: 0; border-bottom: 1px solid var(--line, #2a313a); text-align: left; cursor: pointer; }
+.mil-ac:hover, .mil-th:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.mil-ac.hi { border-left: 3px solid var(--alert, #e5534b); }
+.mil-line { flex: 1 1 60%; min-width: 0; }
+.mil-cat { font-size: 11px; opacity: 0.7; }
+.mil-th span:first-child { flex: 1 1 auto; }
+.mil-th-roles { flex-basis: 100%; order: 3; font-size: 11px; opacity: 0.7; }
+.mil-role { font-size: 10px; padding: 1px 5px; border-radius: 3px; border: 1px solid currentColor; opacity: 0.85; white-space: nowrap; }
+.mil-role.r-tanker, .mil-role.r-bomber, .mil-role.r-c2 { color: var(--military, #f0a020); }
+.mil-role.r-isr, .mil-role.r-special { color: #b48ead; }
+.mil-role.r-gov_vip { color: var(--alert, #e5534b); }

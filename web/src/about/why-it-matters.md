@@ -39,3 +39,9 @@ Heimdall is an open-source-intelligence monitor that watches these feeds continu
 ## The bottom line
 
 The spectrum and the shipping lanes are contested every day, mostly out of sight. Heimdall's aim is modest but important: to turn scattered public signals into evidence a human analyst can trust, question and act on.
+
+## Data credits
+
+Military and government aircraft identities come from **plane-alert-db** by the sdr-enthusiasts community
+(github.com/sdr-enthusiasts/plane-alert-db), made available under the Open Database License (ODbL 1.0). Aircraft
+positions come from the volunteer receivers of adsb.lol and adsb.fi.

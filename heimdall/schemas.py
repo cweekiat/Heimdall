@@ -70,6 +70,10 @@ class AlertKind(StrEnum):
     EVENT_SURGE = "event_surge"
     WARNING_AREA = "warning_area"
     SPECTRUM_ANOMALY = "spectrum_anomaly"  # 034: band indicator far from its baseline (ADR-008)
+    MIL_DEPLOYMENT = "mil_deployment"  # 039: strategic aircraft flowing into a theatre
+    MIL_SURGE = "mil_surge"  # 039: role presence far above its own baseline
+    MIL_HIGH_INTEREST = "mil_high_interest"  # 039: bombers, command posts, heads of state airborne
+    MIL_BUILDUP = "mil_buildup"  # 039: several independent build-up indicators in one theatre
     COMPOSITE = "composite"
 
 

@@ -775,3 +775,14 @@ Gotchas
 - CYGNSS: never download the full L1 file; the OPeNDAP subset is reduced to r3 cell JSON and deleted. Granule titles
   are regex-checked before use in paths. `sp_lon` is 0–360. The rfi_detected bit is noisy over dry land.
 - SMAP: rasters are reduced to per-H3-r4 counts and deleted (ADR-007 s2); the token goes only in the Authorization header.
+
+## Military air activity (task 039), checked live 2026-10-01
+| Source key | Endpoint | Auth | Live result | Output |
+|---|---|---|---|---|
+| adsb_mil | `https://api.adsb.lol/v2/mil`, fallback `https://opendata.adsb.fi/api/v2/mil` (readsb v2 JSON) | none | 164–259 military aircraft worldwide per call, ~110 KB; polled every 60 s | AircraftObs `is_global`, `mil` (live map, military tracks, theatre detectors; never the per-area GNSS detectors) |
+| plane_alert_db | `https://raw.githubusercontent.com/sdr-enthusiasts/plane-alert-db/main/plane-alert-db.csv` | none | 2.4 MB, 17,259 rows (Mil 9,856 · Civ 4,643 · Gov 1,764 · Pol 996); identifies ~53 % of `/v2/mil` aircraft; ODbL 1.0 (credited in About) | `data/ref/plane-alert-db.csv`, refreshed daily; no events |
+
+Gotchas
+- plane-alert-db headers carry `$`/`#` markers (`$ICAO`, `#CMPG`, `$#Tag 2`); its text is community data, bounded
+  and displayed only. Its type name is shown only when its ICAO type agrees with the broadcast type.
+- Airliner types (A332, B762, DC10) are tankers only when the list tags them `Air2Air`; police "Surveillance" is not ISR.

@@ -186,6 +186,38 @@ detectors:
     min_baseline_days: 7
     persist_days: 3         # look-back of observed days; fusion needs >= 2 flagged (gnss_jamming: 2)
     confidence_cap: 0.55    # ADR-008 s4: one experimental band stays <= medium
+  military:                 # task 039: military air activity per theatre. All thresholds priors, not backtested (docs/tasks/039-military.md)
+    state_path: data/state/mil_tracks.json
+    deploy_window_h: 48     # Midnight Hammer: ~30 tankers crossed to Europe/Azores in ~48 h (15-17 Jun 2025)
+    outside_margin_km: 150
+    min_arrivals: {tanker: 6, airlift: 6, bomber: 2, isr: 3, c2: 1}
+    presence_h: 6
+    surge_min: {tanker: 4, airlift: 4, isr: 3, bomber: 2, fighter: 10}
+    surge_ratio: 2.0
+    surge_z: 3.0
+    surge_min_samples: 72   # 3 days of hourly samples before a surge is judged
+    buildup_window_h: 72
+    buildup_min_groups: 3   # of tanker, airlift, bomber/C2, ISR, notices, GNSS jamming; >= 1 movement
+    isr_min: 2
+    confidence: 0.6
+    # Theatre presets: approximate centres, radius covers the named bases. Analyst areas are added automatically.
+    theatres:
+      - {name: "Europe staging", lat: 45.5, lon: 2.0, radius_km: 1300}    # Mildenhall/Lakenheath, Ramstein, Morón, Rota, Istres
+      - {name: "Azores", lat: 38.8, lon: -27.1, radius_km: 400}           # Lajes
+      - {name: "East Mediterranean", lat: 35.5, lon: 30.0, radius_km: 800} # Souda Bay, Akrotiri, Incirlik, Israel
+      - {name: "Gulf", lat: 26.0, lon: 51.5, radius_km: 900}              # Al Udeid, Al Dhafra, Prince Sultan, Ali Al Salem, Hormuz
+      - {name: "Red Sea / Horn", lat: 16.0, lon: 41.0, radius_km: 900}    # Djibouti, Bab el-Mandeb, Yemen
+      - {name: "Diego Garcia", lat: -7.3, lon: 72.4, radius_km: 500}
+      - {name: "Guam", lat: 13.6, lon: 144.9, radius_km: 600}             # Andersen
+      - {name: "Japan / Okinawa", lat: 31.0, lon: 133.0, radius_km: 1100} # Kadena, Iwakuni, Yokota, Misawa
+      - {name: "Korea", lat: 37.0, lon: 127.5, radius_km: 500}            # Osan, Kunsan
+      - {name: "Taiwan Strait", lat: 24.0, lon: 120.0, radius_km: 500}
+      - {name: "South China Sea / Philippines", lat: 13.0, lon: 116.0, radius_km: 900}  # Clark, Spratlys, Paracels
+      - {name: "Malacca / Singapore", lat: 2.5, lon: 102.5, radius_km: 500}
+      - {name: "Northern Australia", lat: -13.5, lon: 131.5, radius_km: 600}  # Darwin, Tindal
+      - {name: "Hawaii", lat: 21.3, lon: -157.9, radius_km: 500}          # Hickam
+      - {name: "Black Sea", lat: 44.0, lon: 33.0, radius_km: 800}
+      - {name: "Baltic", lat: 56.5, lon: 20.0, radius_km: 600}
   spectrum_state:           # 033/034: per-AOI band indicators vs own history. Priors, not backtested (ADR-008)
     baseline_days: 14
     min_samples: 288        # 1 day of 5-min ticks before any state but "learning"
@@ -216,6 +248,8 @@ detectors:
       satnogs: satnogs
       sentinel1_rfi: sar
       smap_rfi: radiometer
+      adsb_mil: adsb        # task 039: same ADS-B networks
+      plane_alert_db: context # reference list, not an observation
       cygnss: gnss_reflectometry  # task 038: satellites in orbit, independent of aircraft/ships
       open_meteo: context   # context sources never count as families
       swpc: context

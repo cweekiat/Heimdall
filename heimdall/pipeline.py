@@ -7,7 +7,7 @@ exclusively through the `Store` port.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -35,6 +35,7 @@ from heimdall.fuse.admiralty import grades_from_sources
 from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
 from heimdall.geo import h3_cell, haversine_km
 from heimdall.logging import get_logger
+from heimdall.military_step import MIL_KINDS, military_step
 from heimdall.ports import Store
 from heimdall.schemas import (
     AircraftObs,
@@ -329,9 +330,14 @@ def spectrum_step(
     step = float(jcfg.get("step_min", 5))
     window = align_window(now, 60, step)
     inds = spectrum_state.compute_indicators(
-        aoi, obs, vessels, events, now,
-        int(jcfg.get("nic_bad_below", 7)), int(jcfg.get("nacp_bad_below", 8)),
-    )  # fmt: skip
+        aoi,
+        obs,
+        vessels,
+        events,
+        now,
+        int(jcfg.get("nic_bad_below", 7)),
+        int(jcfg.get("nacp_bad_below", 8)),
+    )
     out: list[Evidence] = []
     for band, ind in inds.items():
         key = f"{aoi.name}|{band.value}"
@@ -363,10 +369,14 @@ def cygnss_windows(
 ) -> tuple[list[GeoEvent], list[GeoEvent]]:
     """CYGNSS cell-days + space weather for the CYGNSS detector. The data are daily (latency
     2-3 days, ~10k cells/day in the bbox), so one read per hour is shared by every tick."""
-    days = max(
-        float(d.get("cygnss", {}).get("max_age_days", cygnss.DEFAULTS["max_age_days"]))
-        for d in dets.values()
-    ) if dets else float(cygnss.DEFAULTS["max_age_days"])  # fmt: skip
+    days = (
+        max(
+            float(d.get("cygnss", {}).get("max_age_days", cygnss.DEFAULTS["max_age_days"]))
+            for d in dets.values()
+        )
+        if dets
+        else float(cygnss.DEFAULTS["max_age_days"])
+    )
     hour = now.replace(minute=0, second=0, microsecond=0)
     if _CYG_CACHE and _CYG_CACHE[0][0] is store and _CYG_CACHE[0][1] == hour:
         return _CYG_CACHE[0][2], _CYG_CACHE[0][3]
@@ -464,12 +474,50 @@ def run_aoi(
             store.record_metric(cell, AIS_METRIC, a_end, float(len(mm)))
             res.metrics += 1
 
-    open_alerts = store.list_alerts(status=list(ACTIVE), aoi=aoi.name, limit=10_000)
+    alerts = fuse_and_store(
+        store,
+        aoi.name,
+        evs,
+        fcfg,
+        playbook,
+        grades,
+        now,
+        notices=events,
+        context_events=p3.context if p3 is not None else None,
+        control=aoi.role == "control",
+        own=lambda k: k not in MIL_KINDS,  # task 039: theatre alerts are fused by military_step
+    )
+    res.evidence, res.alerts = evs, alerts
+    return res
+
+
+def fuse_and_store(
+    store: Store,
+    aoi: str,
+    evs: Sequence[Evidence],
+    fcfg: Mapping[str, Any],
+    playbook: Mapping[str, Any] | None,
+    grades: Mapping[str, str],
+    now: datetime,
+    *,
+    notices: Sequence[GeoEvent] = (),
+    context_events: Sequence[GeoEvent] | None = None,
+    control: bool = False,
+    own: Callable[[AlertKind], bool] = lambda k: True,
+) -> list[Alert]:
+    """Fuse Evidence with this area's open alerts of the kinds this caller owns; store both."""
+    open_alerts = [
+        a for a in store.list_alerts(status=list(ACTIVE), aoi=aoi, limit=10_000) if own(a.kind)
+    ]
     # recently dismissed alerts own their continuing episode (no re-alert chattering)
     clear_gap = timedelta(minutes=float(fcfg.get("expire_after_min", 60)))
-    open_alerts += store.list_alerts(
-        since=now - 2 * clear_gap, status=[AlertStatus.DISMISSED], aoi=aoi.name, limit=10_000
-    )
+    open_alerts += [
+        a
+        for a in store.list_alerts(
+            since=now - 2 * clear_gap, status=[AlertStatus.DISMISSED], aoi=aoi, limit=10_000
+        )
+        if own(a.kind)
+    ]
     alerts = fuse(
         evs,
         open_alerts,
@@ -477,26 +525,20 @@ def run_aoi(
         fcfg,
         playbook,
         grades,
-        aoi=aoi.name,
-        control=aoi.role == "control",
-        notices=events,
-        context_events=p3.context if p3 is not None else None,
+        aoi=aoi,
+        control=control,
+        notices=notices,
+        context_events=context_events,
     )
     for e in evs:
         store.upsert_evidence(e)
     written: list[Alert] = []
     for a in alerts:
         # ADR-003: re-read immediately before upsert; never overwrite analyst-owned fields
-        merged = apply_evidence_update(
-            store.get_alert(a.id),
-            a,
-            expire_before=now - timedelta(minutes=float(fcfg.get("expire_after_min", 60))),
-        )
+        merged = apply_evidence_update(store.get_alert(a.id), a, expire_before=now - clear_gap)
         store.upsert_alert(merged)
         written.append(merged)
-    alerts = written
-    res.evidence, res.alerts = evs, alerts
-    return res
+    return written
 
 
 def _assign_gaps(
@@ -598,4 +640,25 @@ def tick(
         total.evidence += r.evidence
         total.alerts += r.alerts
         total.metrics += r.metrics
+    mcfg = settings.detectors.get("military", {})
+    fcfg = dict(settings.detectors.get("fusion", {}))
+    total.evidence += military_step(
+        store,
+        mcfg,
+        settings.aois,
+        events_all,
+        now,
+        lambda name, evs: fuse_and_store(
+            store,
+            name,
+            evs,
+            fcfg,
+            playbook,
+            source_grades,
+            now,
+            notices=events_all,
+            own=lambda k: k in MIL_KINDS,
+        ),
+        _assign_tick_persistence,
+    )
     return total

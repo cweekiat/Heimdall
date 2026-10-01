@@ -381,12 +381,15 @@ class DuckDBStore:
         bbox: BBox | None = None,
         ident: Ident | None = None,
         local_only: bool = False,
+        mil_only: bool = False,
     ) -> list[AircraftObs]:
         sql, p = self._filters(h3_r4, bbox, ident, "hex")
         if sql is None:
             return []
         if local_only:  # 024g display-only rows never feed detectors; skip them in SQL
             sql += " AND NOT coalesce(is_global, false)"
+        if mil_only:  # task 039: military rows only (any source)
+            sql += " AND coalesce(mil, false)"
         return self._window(_AIR, start, end, sql, p)
 
     def vessels_window(
