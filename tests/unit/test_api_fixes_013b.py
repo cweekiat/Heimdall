@@ -25,6 +25,15 @@ from heimdall.sources_ctl import SourceManager
 HOSTS = ["testserver", "127.0.0.1", "localhost"]
 PB: dict[str, Any] = {"actions": {}}
 NOW = datetime.now(UTC)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_now(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rows are stamped relative to NOW and the API filters on the wall clock: refresh NOW per
+    test so a slow suite run cannot age them out of the window."""
+    monkeypatch.setitem(globals(), "NOW", datetime.now(UTC))
+
+
 OH = {"Origin": "http://testserver"}
 
 

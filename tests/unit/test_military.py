@@ -13,6 +13,7 @@ from heimdall.config import AOI, Settings, settings
 from heimdall.detect import military as mil
 from heimdall.ingest.adsb_mil import AdsbMilConnector
 from heimdall.ingest.plane_alert import index, parse_csv
+from heimdall.military_step import theatres
 from heimdall.milroles import classify, country_of
 from heimdall.miltrack import MilTracks
 from heimdall.pipeline import tick
@@ -208,10 +209,27 @@ def test_tick_opens_deployment_alert_for_theatre() -> None:
     assert "7 tankers flew into Europe staging" in a.summary
 
 
-@pytest.mark.parametrize("theatre_count", [16])
-def test_config_theatres_load(theatre_count: int) -> None:
-    th = settings().detectors["military"]["theatres"]
-    assert len(th) == theatre_count and all(t["radius_km"] <= 1300 for t in th)
+def test_config_theatres_load() -> None:
+    th = theatres(settings().detectors["military"], [])
+    assert len(th) == 17 and all(t.radius_km <= 1300 for t in th if t.rules == mil.ALL_RULES)
+    (us,) = [t for t in th if t.name == "Continental US"]
+    assert us.rules == ("high_interest",)
+
+
+def test_home_theatre_only_flags_command_posts() -> None:
+    home = mil.Theatre("Continental US", 38.5, -96.0, 2400.0, ("high_interest",))
+    t = MilTracks()
+    for i in range(8):
+        t.add(
+            [
+                _obs(f"ae60{i:02d}", NOW - timedelta(hours=10), 20.0, -40.0, "C17"),
+                _obs(f"ae60{i:02d}", NOW - timedelta(hours=5), 38.0, -96.0, "C17"),
+            ]
+        )
+    t.add([_obs("ae470e", NOW - timedelta(minutes=20), 35.4, -97.4, "E6")])
+    evs, _ = mil.detect_movements(mil.Snapshot.of(t), home, _idents(t), NOW)
+    assert [e.kind for e in evs] == [AlertKind.MIL_HIGH_INTEREST]
+    assert mil.detect_buildup(evs, mil.Snapshot.of(t), home, _idents(t), NOW, n_notices=5) == []
 
 
 def test_api_summary_counts_roles_and_theatres(

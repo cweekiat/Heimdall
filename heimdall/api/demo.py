@@ -9,6 +9,7 @@ tracks are time-shifted onto the wall clock (looping over the replay span) so th
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import random
 from collections.abc import Sequence
@@ -17,6 +18,8 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 import h3
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 from heimdall import config
 from heimdall.adapters.memory_store import MemoryStore
@@ -938,6 +941,17 @@ class ReplayDemoStore(ReplayStore):
         last = self.aircraft[-1].ts if self.aircraft else self.boot
         self.span = max(last - self.t0, timedelta(seconds=1)) + timedelta(seconds=1)
 
+    def seek(self, at: datetime, now: datetime | None = None) -> datetime:
+        """Make the wall clock `now` show replay time `at` (clamped to the recording); the replay
+        then plays on in real time from there (task 040 demo steps)."""
+        at = min(max(at, self.t0), self.t0 + self.span - timedelta(seconds=1))
+        self.boot = (now or datetime.now(UTC)) - (at - self.t0)
+        return at
+
+    def replay_now(self, now: datetime | None = None) -> datetime:
+        """Replay time currently shown at wall time `now`."""
+        return self._segments(now or datetime.now(UTC), (now or datetime.now(UTC)))[0][0]
+
     def _segments(
         self, start: datetime, end: datetime
     ) -> list[tuple[datetime, datetime, timedelta]]:
@@ -987,11 +1001,29 @@ def load_replay(path: str | Path) -> ReplayDemoStore:
     return store
 
 
+def load_scenario(path: str | Path) -> dict[str, Any] | None:
+    """`<stem>.scenario.json` next to a replay (task 040), written by scripts/midnight_hammer.py."""
+    p = Path(path)
+    sp = p.with_name(p.stem + ".scenario.json")
+    if not sp.is_file():
+        return None
+    data = json.loads(sp.read_text())
+    return data if isinstance(data, dict) and isinstance(data.get("steps"), list) else None
+
+
 def replay_view(store: Store, path: str | Path) -> dict[str, Any]:
     """Start view centred on the replay's alerts, plus a banner saying what the data is."""
     pts = [(a.lat, a.lon) for a in store.list_alerts() if a.lat is not None and a.lon is not None]
     lat = sum(p[0] for p in pts) / len(pts) if pts else 0.0
     lon = sum(p[1] for p in pts) / len(pts) if pts else 0.0
+    sc = load_scenario(path)
+    if sc is not None:
+        return {
+            "initial_view": {"lat": 42.0, "lon": 10.0, "zoom": 3.8},  # flat: no globe switch
+            "banner": "REPLAY of real recorded military flights, 18-22 Jun 2025 (adsb.lol, ODbL). "
+            "Use the Demo window to step through the pre-strike indicators.",
+            "scenario": sc,
+        }
     return {
         "initial_view": {"lat": round(lat, 3), "lon": round(lon, 3), "zoom": 6.0},
         "banner": (
@@ -1013,7 +1045,32 @@ def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover
     store = load_replay(args.replay) if args.replay else seed(LiveDemoStore())
     ui_extra = replay_view(store, args.replay) if args.replay else None
     app = create_app(store, sources=DemoSources(), ui_extra=ui_extra)
+    if isinstance(store, ReplayDemoStore):
+        add_seek_route(app, store)
     uvicorn.run(app, host="127.0.0.1", port=args.port)
+
+
+def add_seek_route(app: Any, store: ReplayDemoStore) -> None:
+    """POST /api/replay/seek {"at": ISO time} -> jump the replay clock (demo only, task 040)."""
+
+    @app.post("/api/replay/seek")
+    async def seek(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+            at = datetime.fromisoformat(str(body.get("at", "")).replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return JSONResponse({"detail": "bad time"}, status_code=422)
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=UTC)
+        return JSONResponse({"at": store.seek(at).isoformat()})
+
+    @app.get("/api/replay/now")
+    def replay_now() -> dict[str, str]:
+        return {"at": store.replay_now().isoformat()}
+
+    # routes added after create_app sit behind its catch-all static mount at "/": move them first
+    mine = [r for r in app.router.routes if getattr(r, "path", "").startswith("/api/replay/")]
+    app.router.routes[:] = mine + [r for r in app.router.routes if r not in mine]
 
 
 if __name__ == "__main__":  # pragma: no cover

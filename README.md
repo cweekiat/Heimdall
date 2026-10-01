@@ -88,6 +88,13 @@ uv run python -m heimdall.api.demo --replay data/replay/hormuz/2025-06-17.parque
 Open **http://127.0.0.1:8020**. The map opens on Hormuz with a REPLAY banner. Times are shifted onto
 today's clock so traffic moves; alert IDs keep the real date (`HMD-20250617-...`).
 
+### Demo: Operation Midnight Hammer (real data, 16-22 June 2025)
+```bash
+uv run python -m heimdall.api.demo --replay data/replay/midnight_hammer/midnight_hammer.parquet --port 8030
+```
+A **Demo** window steps through the public pre-strike indicators and shows, on the real military ADS-B traffic of that
+week, what was visible and which alerts Heimdall raised. How to rebuild the data: [docs/demo-midnight-hammer.md](docs/demo-midnight-hammer.md).
+
 ### Live monitoring
 One process runs ingest, detection and the API (see ADR-002; DuckDB is single-writer):
 ```bash

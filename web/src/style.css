@@ -1463,7 +1463,7 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
 /* windows sit below the top bar and right of the rail */
 #toast { top: calc(var(--sb-h) + 8px); }
 .band-ladder { left: calc(var(--tb-w) + 8px); }
-.replay-banner { top: calc(var(--sb-h) + 4px) !important; }
+.replay-banner { top: calc(var(--sb-h) + 4px) !important; bottom: auto !important; }
 
 /* map controls: bottom right */
 #mapctl {
@@ -1802,3 +1802,16 @@ button.mil-bar[aria-pressed="true"] { outline: 1px solid var(--accent, #58a6ff);
 .mil-role.r-tanker, .mil-role.r-bomber, .mil-role.r-c2 { color: var(--military, #f0a020); }
 .mil-role.r-isr, .mil-role.r-special { color: #b48ead; }
 .mil-role.r-gov_vip { color: var(--alert, #e5534b); }
+
+/* 040: demo scenario window */
+.sc-head { margin-bottom: 6px; }
+.sc-nav { display: flex; gap: 6px; margin: 6px 0 8px; }
+.sc-step { display: flex; flex-wrap: wrap; gap: 2px 8px; width: 100%; padding: 6px 8px; margin-bottom: 4px; font: inherit; font-size: 12px; color: inherit; text-align: left; background: none; border: 1px solid var(--line, #2a313a); border-left-width: 4px; border-radius: 4px; cursor: pointer; }
+.sc-step[aria-current="true"] { background: color-mix(in srgb, currentColor 7%, transparent); }
+.sc-step.st-seen { border-left-color: #3fb950; }
+.sc-step.st-not_visible { border-left-color: #8b949e; }
+.sc-step.st-no_data { border-left-color: #d29922; }
+.sc-when { font-variant-numeric: tabular-nums; opacity: 0.75; }
+.sc-status { margin-left: auto; font-size: 11px; opacity: 0.8; }
+.sc-title, .sc-brief, .sc-saw, .sc-ex, .sc-at { flex-basis: 100%; }
+.sc-brief, .sc-ex, .sc-at { opacity: 0.75; font-size: 11px; }

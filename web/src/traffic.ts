@@ -7,7 +7,7 @@ import { api } from "./api";
 import type { AirProps, SeaProps, SourceState } from "./api";
 import { Feed } from "./trafficfeed";
 import type { FeedReq } from "./trafficfeed";
-import { COVERAGE_NOTE, densityOpacity, iconOpacity, parseBox, truncationNote, wanted, zoomParam } from "./trafficdata";
+import { COVERAGE_NOTE, densityCells, densityOpacity, iconOpacity, parseBox, truncationNote, wanted, zoomParam } from "./trafficdata";
 import type { DensityRow, Wanted } from "./trafficdata";
 import { rgba } from "./theme/palette";
 import { altitudeMeters, dropLines, view } from "./map3d";
@@ -311,10 +311,13 @@ export class Traffic {
     return view.mode === "3d" ? altitudeMeters(r.alt_baro, r.on_ground, view.exaggeration) : 0;
   }
 
-  /** Zoomed out: H3 density cells (opacity by log count); cells holding military get an amber outline. */
+  /** Zoomed out: H3 density cells (opacity by log count); cells holding military get an amber outline.
+   *  "Military only" keeps just the cells with military and counts only those (amber fill). */
   private densityLayers(zoom: number): unknown[] {
     const fade = densityOpacity(zoom);
-    const mk = (id: string, cells: DensityRow[], alpha: number): unknown[] => {
+    const mil = filters.milOnly;
+    const mk = (id: string, all: DensityRow[], alpha: number): unknown[] => {
+      const cells = densityCells(all, mil);
       if (!cells.length || fade <= 0.01) return [];
       const max = Math.log1p(Math.max(...cells.map((c) => c.count)));
       const a = (c: DensityRow): number => alpha * (0.15 + 0.85 * (Math.log1p(c.count) / max));
@@ -324,8 +327,8 @@ export class Traffic {
           data: cells,
           opacity: fade,
           getHexagon: (d) => d.h3,
-          getFillColor: (d) => rgba("neutral", a(d)),
-          updateTriggers: { getFillColor: [cells] },
+          getFillColor: (d) => (mil ? rgba("military", a(d) * 0.6) : rgba("neutral", a(d))),
+          updateTriggers: { getFillColor: [cells, mil], getLineColor: [mil] },
           getLineColor: (d) => (d.mil > 0 ? rgba("military", 0.9) : rgba("neutral", 0)),
           stroked: true,
           filled: true,

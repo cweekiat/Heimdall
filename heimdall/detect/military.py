@@ -10,8 +10,8 @@ airlift surges, ISR presence, bomber / airborne command post activity, notices a
   and later inside it, within `deploy_window_h`.
 * MIL_SURGE: distinct aircraft of a role airborne in the theatre (6 h) >= surge_min, >= ratio x
   and z >= surge_z above its own hourly baseline.
-* MIL_HIGH_INTEREST: bomber, airborne command post (E-4B / E-6B), head of state, "dictator alert"
-  or nuclear-category aircraft airborne in the theatre (1 h).
+* MIL_HIGH_INTEREST: bomber or airborne command post (E-4B / E-6B) airborne in the theatre (1 h).
+  Heads of state and VIP jets are shown in the Military panel only (daily traffic, no indicator).
 * MIL_BUILDUP: >= buildup_min_groups independent indicator groups within `buildup_window_h`, at
   least one a movement (tanker, airlift, bomber).
 
@@ -35,7 +35,7 @@ import numpy as np
 
 from heimdall.detect.common import MAD_SCALE, evidence_id
 from heimdall.geo import EARTH_RADIUS_KM, h3_cell
-from heimdall.milroles import MilIdent
+from heimdall.milroles import HIGH_INTEREST_ROLES, MilIdent
 from heimdall.miltrack import MilTracks
 from heimdall.schemas import AlertKind, Band, Coverage, Evidence, RecordRef, RuleResult
 
@@ -73,12 +73,16 @@ ROLE_WORDS = {
 }
 
 
+ALL_RULES = ("deployment", "surge", "high_interest", "buildup")
+
+
 @dataclass(frozen=True)
 class Theatre:
     name: str
     lat: float
     lon: float
     radius_km: float
+    rules: tuple[str, ...] = ALL_RULES  # e.g. only high_interest for a home theatre (CONUS)
 
 
 @dataclass
@@ -224,7 +228,7 @@ def detect_movements(
     # deployment waves
     dep_from = end - timedelta(hours=float(c["deploy_window_h"]))
     arr = arrivals(snap, th, idents, dep_from.timestamp(), float(c["outside_margin_km"]))
-    for role, need in sorted(c["min_arrivals"].items()):
+    for role, need in sorted(c["min_arrivals"].items()) if "deployment" in th.rules else []:
         got = arr.get(role, [])
         if len(got) < int(need):
             continue
@@ -235,7 +239,14 @@ def detect_movements(
                 AlertKind.MIL_DEPLOYMENT,
                 th,
                 role,
-                dep_from,
+                # the episode starts at the first arrival, not at the look-back edge
+                max(
+                    dep_from,
+                    _floor(
+                        datetime.fromtimestamp(min(x[2] for x in got), tz=now.tzinfo),
+                        int(c["step_min"]),
+                    ),
+                ),
                 end,
                 now,
                 score=len(got) / (3.0 * int(need)),
@@ -260,7 +271,7 @@ def detect_movements(
     # surge vs own baseline
     pres = presence(snap, th, idents, t_now - float(c["presence_h"]) * 3600)
     counts = {r: float(len(v)) for r, v in pres.items()}
-    for role, need in sorted(c["surge_min"].items()):
+    for role, need in sorted(c["surge_min"].items()) if "surge" in th.rules else []:
         n = counts.get(role, 0.0)
         hist = baseline(role) if baseline is not None else []
         if n < float(need) or len(hist) < int(c["surge_min_samples"]):
@@ -309,10 +320,14 @@ def detect_movements(
 
     # high-interest aircraft
     hi = presence(snap, th, idents, t_now - float(c["high_interest_h"]) * 3600)
-    hexes = sorted(h for v in hi.values() for h in v if idents[h].high_interest)
+    # alerts only for bombers and airborne command posts; heads of state / VIP jets stay in the
+    # Military panel (they fly every day and are not build-up indicators)
+    hexes = sorted(h for v in hi.values() for h in v if idents[h].role in HIGH_INTEREST_ROLES)
+    if "high_interest" not in th.rules:
+        hexes = []
     if hexes:
-        kinds = sorted({idents[h].category or idents[h].role for h in hexes})
-        strategic = any(idents[h].role in ("bomber", "c2") for h in hexes)
+        kinds = sorted({idents[h].type_name or ROLE_WORDS.get(idents[h].role, "") for h in hexes})
+        strategic = True
         out.append(
             _evidence(
                 AlertKind.MIL_HIGH_INTEREST,
@@ -363,6 +378,8 @@ def detect_buildup(
     this tick); `n_notices`: active military / airspace notices in the theatre; `n_jamming`:
     GNSS-jamming Evidence in the theatre over the window."""
     c = _cfg(cfg)
+    if "buildup" not in th.rules:
+        return []
     end = _floor(now, int(c["step_min"]))
     start = end - timedelta(hours=float(c["buildup_window_h"]))
     groups: dict[str, str] = {}
@@ -387,6 +404,11 @@ def detect_buildup(
         groups["notice"] = f"{n_notices} active military / airspace notices in {th.name}"
     if n_jamming:
         groups["gnss_jamming"] = f"GNSS jamming evidence in {th.name} ({n_jamming} items)"
+    starts = [
+        e.window_start for e in movement_evidence if e.aoi == th.name and e.window_end >= start
+    ]
+    if starts:
+        start = max(start, min(starts))
     moving = [g for g in MOVEMENT if g in groups]
     need = int(c["buildup_min_groups"])
     if len(groups) < need or not moving:

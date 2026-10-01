@@ -85,7 +85,12 @@ function body(d: AlertDetail): Node[] {
       : null;
   const supporting = a.corroborations.filter((c) => c.relation !== "context");
   const adjust = a.corroborations.filter((c) => c.relation === "context");
-  const rules = evs.flatMap((e) => e.rules.filter((r) => r.passed));
+  // newest evidence first, one line per rule: repeated windows of the same rule add no information
+  const seenRule = new Set<string>();
+  const rules = [...evs]
+    .sort((x, y) => (x.window_end < y.window_end ? 1 : -1))
+    .flatMap((e) => e.rules.filter((r) => r.passed))
+    .filter((r) => !seenRule.has(r.rule) && Boolean(seenRule.add(r.rule)));
   const ents = [...new Set(evs.flatMap((e) => e.entities))].map((e) => ({ id: e, ...entityLabel(e) }));
   return [
     kv([
@@ -96,7 +101,7 @@ function body(d: AlertDetail): Node[] {
       ["Last seen", `${fmtTime(a.last_seen)} (${dur})`],
       ["Sources", sourceLine(evs)],
       ["Also seen by", supporting.length ? supporting.map((c) => `${DOMAIN_NAME[c.domain] ?? c.domain}: ${c.note}`).join("; ") : null],
-      ["Data", ev ? `${ev.coverage.n_observed} aircraft observed, ${ev.coverage.n_quality} with GPS accuracy data` : null],
+      ["Data", ev ? (a.kind.startsWith("mil_") ? `${ev.coverage.n_observed} aircraft observed` : `${ev.coverage.n_observed} aircraft observed, ${ev.coverage.n_quality} with GPS accuracy data`) : null],
       ["Affected", affected],
       ["Estimated emitter", emitter],
       ["Confidence", `${Math.round(a.confidence * 100)} %${adjust.length ? ` (${adjust.map((c) => c.note).join("; ")})` : ""}`],

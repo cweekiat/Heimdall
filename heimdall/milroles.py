@@ -11,6 +11,7 @@ gov_vip (heads of state, governments, "dictator alert"), trainer, other.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -88,6 +89,21 @@ TAG_ROLE: dict[str, str] = {
     "VIP Transport": "gov_vip",
     "VIP": "gov_vip",
 }
+#: airframe names from plane-alert-db, for military variants of airliner types (E-4B is a B742)
+NAME_ROLE: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(p, re.I), r)
+    for p, r in (
+        (r"\bE-4B\b|Nightwatch|\bE-6B?\b|Mercury|TACAMO", "c2"),
+        (r"\bKC-(135|46|10|767|30)|MRTT|Pegasus|Stratotanker|Voyager", "tanker"),
+        (
+            r"\bRC-135|Rivet Joint|Airseeker|Combat Sent|Cobra Ball|\bU-2|Dragon Lady|"
+            r"Global Hawk|\bE-3[A-G]?\b|Sentry|\bE-8|\bP-8|Poseidon|\bE-7|Wedgetail",
+            "isr",
+        ),
+        (r"\bB-2[A]? Spirit|\bB-52|Stratofortress|\bB-1B|Lancer", "bomber"),
+        (r"\bC-17|Globemaster|\bC-5M?\b|Galaxy", "airlift"),
+    )
+)
 CATEGORY_ROLE: dict[str, str] = {
     "Head of State": "gov_vip",
     "Dictator Alert": "gov_vip",
@@ -223,6 +239,12 @@ def classify(hex_: str, type_code: str | None, entry: Mapping[str, str] | None =
             role = next((TAG_ROLE[t] for t in tags if t in TAG_ROLE), None)
             if role is None or (tc in TYPE_ROLE and role not in ("tanker", "isr")):
                 role = TYPE_ROLE.get(tc or "", role)
+    if entry:
+        name = _clean(entry.get("type")) or ""
+        by_name = next((r for pat, r in NAME_ROLE if pat.search(name)), None)
+        # command posts and bombers by name win over any tag (an E-4B is also "Gov"-tagged)
+        if by_name in ("c2", "bomber") or (by_name and role in (None, "other")):
+            role = by_name
     if role is None:
         role = TYPE_ROLE.get(tc or "", "other")
     return MilIdent(

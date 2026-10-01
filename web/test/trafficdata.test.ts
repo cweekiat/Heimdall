@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { boxInside, decode, densityOpacity, EntityStore, iconOpacity, inBox, padBox, truncationNote, wanted, zoomParam } from "../src/trafficdata.ts";
+import { boxInside, decode, densityCells, densityOpacity, EntityStore, iconOpacity, inBox, padBox, truncationNote, wanted, zoomParam } from "../src/trafficdata.ts";
 import type { Box } from "../src/trafficdata.ts";
 import { Feed } from "../src/trafficfeed.ts";
 import type { FeedReq } from "../src/trafficfeed.ts";
@@ -186,4 +186,13 @@ test("an old server without version or truncated fields still works", async () =
   await fd.poll(VIEW, 6, "");
   assert.equal(fd.store.size, 1);
   assert.equal(fd.truncated, false);
+});
+
+test("military-only density keeps only cells with military, counted by military alone", () => {
+  const all = [
+    { h3: "a", count: 40, mil: 0 },
+    { h3: "b", count: 25, mil: 3 },
+  ];
+  assert.deepEqual(densityCells(all, false), all);
+  assert.deepEqual(densityCells(all, true), [{ h3: "b", count: 3, mil: 3 }]);
 });

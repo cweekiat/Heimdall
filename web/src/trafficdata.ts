@@ -140,6 +140,11 @@ export interface DensityRow {
   count: number;
   mil: number;
 }
+
+/** Density cells to draw: with "military only", just the cells holding military, counted by military alone. */
+export function densityCells(all: DensityRow[], milOnly: boolean): DensityRow[] {
+  return milOnly ? all.filter((c) => c.mil > 0).map((c) => ({ ...c, count: c.mil })) : all;
+}
 export interface Decoded<T> {
   kind: "points" | "density";
   delta: boolean;
