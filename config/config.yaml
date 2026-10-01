@@ -218,6 +218,8 @@ detectors:
       - {name: "Hawaii", lat: 21.3, lon: -157.9, radius_km: 500}          # Hickam
       - {name: "Black Sea", lat: 44.0, lon: 33.0, radius_km: 800}
       - {name: "Baltic", lat: 56.5, lon: 20.0, radius_km: 600}
+      # home bases: routine airlift/tankers would always "deploy", so only command posts / bombers airborne count
+      - {name: "Continental US", lat: 38.5, lon: -96.0, radius_km: 2400, rules: [high_interest]}  # Offutt, Tinker, Andrews, Whiteman
   spectrum_state:           # 033/034: per-AOI band indicators vs own history. Priors, not backtested (ADR-008)
     baseline_days: 14
     min_samples: 288        # 1 day of 5-min ticks before any state but "learning"

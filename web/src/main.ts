@@ -44,6 +44,7 @@ import { P3Layers } from "./p3layers";
 import { SpectrumLayers } from "./spectrum";
 import { SpectrumWatch } from "./watch";
 import { MilitaryPanel } from "./military";
+import { ScenarioPanel } from "./scenario";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
 import { ctxHooks } from "./context";
 import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, hasSavedGeometry, isOpen, onWmChange, openWindow, placeWindow, toggleWindow, winRect } from "./wm";
@@ -494,6 +495,14 @@ async function boot(): Promise<void> {
       b.setAttribute("role", "status");
       b.textContent = ui.banner; // server text, rendered as text only
       document.body.append(b);
+    }
+    if (ui.scenario) {
+      // 040: real-data demo (e.g. Midnight Hammer): steps jump the replay clock, map and alert
+      new ScenarioPanel(ui.scenario, {
+        jumpTo: (lon, lat, zoom) => ops?.view(lon, lat, zoom),
+        openAlert: (id) => void selectAlert(id, false),
+        refresh: () => void milWin.refresh(),
+      });
     }
     areasWin.attach(ops);
     areasWin.onChange = () => {

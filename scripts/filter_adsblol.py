@@ -1,6 +1,7 @@
 """Filter adsb.lol readsb trace files to a bounding box and write a replay parquet.
 
     uv run python scripts/filter_adsblol.py OUT.parquet [SOURCE ...] [--bbox S W N E]
+    uv run python scripts/filter_adsblol.py OUT.parquet - --mil [--every 60]   (task 039 demo)
 
 SOURCE is any of: a directory of `trace_full_*.json[.gz]`, a `.tar` / `.tar.gz` archive, `-`
 (a tar stream on stdin, used by fetch_adsblol_day.sh), or a `.json[.gz]` file holding one trace
@@ -95,15 +96,39 @@ def _iter_tar(tar: tarfile.TarFile) -> Iterator[dict[str, Any]]:
                 yield data
 
 
+def thin(payload: dict[str, Any], every_s: float) -> dict[str, Any]:
+    """Keep at most one trace row per `every_s` seconds (rows are time-ordered offsets)."""
+    rows, last = [], None
+    for r in payload.get("trace") or []:
+        if not isinstance(r, list) or not r or not isinstance(r[0], int | float):
+            continue
+        if last is None or r[0] - last >= every_s:
+            rows.append(r)
+            last = r[0]
+    return {**payload, "trace": rows}
+
+
 def filter_sources(
-    sources: Sequence[str | Path], bbox: BBox = HORMUZ_BBOX, provider: str = PROVIDER
+    sources: Sequence[str | Path],
+    bbox: BBox = HORMUZ_BBOX,
+    provider: str = PROVIDER,
+    *,
+    mil_only: bool = False,
+    every_s: float = 0.0,
 ) -> list[AircraftObs]:
+    """`mil_only`: worldwide, only aircraft whose dbFlags mark them military (bbox ignored)."""
     obs: list[AircraftObs] = []
     for s in sources:
         for payload in iter_payloads(s):
-            kept = filter_payload(payload, bbox)
+            if mil_only:
+                flags = payload.get("dbFlags")
+                if not isinstance(flags, int) or not flags & 1:
+                    continue
+                kept: dict[str, Any] | None = payload
+            else:
+                kept = filter_payload(payload, bbox)
             if kept is not None:
-                obs.extend(parse_trace(kept, provider))
+                obs.extend(parse_trace(thin(kept, every_s) if every_s else kept, provider))
     return obs
 
 
@@ -113,11 +138,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("sources", nargs="*", default=["-"], help="default: tar stream on stdin")
     ap.add_argument("--bbox", nargs=4, type=float, metavar=("S", "W", "N", "E"))
     ap.add_argument("--provider", default=PROVIDER)
+    ap.add_argument("--mil", action="store_true", help="worldwide, military-flagged aircraft only")
+    ap.add_argument("--every", type=float, default=0.0, help="keep one row per N seconds")
     args = ap.parse_args(argv)
     bbox: BBox = tuple(args.bbox) if args.bbox else HORMUZ_BBOX  # type: ignore[assignment]
-    obs = filter_sources(args.sources, bbox, args.provider)
+    obs = filter_sources(args.sources, bbox, args.provider, mil_only=args.mil, every_s=args.every)
     n = write_obs_parquet(args.out, obs)
-    print(f"{n} rows in bbox {bbox} -> {args.out}")
+    print(f"{n} rows {'(military, worldwide)' if args.mil else f'in bbox {bbox}'} -> {args.out}")
     return 0 if n else 1
 
 

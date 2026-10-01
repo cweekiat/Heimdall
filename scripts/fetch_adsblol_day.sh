@@ -2,6 +2,8 @@
 # Fetch ONE day of adsb.lol's public daily history archive, keep only the Hormuz bbox, delete the raw.
 #
 #   scripts/fetch_adsblol_day.sh YYYY-MM-DD        (run from the repo root; needs curl, python3, uv)
+#   OUT=data/replay/midnight_hammer/D.parquet scripts/fetch_adsblol_day.sh D --mil --every 60
+#     (task 039: worldwide military aircraft only; extra args go to filter_adsblol.py)
 #
 # Source: adsb.lol daily archives, published as GitHub releases of `adsblol/globe_history_<YYYY>`.
 # Release/asset naming (as documented by adsb.lol; the script does NOT hard-code it, it discovers the
@@ -21,12 +23,13 @@
 # Not for tests or CI. Output: data/replay/hormuz/<DATE>.parquet (data/ is git-ignored).
 set -euo pipefail
 
-DATE="${1:?usage: fetch_adsblol_day.sh YYYY-MM-DD}"
+DATE="${1:?usage: fetch_adsblol_day.sh YYYY-MM-DD [filter args]}"
+shift
 [[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "bad date: $DATE" >&2; exit 2; }
 YEAR="${DATE:0:4}"; MONTH="${DATE:5:2}"; DAY="${DATE:8:2}"
 REPO="adsblol/globe_history_${YEAR}"
 PREFIX="v${YEAR}.${MONTH}.${DAY}-planes-readsb-prod"
-OUT="data/replay/hormuz/${DATE}.parquet"
+OUT="${OUT:-data/replay/hormuz/${DATE}.parquet}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/adsblol-${DATE}.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT   # the raw archive never outlives the script
 
@@ -80,5 +83,5 @@ fi
 
 mkdir -p "$(dirname "$OUT")"
 # stream the concatenated tar straight into the filter: never extracted to disk
-(cd "$WORK" && cat $(cut -d' ' -f1 parts.txt | sort)) | uv run python scripts/filter_adsblol.py "$OUT" -
+(cd "$WORK" && cat $(cut -d' ' -f1 parts.txt | sort)) | uv run python scripts/filter_adsblol.py "$OUT" - "$@"
 echo "wrote $OUT (raw archive deleted on exit). Attribution: adsb.lol, ODbL 1.0."

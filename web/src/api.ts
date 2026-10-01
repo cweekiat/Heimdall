@@ -339,7 +339,10 @@ export const api = {
       overlays: string[];
       initial_view?: { lat: number; lon: number; zoom: number };
       banner?: string;
+      scenario?: Scenario;
     }>("/api/ui-config"),
+  /** 040: demo replays only — jump the replay clock to a recorded moment. */
+  replaySeek: (at: string) => post<{ at: string }>("/api/replay/seek", { at }),
   health: () => req<{ sources: SourceHealth[]; time: string }>("/api/health"),
   playbook: () => req<PlaybookAction[]>("/api/playbook"),
   track: (hex: string) => req<TrackPt[]>(`/api/tracks/${encodeURIComponent(hex)}`),
@@ -436,4 +439,26 @@ export interface MilitarySummary {
   theatres: MilTheatre[];
   aircraft: MilAircraft[];
   attribution: string;
+}
+
+/** 040: a step-by-step demo over a real-data replay (scripts/midnight_hammer.py). */
+export interface ScenarioStep {
+  when: string;
+  title: string;
+  brief: string;
+  saw: string;
+  status: "seen" | "not_visible" | "no_data";
+  at: string;
+  lat: number;
+  lon: number;
+  zoom: number;
+  examples: string[];
+  alert: string | null;
+}
+export interface Scenario {
+  title: string;
+  summary: string;
+  caveat: string;
+  sources: string;
+  steps: ScenarioStep[];
 }

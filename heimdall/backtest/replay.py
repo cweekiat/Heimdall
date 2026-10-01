@@ -143,6 +143,8 @@ def replay(
     if detectors is not None:  # an explicit *effective* config: AOI overrides already applied
         a = a.model_copy(update={"detectors": {}})
     det = {k: dict(v) for k, v in (settings.detectors if detectors is None else detectors).items()}
+    # task 039: an area backtest judges that area only (its own military theatre, no presets)
+    det["military"] = {**det.get("military", {}), "theatres": []}
     s = settings.model_copy(update={"aois": [a], "detectors": det})
     store = ReplayStore()
     rows = [o for o in obs if within_radius_nm(o.lat, o.lon, a.lat, a.lon, a.radius_nm)]

@@ -73,7 +73,13 @@ def state_for(store: Store, c: Mapping[str, Any]) -> MilState:
 
 def theatres(cfg: Mapping[str, Any], aois: Sequence[Any]) -> list[military.Theatre]:
     out = [
-        military.Theatre(str(t["name"]), float(t["lat"]), float(t["lon"]), float(t["radius_km"]))
+        military.Theatre(
+            str(t["name"]),
+            float(t["lat"]),
+            float(t["lon"]),
+            float(t["radius_km"]),
+            tuple(str(r) for r in t.get("rules") or military.ALL_RULES),
+        )
         for t in cfg.get("theatres") or []
         if isinstance(t, Mapping)
     ]
