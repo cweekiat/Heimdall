@@ -279,6 +279,17 @@ class AisStreamConnector:
     def _redact(self, s: str) -> str:
         return s.replace(self._key, "***") if self._key else s
 
+    @property
+    def set_aois(self) -> Callable[[Sequence[AOI]], None] | None:
+        """In-place area update; only in global mode (the subscription box does not change)."""
+        if not self.global_mode:
+            return None
+
+        def apply(aois: Sequence[AOI]) -> None:
+            self.aois = list(aois)
+
+        return apply
+
     def subscription(self) -> dict[str, Any]:
         boxes: list[list[list[float]]] = []
         if self.global_mode:

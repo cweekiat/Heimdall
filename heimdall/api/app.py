@@ -28,11 +28,13 @@ from heimdall.api.basemap import basemap_router
 from heimdall.api.gnss import gnss_router
 from heimdall.api.keys import keys_router
 from heimdall.api.layers import layers_router
+from heimdall.api.satellites import satellites_router
 from heimdall.api.spectrum import spectrum_router
 from heimdall.api.traffic import traffic_router
 from heimdall.fuse.fusion import ACTIVE
 from heimdall.gnss_service import GnssService, StoreGnssService
 from heimdall.live import LivePositions
+from heimdall.logging import get_logger
 from heimdall.ports import SecretStore, SourceControl, Store
 from heimdall.schemas import (
     ActionRequest,
@@ -44,6 +46,8 @@ from heimdall.schemas import (
 
 WEB_DIST = config.ROOT / "web" / "dist"
 LOCAL_HOSTS = ["127.0.0.1", "localhost"]
+
+log = get_logger("heimdall.api")
 
 
 class FeedbackIn(BaseModel):
@@ -518,6 +522,7 @@ def create_app(
     app.include_router(traffic_router(st, index=live))
     app.include_router(gnss_router(gnss or StoreGnssService(st, config.settings().detectors)))
     app.include_router(layers_router(st))
+    app.include_router(satellites_router(st))
     app.include_router(spectrum_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(
@@ -552,7 +557,12 @@ def create_app(
         first = True
         ticks = 0
         while max_ticks is None or ticks < max_ticks:
-            current = await asyncio.to_thread(st.list_alerts, None, None, None, 500)
+            try:
+                current = await asyncio.to_thread(st.list_alerts, None, None, None, 500)
+            except Exception as e:  # a store hiccup must not kill every open stream
+                log.warning("stream_read_failed", error=f"{type(e).__name__}: {str(e)[:200]}")
+                await asyncio.sleep(interval)
+                continue
             changed = [a for a in current if seen.get(a.id) != (a.last_seen, a.status.value)]
             for a in changed:
                 seen[a.id] = (a.last_seen, a.status.value)

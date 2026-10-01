@@ -7,6 +7,7 @@ math in heimdall/orbits.py. Satellite list and sensors are config priors (task 0
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -106,6 +107,8 @@ class CelestrakConnector:
         client: RateLimitedClient | None = None,
         sleep: Callable[[float], Any] = asyncio.sleep,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        groups: Mapping[str, str] | None = None,
+        max_per_group: int = 200,
     ) -> None:
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -125,6 +128,65 @@ class CelestrakConnector:
         self.n_err = 0
         self.n_dropped = 0
         self.records_hour = SlidingCounter()
+        # CelesTrak groups for the globe (e.g. gnss): elements only, no pass prediction
+        self.groups = dict(groups or {})
+        self.max_per_group = max_per_group
+        self._omms: list[tuple[dict[str, Any], dict[str, Any]]] = []  # last elements, for passes
+        self._wake: asyncio.Event | None = None
+        self._dirty = False
+
+    def set_aois(self, aois: Sequence[AOI]) -> None:
+        """New areas: recompute passes from the cached elements (CelesTrak asks clients not to
+        re-download the same data within 2 h, so an area edit must not trigger a fetch)."""
+        self.aois = list(aois)
+        self._dirty = True
+        if self._wake is not None:
+            self._wake.set()
+
+    def _passes(self, start: datetime) -> dict[str, GeoEvent]:
+        out: dict[str, GeoEvent] = {}
+        for omm, meta in self._omms:
+            for aoi in self.aois:
+                try:
+                    found = passes(
+                        omm,
+                        (aoi.lat, aoi.lon),
+                        start,
+                        self.pass_horizon_h,
+                        self.min_elev_deg,
+                        aoi=aoi.name,
+                        sensor=str(meta.get("sensor", "")),
+                    )
+                except ValueError as e:
+                    self._fail(f"pass prediction {omm.get('NORAD_CAT_ID')}: {e}")
+                    continue
+                out.update((p.id, p) for p in found)
+        return out
+
+    async def _poll_groups(self) -> dict[str, GeoEvent]:
+        out: dict[str, GeoEvent] = {}
+        for code, label in self.groups.items():
+            try:
+                resp = await self.client.get(
+                    f"{self.base_url}/NORAD/elements/gp.php",
+                    params={"GROUP": code, "FORMAT": "json"},
+                )
+                payload = resp.json()
+            except httpx.HTTPStatusError as e:
+                self._fail(f"group {code}: HTTP {e.response.status_code}")
+                continue
+            except (httpx.HTTPError, CircuitOpenError, ValueError) as e:
+                self._fail(f"group {code}: {type(e).__name__}: {e}")
+                continue
+            events, dropped = parse_gp(payload)
+            self.n_dropped += dropped
+            for ev in events[: self.max_per_group]:
+                ev.attrs["group"] = str(label)[:40]
+                out[ev.id] = ev
+            if events:
+                self.n_ok += 1
+                self.last_ok = self._now()
+        return out
 
     @property
     def client(self) -> RateLimitedClient:
@@ -159,6 +221,7 @@ class CelestrakConnector:
 
     async def poll_once(self) -> list[GeoEvent]:
         out: dict[str, GeoEvent] = {}
+        omms: list[tuple[dict[str, Any], dict[str, Any]]] = []
         start = self._now()
         for norad, meta in self.satellites.items():
             try:
@@ -186,31 +249,35 @@ class CelestrakConnector:
             for ev in events:
                 out[ev.id] = ev
             omm = {**latest.attrs["omm"], "OBJECT_NAME": meta.get("name", latest.attrs["name"])}
-            for aoi in self.aois:
-                try:
-                    found = passes(
-                        omm,
-                        (aoi.lat, aoi.lon),
-                        start,
-                        self.pass_horizon_h,
-                        self.min_elev_deg,
-                        aoi=aoi.name,
-                        sensor=str(meta.get("sensor", "")),
-                    )
-                except ValueError as e:
-                    self._fail(f"pass prediction {norad}: {e}")
-                    continue
-                out.update((p.id, p) for p in found)
+            omms.append((omm, dict(meta)))
+        self._omms = omms
+        out.update(self._passes(start))
+        out.update(await self._poll_groups())
         self.records_hour.add(len(out))
         RECORDS_IN.labels(self.name).inc(len(out))
         return list(out.values())
 
     async def stream(self) -> AsyncIterator[Sequence[BaseModel]]:
+        self._wake = asyncio.Event()
+        next_full = 0.0
+        loop = asyncio.get_running_loop()
         while not self._stop:
-            batch = await self.poll_once()
+            if loop.time() >= next_full:
+                batch: list[GeoEvent] = await self.poll_once()
+                next_full = loop.time() + self.poll_s
+            else:  # woken by an area edit: passes from the cached elements only
+                batch = list(self._passes(self._now()).values())
+            self._dirty = False
             if batch:
                 yield batch
-            await self._sleep(self.poll_s)
+            if self._sleep is not asyncio.sleep:  # tests inject a fake sleep
+                await self._sleep(self.poll_s)
+                next_full = 0.0
+                continue
+            self._wake.clear()
+            if not self._dirty:
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self._wake.wait(), max(1.0, next_full - loop.time()))
 
     async def aclose(self) -> None:
         self._stop = True
@@ -230,4 +297,5 @@ def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connector:
         rps=float(cfg.get("rps", 0.5)),
         reliability=SourceReliability(cfg.get("reliability", "A")),
         expected_latency_s=int(cfg.get("latency_s", 86400)),
+        groups=cfg.get("groups") or {},
     )

@@ -5,7 +5,7 @@ import { icon } from "./icons";
 import type { IconName } from "./icons";
 import { COVERAGE_NOTE } from "./trafficdata";
 import { T } from "./labels";
-import { P3_DEFAULT_ON, P3_LABEL, P3_LAYERS } from "./p3model";
+import { P3_DEFAULT_ON } from "./p3model";
 import type { P3Layer } from "./p3model";
 import { SPECTRUM_DEFAULT_ON } from "./spectrummodel";
 import type { SpectrumLayer } from "./spectrummodel";
@@ -41,6 +41,14 @@ export interface Filters {
   gnssNoticesOnly: boolean;
   /** HF spots: one amateur band in MHz, 0 = all. */
   hfBand: number;
+  /** Satellites and their ground tracks (globe and map). */
+  satellites: boolean;
+  /** Satellite groups hidden ("GNSS", "Space station", "Earth observation"). */
+  hiddenSatGroups: string[];
+  /** Alert types (detectors) hidden from the map. */
+  hiddenKinds: string[];
+  /** Data-quality coverage cells (thin data is greyed). */
+  coverage: boolean;
 }
 
 const KEY = "hm.filters.v1";
@@ -63,12 +71,18 @@ const DEFAULTS: Filters = {
   gpsBadOnly: false,
   gnssNoticesOnly: false,
   hfBand: 0,
+  satellites: true,
+  hiddenKinds: [],
+  hiddenSatGroups: [],
+  coverage: false,
 };
 
 function load(): Filters {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Filters>;
-    return { ...DEFAULTS, ...raw };
+    // display filters only: source on/off lives in Data sources; an old "hidden sources" choice
+    // made here would silently hide data, so it is not carried over
+    return { ...DEFAULTS, ...raw, hiddenSources: [] };
   } catch {
     return { ...DEFAULTS };
   }
@@ -120,26 +134,172 @@ export function activeSources(all: SourceState[], domain: string): string[] | un
 }
 
 export interface PanelCtx {
+  /** Loaded aircraft / ships in view ({air, sea}). */
   counts: () => Record<string, number>;
-  sources: () => SourceState[];
-  /** Optional extra block under the satellite toggles (next-pass chips). */
+  /** Satellites tracked. */
+  satellites: () => number;
+  /** Open alerts per alert kind. */
+  alertKinds: () => Record<string, number>;
+  /** Extra controls under a switched-on spectrum layer (GNSS date, HF band). */
+  spectrumExtra: (l: SpectrumLayer) => HTMLElement | null;
+  /** Short status of a spectrum layer ("3 open", newest data date). */
+  spectrumStatus: (l: SpectrumLayer) => string;
+  /** Next-pass chips under "Next satellite passes". */
   extra?: () => HTMLElement;
-  /** Spectrum toggles for the Live and Daily sweep groups (task 030). */
-  live?: () => HTMLElement;
-  daily?: () => HTMLElement;
 }
 
-type ToggleKey = "air" | "sea" | "alerts" | "notices" | "milOnly" | "onlyAlerts" | "gpsBadOnly" | "gnssNoticesOnly";
+/** Detectors whose alerts the Detections group can show or hide (order = list order). */
+export const DETECTIONS: { kind: string; label: string; icon: IconName }[] = [
+  { kind: "gnss_jamming", label: "GPS jamming", icon: "radio" },
+  { kind: "gnss_spoofing", label: "GPS spoofing (fake position)", icon: "gps" },
+  { kind: "mil_orbit", label: "Military aircraft circling", icon: "plane" },
+  { kind: "ais_gap", label: "Ship went dark (AIS off)", icon: "ship" },
+  { kind: "ais_spoofing", label: "Ship position faked", icon: "ship" },
+  { kind: "spectrum_anomaly", label: "Radio band far from normal", icon: "activity" },
+  { kind: "warning_area", label: "Activity in a warning area", icon: "notice" },
+  { kind: "thermal", label: "Heat / fire cluster", icon: "warn" },
+  { kind: "composite", label: "Several signs in one place", icon: "alerts" },
+];
 
-/** Build the filter panel once; call the returned refresh() to update source rows and counts. */
-export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
-  const srcBox = h("div", { class: "src-list" });
-  const chk = (label: string, key: ToggleKey, ico?: IconName, quick = false): HTMLElement => {
+interface Row {
+  id: string;
+  icon: IconName;
+  label: string;
+  /** Data source, shown in brackets: "Aircraft (ADS-B)". */
+  src?: string;
+  on: () => boolean;
+  set: (on: boolean) => void;
+  count?: () => string;
+  extra?: () => HTMLElement | null;
+  /** Indented sub-option of the row above. */
+  sub?: boolean;
+}
+interface Group {
+  id: string;
+  title: string;
+  rows: Row[];
+}
+
+const OPEN_KEY = "hm.filters.open";
+const toggleIn = <T,>(xs: T[], x: T, on: boolean): T[] => (on ? [...xs.filter((y) => y !== x), x] : xs.filter((y) => y !== x));
+
+/** The filter page (Google-Earth-style layer list). Every row only shows or hides data on the map;
+ * nothing here changes what the sources collect. Returns refresh() for counts. */
+export function mountFilters(root: HTMLElement, ctx: PanelCtx, lookBack: HTMLElement): () => void {
+  let open: Record<string, boolean> = { traffic: true, spectrum: true, earth: false, notices: false, detections: true, quick: false };
+  try {
+    open = { ...open, ...(JSON.parse(localStorage.getItem(OPEN_KEY) ?? "{}") as Record<string, boolean>) };
+  } catch {
+    /* defaults */
+  }
+  const fmt = (n: number): string => (n ? n.toLocaleString() : "");
+  const spec = (l: SpectrumLayer, icon: IconName, label: string, src: string): Row => ({
+    id: `s-${l}`,
+    icon,
+    label,
+    src,
+    on: () => filters.spectrum.includes(l),
+    set: (on) => setFilter({ spectrum: toggleIn(filters.spectrum, l, on) }),
+    count: () => ctx.spectrumStatus(l),
+    extra: () => ctx.spectrumExtra(l),
+  });
+  const p3 = (l: P3Layer, icon: IconName, label: string, src: string, extra?: () => HTMLElement | null): Row => ({
+    id: `p-${l}`,
+    icon,
+    label,
+    src,
+    on: () => filters.p3.includes(l),
+    set: (on) => setFilter({ p3: toggleIn(filters.p3, l, on) }),
+    extra,
+  });
+  const flag = (k: "air" | "sea" | "satellites" | "alerts" | "notices" | "gnssNoticesOnly" | "coverage", icon: IconName, label: string, src?: string, count?: () => string): Row => ({
+    id: `f-${k}`,
+    icon,
+    label,
+    src,
+    on: () => filters[k],
+    set: (on) => setFilter({ [k]: on }),
+    count,
+  });
+  const groups = (): Group[] => [
+    {
+      id: "traffic",
+      title: "Traffic",
+      rows: [
+        flag("air", "plane", "Aircraft", "ADS-B", () => fmt(ctx.counts().air ?? 0)),
+        flag("sea", "ship", "Vessels", "AIS", () => fmt(ctx.counts().sea ?? 0)),
+        flag("satellites", "orbit", "Satellites", "CelesTrak", () => fmt(ctx.satellites())),
+        ...(filters.satellites
+          ? [
+              ["Earth observation", "Earth-observation satellites"],
+              ["GNSS", "GNSS satellites (GPS, Galileo, GLONASS, BeiDou)"],
+              ["Space station", "Space stations"],
+            ].map(([g, label]): Row => ({
+              id: `g-${g}`,
+              icon: "orbit",
+              label: label!,
+              sub: true,
+              on: () => !filters.hiddenSatGroups.includes(g!),
+              set: (on) => setFilter({ hiddenSatGroups: toggleIn(filters.hiddenSatGroups, g!, !on) }),
+            }))
+          : []),
+      ],
+    },
+    {
+      id: "spectrum",
+      title: "GNSS and radio spectrum",
+      rows: [
+        spec("gnss", "gps", "GPS interference map", "ADS-B accuracy"),
+        spec("jammers", "ring", "Estimated jammer locations", "ADS-B"),
+        spec("sar_rfi", "radio", "C-band interference", "Sentinel-1"),
+        spec("smap", "radio", "L-band interference", "SMAP"),
+        spec("hf", "activity", "HF propagation", "WSPR, PSK Reporter"),
+        spec("satnogs", "orbit", "Satellite downlinks", "SatNOGS"),
+        spec("coverage", "coverage", "Receivers heard (pick a band)", "live receivers"),
+      ],
+    },
+    {
+      id: "earth",
+      title: "Earth observation",
+      rows: [
+        p3("thermal", "warn", "Heat spots", "NASA FIRMS"),
+        p3("overpass", "orbit", "Next satellite passes", "CelesTrak", () => (filters.p3.includes("overpass") ? (ctx.extra?.() ?? null) : null)),
+      ],
+    },
+    {
+      id: "notices",
+      title: "Alerts and notices",
+      rows: [
+        flag("alerts", "alerts", "Alert markers", "detectors"),
+        flag("notices", "notice", "Warnings and NOTAMs", "NGA, FAA"),
+        flag("gnssNoticesOnly", "gps", "Only GPS-interference notices"),
+        flag("coverage", "coverage", "Data coverage (thin data greyed)"),
+      ],
+    },
+    {
+      id: "detections",
+      title: "Detections",
+      rows: DETECTIONS.map((d) => ({
+        id: `k-${d.kind}`,
+        icon: d.icon,
+        label: d.label,
+        on: () => !filters.hiddenKinds.includes(d.kind),
+        set: (on: boolean) => setFilter({ hiddenKinds: toggleIn(filters.hiddenKinds, d.kind, !on) }),
+        count: () => {
+          const n = ctx.alertKinds()[d.kind] ?? 0;
+          return n ? `${n} open` : "";
+        },
+      })),
+    },
+  ];
+
+  // ---- quick filters: built once (typing must not lose focus on refresh)
+  const chk = (label: string, key: "milOnly" | "onlyAlerts" | "gpsBadOnly"): HTMLElement => {
     const i = h("input", { type: "checkbox" });
     i.checked = filters[key];
-    if (quick) i.dataset.quick = "1";
+    i.dataset.quick = "1";
     i.addEventListener("change", () => setFilter({ [key]: i.checked }));
-    return h("label", { class: "chk" }, i, ico ? icon(ico, 14) : null, label);
+    return h("label", { class: "chk" }, i, label);
   };
   const altLo = h("input", { type: "range", min: "0", max: String(ALT_MAX), step: "1000", "aria-label": T.altLow });
   const altHi = h("input", { type: "range", min: "0", max: String(ALT_MAX), step: "1000", "aria-label": T.altHigh });
@@ -166,94 +326,116 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx): () => void {
         const on = filters.shipClasses.includes(c);
         return h(
           "button",
-          {
-            type: "button",
-            class: "chip",
-            "aria-pressed": String(on),
-            onclick: () => {
-              setFilter({ shipClasses: on ? filters.shipClasses.filter((x) => x !== c) : [...filters.shipClasses, c] });
-              drawChips();
-            },
-          },
+          { type: "button", class: "chip", "aria-pressed": String(on), onclick: () => (setFilter({ shipClasses: toggleIn(filters.shipClasses, c, !on) }), drawChips()) },
           T.shipClass[c] ?? c,
         );
       }),
     );
   drawChips();
-  const search = h("input", { type: "search", placeholder: T.searchTraffic, "aria-label": T.searchTraffic });
+  const search = h("input", { type: "search", placeholder: T.searchTraffic, "aria-label": T.searchTraffic, id: "traffic-q" });
   search.value = filters.search;
   search.addEventListener("input", () => setFilter({ search: search.value }));
-  const reset = h(
-    "button",
-    {
-      type: "button",
-      onclick: () => {
-        setFilter({ milOnly: false, altMin: 0, altMax: ALT_MAX, shipClasses: [], onlyAlerts: false, gpsBadOnly: false, search: "" });
-        altLo.value = "0";
-        altHi.value = String(ALT_MAX);
-        search.value = "";
-        showAlt();
-        drawChips();
-        root.querySelectorAll<HTMLInputElement>("input[data-quick]").forEach((i) => (i.checked = false));
+  const quick = h(
+    "div",
+    { class: "fl-quick" },
+    search,
+    chk(T.militaryOnly, "milOnly"),
+    chk(T.onlyInAlerts, "onlyAlerts"),
+    chk("Only aircraft with GPS problems", "gpsBadOnly"),
+    h("div", { class: "alt" }, h("span", {}, T.altitudeBand), altLo, altHi, altTxt),
+    h("div", {}, h("span", {}, T.shipTypes), chips),
+    lookBack,
+    h(
+      "button",
+      {
+        type: "button",
+        onclick: () => {
+          setFilter({ milOnly: false, altMin: 0, altMax: ALT_MAX, shipClasses: [], onlyAlerts: false, gpsBadOnly: false, search: "" });
+          altLo.value = "0";
+          altHi.value = String(ALT_MAX);
+          search.value = "";
+          showAlt();
+          drawChips();
+          quick.querySelectorAll<HTMLInputElement>("input[data-quick]").forEach((i) => (i.checked = false));
+        },
       },
-    },
-    T.clearFilters,
+      T.clearFilters,
+    ),
   );
-  const p3chk = (l: P3Layer): HTMLElement => {
-    const i = h("input", { type: "checkbox" });
-    i.checked = filters.p3.includes(l);
-    i.addEventListener("change", () => setFilter({ p3: i.checked ? [...filters.p3.filter((x) => x !== l), l] : filters.p3.filter((x) => x !== l) }));
-    return h("label", { class: "chk" }, i, P3_LABEL[l]);
+
+  const head = h("div", { class: "fl-head" });
+  const list = h("div", { class: "fl-list" });
+  const saveOpen = (): void => {
+    try {
+      localStorage.setItem(OPEN_KEY, JSON.stringify(open));
+    } catch {
+      /* private mode */
+    }
   };
-  root.replaceChildren(
+  const groupHead = (id: string, title: string, n: number, total: number, allOff?: () => void): HTMLElement =>
     h(
-      "fieldset",
-      {},
-      h("legend", {}, "Live"),
-      chk(T.aircraft, "air", "plane"),
-      chk(T.ships, "sea", "ship"),
-      chk(T.alertMarkers, "alerts", "alerts"),
-      chk(T.noticesLayer, "notices", "notice"),
-      chk("Only official GPS-interference notices", "gnssNoticesOnly"),
-      ctx.live?.() ?? null,
-      h("p", { class: "note coverage-note" }, COVERAGE_NOTE),
-    ),
-    h(
-      "fieldset",
-      {},
-      h("legend", {}, "Daily sweep"),
-      h("p", { class: "note" }, "Hours to a day old. Each layer shows the date of its data."),
-      ctx.daily?.() ?? null,
-      ...P3_LAYERS.map(p3chk),
-      ctx.extra?.() ?? null,
-    ),
-    h("fieldset", {}, h("legend", {}, T.sourcesToShow), srcBox),
-    h(
-      "fieldset",
-      {},
-      h("legend", {}, T.quickFilters),
-      search,
-      chk(T.militaryOnly, "milOnly", undefined, true),
-      chk(T.onlyInAlerts, "onlyAlerts", undefined, true),
-      chk("Only aircraft with GPS problems", "gpsBadOnly", undefined, true),
-      h("div", { class: "alt" }, h("span", {}, T.altitudeBand), altLo, altHi, altTxt),
-      h("div", {}, h("span", {}, T.shipTypes), chips),
-      reset,
-    ),
-  );
-  return (): void => {
-    const c = ctx.counts();
-    const rows = ctx.sources().filter((s) => s.domain === "air" || s.domain === "sea");
-    srcBox.replaceChildren(
-      ...rows.map((s) => {
-        const i = h("input", { type: "checkbox" });
-        i.checked = !filters.hiddenSources.includes(s.key);
-        i.addEventListener("change", () =>
-          setFilter({ hiddenSources: i.checked ? filters.hiddenSources.filter((k) => k !== s.key) : [...filters.hiddenSources, s.key] }),
+      "div",
+      { class: "fl-group-head" },
+      h(
+        "button",
+        { type: "button", class: "fl-toggle", "aria-expanded": String(!!open[id]), onclick: () => ((open[id] = !open[id]), saveOpen(), draw()) },
+        icon(open[id] ? "down" : "right", 14),
+        h("span", {}, title),
+      ),
+      h("span", { class: "note num" }, total ? `${n}/${total}` : ""),
+      allOff && n ? h("button", { type: "button", class: "fl-alloff", onclick: allOff }, "All off") : null,
+    );
+  const draw = (): void => {
+    const gs = groups();
+    const nOn = gs.reduce((a, g) => a + g.rows.filter((r) => r.on()).length, 0);
+    head.replaceChildren(h("div", {}, h("strong", {}, "Layers"), h("div", { class: "note" }, `${nOn} on · only changes what you see`)));
+    list.replaceChildren(
+      ...gs.map((g) => {
+        const n = g.rows.filter((r) => r.on()).length;
+        return h(
+          "section",
+          { class: "fl-group" },
+          groupHead(g.id, g.title, n, g.rows.length, () => g.rows.forEach((r) => r.on() && r.set(false))),
+          open[g.id]
+            ? h(
+                "ul",
+                { class: "fl-rows" },
+                ...g.rows.flatMap((r) => {
+                  const on = r.on();
+                  const extra = on ? (r.extra?.() ?? null) : null;
+                  return [
+                    h(
+                      "li",
+                      {},
+                      h(
+                        "button",
+                        { type: "button", class: `fl-row${r.sub ? " sub" : ""}`, role: "switch", "aria-checked": String(on), onclick: () => r.set(!on) },
+                        icon(r.icon, 18),
+                        h("span", { class: "fl-label" }, r.label, r.src ? h("span", { class: "fl-src" }, ` (${r.src})`) : null),
+                        h("span", { class: "fl-count" }, r.count?.() || (on ? "" : "Off")),
+                      ),
+                      extra ? h("div", { class: "fl-extra" }, extra) : null,
+                    ),
+                  ];
+                }),
+              )
+            : null,
         );
-        return h("label", { class: "chk" }, i, icon(s.domain === "air" ? "plane" : "ship", 14), s.label, h("span", { class: "note num" }, ` ${c[s.key] ?? 0}`));
       }),
-      ...(rows.length === 0 ? [h("span", { class: "note" }, T.noSources)] : []),
+      h(
+        "section",
+        { class: "fl-group" },
+        groupHead("quick", T.quickFilters, 0, 0),
+        open.quick ? quick : null,
+      ),
+      h("p", { class: "note coverage-note" }, COVERAGE_NOTE),
     );
   };
+  root.replaceChildren(head, list);
+  draw();
+  onFilters(() => {
+    if (document.activeElement !== search && search.value !== filters.search) search.value = filters.search;
+    draw();
+  });
+  return draw;
 }

@@ -22,6 +22,7 @@ def _conn(sweep: list[AOI]) -> tuple[AdsbAggregatorConnector, list[str]]:
         sweep=sweep,
         sweep_every=2,
         sweep_backoff=3,
+        sweep_start=0,
     )
     calls: list[str] = []
 
@@ -63,3 +64,19 @@ def test_grid_and_config() -> None:
     assert _sweep_kw(None) == {} and _sweep_kw({"enabled": False}) == {}
     kw: dict[str, Any] = _sweep_kw({"enabled": True, "every": 3})
     assert kw["sweep_every"] == 3 and len(kw["sweep"]) == len(g)
+
+
+def test_spread_order_covers_the_grid_early() -> None:
+    from heimdall.ingest.adsb import spread_order
+
+    g = sweep_grid()
+    order = spread_order(len(g))
+    assert sorted(order) == list(range(len(g)))
+    first = [g[i].lat for i in order[: len(g) // 10]]  # a tenth of a pass
+    assert min(first) < -30 and max(first) > 50  # already spans south to north
+
+
+def test_set_aois_in_place() -> None:
+    c, _ = _conn([])
+    c.set_aois([AOI(name="b", lat=2, lon=2, radius_nm=100)])
+    assert [a.name for a in c.aois] == ["b"]

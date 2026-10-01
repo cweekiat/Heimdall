@@ -2,6 +2,7 @@
 // Client for GET /api/alerts/{id}/context plus a DOM renderer. Every value is set via textContent
 // (the `h` helper); the catalogue link is plain text and is never opened or fetched.
 // Imports carry ".ts" so the offline tests can run this file directly under node.
+import { fmtDT } from "./tz.ts";
 import { h } from "./dom.ts";
 
 export interface Confounder {
@@ -68,7 +69,7 @@ export async function getAlertContext(id: string, force = false): Promise<AlertC
   return ctx;
 }
 
-const utc = (iso: string | null): string => (iso && !Number.isNaN(Date.parse(iso)) ? `${new Date(iso).toISOString().slice(0, 16).replace("T", " ")} UTC` : "time unknown");
+const utc = (iso: string | null): string => (iso && !Number.isNaN(Date.parse(iso)) ? fmtDT(iso) : "time unknown");
 const local = (iso: string | null, tz?: string): string =>
   iso && !Number.isNaN(Date.parse(iso))
     ? new Date(iso).toLocaleString("en-GB", { timeZone: tz, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })

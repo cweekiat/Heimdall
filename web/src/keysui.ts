@@ -15,6 +15,10 @@ const KEY_HELP: Record<string, string> = {
   OPENSKY_CLIENT_ID: "OpenSky account → Account → API client",
   OPENSKY_CLIENT_SECRET: "OpenSky account → Account → API client",
   EARTHDATA_TOKEN: "NASA Earthdata (urs.earthdata.nasa.gov) → Generate Token; used for SMAP L-band RFI",
+  AISSTREAM_KEY: "Free: aisstream.io → sign in with GitHub → API Keys → Create",
+  FIRMS_MAP_KEY: "Free: firms.modaps.eosdis.nasa.gov/api/map_key → request a MAP_KEY by email",
+  FAA_NMS_KEY: "FAA NOTAM Management Service: request API access (client id)",
+  FAA_NMS_SECRET: "FAA NOTAM Management Service: client secret issued with the id",
 };
 
 /** Server's plain reason from an Error("422 {\"detail\": ...}"), never the key value. */
@@ -34,8 +38,19 @@ export class KeysSection {
   private error = "";
 
   private deps: KeyDeps;
+  /** Only these key names (one source's keys); null = all. */
+  private only: string[] | null = null;
   constructor(deps: KeyDeps) {
     this.deps = deps;
+  }
+
+  /** Limit the section to one source's keys (the Data sources pop-up). */
+  setOnly(names: string[] | null): void {
+    this.only = names;
+    this.banner = "";
+    this.error = "";
+    this.editing = names && names.length === 1 ? names[0]! : null;
+    this.render();
   }
 
   async load(): Promise<void> {
@@ -76,7 +91,7 @@ export class KeysSection {
   }
 
   render(): void {
-    const rows = this.rows.map((k) => {
+    const rows = this.rows.filter((k) => !this.only || this.only.includes(k.name)).map((k) => {
       const input = h("input", {
         type: "password",
         autocomplete: "off",
@@ -124,7 +139,9 @@ export class KeysSection {
       h("p", { class: "note" }, "Keys are write-only: they are stored on this computer and never shown again."),
       ...(this.banner ? [h("div", { class: "banner", role: "status" }, this.banner)] : []),
       ...(this.error ? [h("div", { class: "fail", role: "alert" }, this.error)] : []),
-      ...(rows.length ? rows : [h("div", { class: "note" }, "No sources need a key.")]),
+      ...(rows.length
+        ? rows
+        : [h("div", { class: "note" }, this.only ? "Keys can be set only while Heimdall runs live (python -m heimdall.run); this server has no key store." : "No sources need a key.")]),
     );
   }
 }

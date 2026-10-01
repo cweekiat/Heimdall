@@ -1,5 +1,6 @@
 // Navigation warnings and NOTAMs: hatched areas on the map plus a detail card.
 // Notice text comes from third parties and is shown only via textContent inside an "unverified" box.
+import { fmtDT } from "./tz";
 import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { api } from "./api";
 import type { NoticeProps } from "./api";
@@ -59,7 +60,7 @@ function hatchLines(rings: Ring[]): number[][][] {
   return out;
 }
 
-const fmtZ = (iso: string | null): string => (iso ? `${new Date(iso).toISOString().slice(0, 16).replace("T", " ")}Z` : T.unknown);
+const fmtZ = (iso: string | null): string => (iso ? fmtDT(iso) : T.unknown);
 const fmtBand = (lo: number | null, hi: number | null): string =>
   lo === null && hi === null ? T.unknown : `${lo === null ? "surface" : `${lo.toLocaleString()} ft`} to ${hi === null ? "unlimited" : `${hi.toLocaleString()} ft`}`;
 

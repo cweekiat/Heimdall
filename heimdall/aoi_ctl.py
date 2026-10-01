@@ -6,6 +6,8 @@ Business rules only; persistence is behind `ports.AoiStore`, source control behi
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import math
 import secrets
 from collections.abc import Mapping
@@ -15,7 +17,7 @@ from heimdall.config import AOI, Settings
 from heimdall.geo import KM_PER_NM, haversine_km
 from heimdall.logging import get_logger
 from heimdall.ports import AoiStore, SourceControl
-from heimdall.schemas import MAX_USER_AOIS, UserAoi, UserAoiIn, UserAoiPatch
+from heimdall.schemas import MAX_AOI_RADIUS_NM, MAX_USER_AOIS, UserAoi, UserAoiIn, UserAoiPatch
 
 log = get_logger("heimdall.aoi_ctl")
 
@@ -52,8 +54,14 @@ class AoiService:
         settings: Settings,
         sources: SourceControl | None = None,
         source_cfg: Mapping[str, Mapping[str, Any]] | None = None,
+        *,
+        background: bool = False,
     ) -> None:
         self._store = store
+        # live runtime: restart pollers after the response, so drawing/deleting never waits on
+        # websocket closes and HTTP client teardown (several seconds per source)
+        self._background = background
+        self._pending: asyncio.Task[None] | None = None
         self._settings = settings
         self._sources = sources
         # sources whose connectors take `settings.aois` at build time
@@ -72,13 +80,40 @@ class AoiService:
         self._apply_settings()
         if self._sources is None:
             return
+        if not self._background:
+            await self._reconfigure()
+            return
+        prev = self._pending
+        self._pending = asyncio.create_task(self._reconfigure(after=prev))
+
+    async def _reconfigure(self, after: asyncio.Task[None] | None = None) -> None:
+        """Hand the new area list to every area-using source: in place where the connector
+        supports it (keeps its state, e.g. the GNSS world-sweep position), else a restart."""
+        if after is not None:
+            with contextlib.suppress(Exception):
+                await after
+        assert self._sources is not None
+        update = getattr(self._sources, "update_aois", None)
+        aois = list(self._settings.aois)
+        restart: list[str] = []
         for key in self._aoi_sources:
             try:
-                await self._sources.restart(key)
+                if update is None or not update(key, aois):
+                    restart.append(key)
+            except Exception as e:
+                log.error("aoi_update_failed", source=key, error=type(e).__name__)
+                restart.append(key)
+
+        async def one(key: str) -> None:
+            try:
+                await self._sources.restart(key)  # type: ignore[union-attr]
             except KeyError:
-                continue
+                return
             except Exception as e:  # a failed restart must not fail the edit
                 log.error("aoi_restart_failed", source=key, error=type(e).__name__)
+
+        for key in restart:  # sequential: keeps the restart order deterministic
+            await one(key)
 
     async def create(self, body: UserAoiIn) -> UserAoi:
         body.check()
@@ -92,6 +127,8 @@ class AoiService:
             assert body.polygon is not None
             ring = [(float(a), float(b)) for a, b in body.polygon]
             lat, lon, rad = bounding_circle(ring)
+            if rad > MAX_AOI_RADIUS_NM:
+                raise ValueError("too large")
         taken = {u.id for u in self._rows}
         while (uid := "user_" + secrets.token_hex(3)) in taken:
             pass

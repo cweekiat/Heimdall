@@ -209,3 +209,31 @@ def test_notes_roundtrip() -> None:
     assert [n.id for n in notes] == ["n1", "n2"]
     assert notes[1].status_to == AlertStatus.ACKNOWLEDGED
     assert st.notes_for("other") == []
+
+
+def _wspr(i: int, ts: datetime) -> GeoEvent:
+    # WSPR bins are global: h3_r4 == "" (the row in the 2026-10-01 "delete from index" crash)
+    return GeoEvent(id=f"w{i}", ts=ts, source="wspr_live", domain=Domain.EVENTS, kind="hf")
+
+
+def test_event_upserts_and_purges_survive_repeats(tmp_path: Path) -> None:
+    s = DuckDBStore(tmp_path / "h.duckdb")
+    for rnd in range(5):  # same ids re-upserted each poll, as the WSPR connector does
+        s.insert_events([_wspr(i, T0 + timedelta(minutes=10 * (i % 6))) for i in range(300)])
+        s.insert_aircraft([_ac(i, dt=rnd) for i in range(50)])
+        assert s.purge_hot(T0 - timedelta(hours=1), T0 - timedelta(hours=1)) == 0
+    assert len(s.events_window(T0, T0 + timedelta(hours=1))) == 300
+    assert s.purge_hot(T0 + timedelta(hours=1), T0 + timedelta(hours=1)) == 250 + 300
+    idx = s._exec("SELECT index_name FROM duckdb_indexes() WHERE index_name LIKE 'ix_%'")
+    assert [r[0] for r in idx] == ["ix_notes"]  # no ART indexes on the observation tables
+    s.close()
+
+
+def test_local_only_skips_global_rows() -> None:
+    s = DuckDBStore()
+    glob = _ac(99).model_copy(update={"is_global": True})
+    s.insert_aircraft([_ac(1), glob])
+    t1 = T0 + timedelta(minutes=1)
+    assert len(s.aircraft_window(T0, t1)) == 2
+    assert [o.hex for o in s.aircraft_window(T0, t1, local_only=True)] == ["h1"]
+    assert s.purge_global(t1) == 1

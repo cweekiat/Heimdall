@@ -1,6 +1,7 @@
 // Plain-words explanation of an alert: its reference, the sources behind it and one sentence built from
 // the footprint and evidence. Used by the map tooltip, the queue card and the inspector.
 // Imports carry ".ts" so the offline tests can run this file directly under node.
+import { fmtHM, tzLabel } from "./tz.ts";
 import type { Alert, Evidence } from "./api.ts";
 import { h } from "./dom.ts";
 import { kindLabel, SOURCE_LABEL, TRUTH_LABEL } from "./labels.ts";
@@ -11,7 +12,7 @@ export { renderContext as contextBlock } from "./context.ts";
 /** An area cell at the detection resolution is about 52 km across (edge to edge). */
 export const AREA_KM = 52;
 
-const hhmm = (iso: string): string => new Date(iso).toISOString().slice(11, 16);
+const hhmm = (iso: string): string => fmtHM(iso);
 
 /** What happened, per alert type, in plain words. */
 const WHAT: Record<string, string> = {
@@ -57,7 +58,7 @@ const isShip = (kind: string): boolean => kind.startsWith("ais_");
 export function plainSummary(a: Alert, ev: Evidence[] = []): string {
   const from = ev.length ? ev.map((e) => e.window_start).sort()[0]! : a.first_seen;
   const to = ev.length ? ev.map((e) => e.window_end).sort().at(-1)! : a.last_seen;
-  const when = `between ${hhmm(from)}–${hhmm(to)} UTC`;
+  const when = `between ${hhmm(from)}–${hhmm(to)} ${tzLabel()}`;
   const fp = a.footprint;
   if (fp?.kind === "single_track") {
     const id = fp.description.replace(/^Track\s+/i, "");
@@ -86,7 +87,13 @@ export function explain(a: Alert, ev: Evidence[] = []): Explained {
   };
 }
 
-/** Compact block used in tooltips and cards: reference, sentence, then one line per source. */
+/** "adsb.lol, adsb.fi (ADS-B family)" style list of the connectors behind an alert. */
+export function sourceNames(a: Alert): string {
+  const xs = (a.sources ?? []).map((s) => s.connector.replace("_", "."));
+  return xs.length ? [...new Set(xs)].join(", ") : "not recorded";
+}
+
+/** Compact block used in tooltips and cards: reference, sentence, sources by name. */
 export function explainBlock(a: Alert, ev: Evidence[] = []): HTMLElement {
   const x = explain(a, ev);
   return h(
@@ -94,14 +101,6 @@ export function explainBlock(a: Alert, ev: Evidence[] = []): HTMLElement {
     { class: "explain" },
     h("div", { class: "ref" }, x.ref),
     h("div", { class: "plain" }, x.summary),
-    x.sources.length
-      ? h(
-          "ul",
-          { class: "srcs" },
-          ...x.sources.map((s) =>
-            h("li", { title: s.words }, h("strong", {}, s.connector), ` (${s.family}) `, h("span", { class: "badge grade" }, s.grade), ` ${s.words}`),
-          ),
-        )
-      : h("div", { class: "note" }, "No source list recorded for this alert."),
+    h("div", { class: "note" }, `Sources: ${sourceNames(a)} · confidence ${Math.round(a.confidence * 100)} %`),
   );
 }

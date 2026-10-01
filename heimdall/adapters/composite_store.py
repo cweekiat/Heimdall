@@ -68,8 +68,11 @@ class CompositeStore:
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[AircraftObs]:
-        return self.read.aircraft_window(start, end, h3_r4, bbox=bbox, ident=ident)
+        return self.read.aircraft_window(
+            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only
+        )
 
     def vessels_window(
         self,
@@ -79,8 +82,11 @@ class CompositeStore:
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[VesselObs]:
-        return self.read.vessels_window(start, end, h3_r4, bbox=bbox, ident=ident)
+        return self.read.vessels_window(
+            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only
+        )
 
     def events_window(
         self, start: datetime, end: datetime, kinds: Sequence[str] | None = None

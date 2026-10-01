@@ -1,5 +1,6 @@
 // Timeline: stacked histogram of alerts by kind over the last 24 h, brush -> global time window,
 // playback (1x = 1 min of data per second, 10x, 60x) and a "now" lock.
+import { fmtDT, fmtHM, tzLabel } from "./tz";
 import { h } from "./dom";
 import { css } from "./theme/palette";
 import { kindLabel } from "./labels";
@@ -103,7 +104,7 @@ export function renderTimeline(root: HTMLElement): void {
       if (!n) continue;
       const hh = (n / max) * (H - PAD_B - 4);
       y -= hh;
-      rect((i / BUCKETS) * W + 1, y, W / BUCKETS - 2, hh, colorFor(kinds, k), "tl-bar", `${kindLabel(k)}: ${n} opened ${new Date(t0 + i * bw).toISOString().slice(11, 16)}Z`);
+      rect((i / BUCKETS) * W + 1, y, W / BUCKETS - 2, hh, colorFor(kinds, k), "tl-bar", `${kindLabel(k)}: ${n} opened ${fmtHM(t0 + i * bw)} ${tzLabel()}`);
     }
   });
   for (let i = 0; i <= 6; i++) {
@@ -113,7 +114,7 @@ export function renderTimeline(root: HTMLElement): void {
     t.setAttribute("y", String(H - 3));
     t.setAttribute("text-anchor", i === 0 ? "start" : i === 6 ? "end" : "middle");
     t.setAttribute("class", "tl-ax");
-    t.textContent = new Date(t0 + (SPAN / 6) * i).toISOString().slice(11, 16) + "Z";
+    t.textContent = fmtHM(t0 + (SPAN / 6) * i);
     svg.append(t);
   }
   const w = state.window;
@@ -144,7 +145,7 @@ export function renderTimeline(root: HTMLElement): void {
     else patch({ window: { from: Math.min(startMs, m), to: Math.max(startMs, m) } });
   });
   const label = state.window
-    ? `${new Date(state.window.from).toISOString().slice(5, 16).replace("T", " ")}Z to ${new Date(state.window.to).toISOString().slice(5, 16).replace("T", " ")}Z`
+    ? `${fmtDT(state.window.from)} to ${fmtDT(state.window.to)}`
     : "now (live)";
   const sp = (n: 1 | 10 | 60) => h("button", { "aria-pressed": String(state.playing === n), onclick: () => play(n) }, `${n}×`);
   root.replaceChildren(

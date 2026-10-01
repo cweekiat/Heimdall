@@ -42,8 +42,8 @@ const KEY = "hm.wm.v1";
 const SNAP = 12;
 const KEEP = 40; // px of title bar that must stay on screen
 const TITLE_H = 32;
-export const EDGE_LEFT = 44; // toolbar width
-export const EDGE_TOP = 32; // status strip height
+export const EDGE_LEFT = 56; // left rail width (collapsed)
+export const EDGE_TOP = 56; // top bar height
 
 const wins = new Map<string, Win>();
 const listeners: (() => void)[] = [];

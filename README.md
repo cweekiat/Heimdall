@@ -43,9 +43,10 @@ Offline basemap (one-off download, several GB; needs internet once):
 
 ```bash
 bash scripts/fetch_basemap.sh   # Protomaps extract (SE Asia + Middle East, z0-10), fonts, sprites -> data/basemap/
+WORLD=1 bash scripts/fetch_basemap.sh   # also a whole-world overview (z0-6, ~45 MB) for the globe, Europe, Americas
 ```
 
-The API serves these files at `/basemap/...` (Range supported); `/api/basemap/status` reports whether they are present.
+The API serves these files at `/basemap/...` (Range supported); `/api/basemap/status` reports whether they are present. `SHA256SUMS` lists both files.
 
 Optional API keys (Phase 2+). Each keyed source switches itself off and shows "needs key" in Data health until its key is set:
 
@@ -123,9 +124,9 @@ The design rationale is in [docs/ui-design.md](docs/ui-design.md).
 
 | Area | What it shows |
 |---|---|
-| **Status bar** (top) | UTC clock, data freshness per source, alert rate against the 24 h average, critical banner, **Shift** summary |
-| **AOI board** (left) | One tile per area with its worst alert, counts and trend. Click a tile or press `1`–`5` to fly there. |
-| **Map** (centre) | Jamming hexes (green <2 %, amber 2–10 %, red >10 %), alert markers, orbit tracks, emitter ellipses, and grey outlines where coverage is thin. **Layers** (`l`) lets you change the base map and overlays: borders, military areas, EEZ, sea marks, graticule. |
+| **Top bar** | Left: clock (Singapore time by default; set the zone in Settings), live dot, source health, space weather. Centre: **search** (areas, alerts, flights, ships or `lat, lon`, `/`) Right: open Critical / Warning counts, **Alerts** (`q`, badge = unacknowledged), **Timeline** (`t`), **Shift report** (`h`). |
+| **Left rail** | Widens on hover: **Area of Ops** (`o`), **Data sources** (`u`), **Settings** (`,`, theme, time zone, map overlays), **Help** (`?`), **About** (`i`). |
+| **Map** (centre) | Jamming hexes (green <2 %, amber 2–10 %, red >10 %), alert markers, satellites with ground tracks, emitter ellipses, and grey outlines where coverage is thin. Bottom left: **map type** picker, **Filters** and the **Legend** chip. Bottom right: measure / range ring, recenter on South-East Asia (`0`), compass, **3D / 2D** (`g`), zoom. Zooming out past the region turns the map into an offline 3D globe; zooming in flattens it. |
 | **Inspector** (right) | **Now** (what and where), **Why** (rules fired, values against thresholds and baselines, counterfactual, Admiralty grade), **Trend** (metric against baseline), **Log** (triage journal) |
 | **Timeline** (bottom, `t`) | 24 h of alerts by kind. Drag to filter, `Space` to replay. |
 
@@ -153,11 +154,12 @@ A dismissed alert stays quiet for the rest of that episode. It re-alerts only if
 - **Counterfactual** tells you what would clear the alert, e.g. "clears if ratio < 0.06".
 - **Actions** come only from the allow-listed [config/playbook.yaml](config/playbook.yaml). Approving one records it and runs nothing external.
 
-**Windows and live traffic.** The map is the whole screen; the toolbar on the left opens floating windows
-(Alerts `q`, Areas `b`, Layers & filters `l`, Data sources `u`, Actions `x`, Timeline `t`). Aircraft and ships
-appear live for the area you are looking at; click one for its card, or use Layers & filters to show military
-only, an altitude band, ship types, or just things involved in alerts. **Data sources** shows what is
-collecting and lets you switch a source on or off. Warnings and NOTAMs appear as hatched areas.
+**Windows and live traffic.** The map is the whole screen; pages open as floating windows. Aircraft and ships
+appear live for the area you are looking at; click one for its card. **Filters** only show or hide data
+(aircraft, ships, GNSS, C-band, L-band, heat spots, satellites, live and daily layers, quick filters such as
+military only, altitude band, ship types); they never change what is collected. **Data sources** is the only
+place that switches collection on or off. Warnings and NOTAMs appear as hatched areas. Spectrum watch and the
+area status board open from **Area of Ops**.
 
 New here? The console offers a guided tour on first visit (relaunch it from the `?` icon), and [docs/walkthrough.md](docs/walkthrough.md) walks the same monitor, triage, verify, decide, log workflow in prose.
 
@@ -232,4 +234,4 @@ Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
 
 ### Drawing areas of operation
 
-In the UI, **Draw areas** (pen icon) lets you draw circles or polygons, name them and turn monitoring on or off. They persist in `data/state/aois.json`; config-file areas stay read-only. API: `GET/POST /api/aois/user`, `PATCH/DELETE /api/aois/user/{id}` (same-origin only). Details: `docs/tasks/015-draw-ao.md`.
+The live app starts with **no areas**: open **Area of Ops** (top of the left rail) to draw circles or polygons (up to 250 nm radius; a polygon must fit in a 250 nm circle), name them and turn monitoring on or off. They persist in `data/state/aois.json`. The `aois:` list in `config/config.yaml` is kept as presets for the demo, replay, backtests and tests (`use_config_aois: false` keeps it out of the live runtime). API: `GET/POST /api/aois/user`, `PATCH/DELETE /api/aois/user/{id}` (same-origin only). Details: `docs/tasks/015-draw-ao.md`.

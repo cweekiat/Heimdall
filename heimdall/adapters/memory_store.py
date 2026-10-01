@@ -64,6 +64,7 @@ class MemoryStore:
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[AircraftObs]:
         return [
             r
@@ -71,6 +72,7 @@ class MemoryStore:
             if start <= r.ts < end
             and (h3_r4 is None or r.h3_r4 in h3_r4)
             and obs_match(r, bbox, ident, "hex")
+            and not (local_only and r.is_global)
         ]
 
     def vessels_window(
@@ -81,6 +83,7 @@ class MemoryStore:
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[VesselObs]:
         return [
             r
@@ -88,6 +91,7 @@ class MemoryStore:
             if start <= r.ts < end
             and (h3_r4 is None or r.h3_r4 in h3_r4)
             and obs_match(r, bbox, ident, "mmsi")
+            and not (local_only and r.is_global)
         ]
 
     def events_window(

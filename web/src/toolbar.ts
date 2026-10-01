@@ -1,45 +1,38 @@
-// Slim vertical icon bar on the left edge. Each button toggles a window; the alert icon carries a badge.
+// Left rail (Google Earth style): icons only, widening on hover or keyboard focus to show each label.
+// Each entry toggles a window; pressed = that window is open.
 import { h } from "./dom";
-import { iconButton } from "./icons";
+import { icon } from "./icons";
 import type { IconName } from "./icons";
-import { isOpen, onWmChange, resetLayout } from "./wm";
-import { T } from "./labels";
+import { isOpen, onWmChange } from "./wm";
 
 export interface Tool {
   /** Window id (also used for pressed state). */
   id: string;
   icon: IconName;
   label: string;
-  /** Keyboard shortcut, shown in the tooltip. */
+  /** Keyboard shortcut, shown next to the label. */
   key?: string;
   toggle: () => void;
+  /** Short description shown under the label when the rail is expanded. */
+  hint?: string;
 }
 
 const buttons = new Map<string, HTMLButtonElement>();
-let badge: HTMLElement | null = null;
 
-export function mountToolbar(root: HTMLElement, tools: Tool[]): void {
+export function mountToolbar(root: HTMLElement, tools: Tool[], bottom: Tool[] = []): void {
   root.replaceChildren();
-  for (const t of tools) {
-    const b = iconButton(t.icon, t.key ? `${t.label} (${t.key})` : t.label, t.toggle, { pressed: false, cls: "tb-btn" });
+  const make = (t: Tool): HTMLButtonElement => {
+    const b = h(
+      "button",
+      { type: "button", class: "rail-btn", "aria-pressed": "false", "aria-label": t.label, title: t.key ? `${t.label} (${t.key})` : t.label, onclick: t.toggle },
+      icon(t.icon, 20),
+      h("span", { class: "rail-text" }, h("span", { class: "rail-label" }, t.label, t.key ? h("kbd", {}, t.key) : null), t.hint ? h("span", { class: "rail-hint" }, t.hint) : null),
+    ) as HTMLButtonElement;
     buttons.set(t.id, b);
-    if (t.id === "queue") {
-      badge = h("span", { class: "tb-badge", hidden: true, "aria-live": "polite" });
-      b.append(badge);
-    }
-    root.append(b);
-  }
-  root.append(h("span", { class: "tb-spacer" }), iconButton("reset", T.resetLayout, resetLayout, { cls: "tb-btn" }));
+    return b;
+  };
+  root.append(...tools.map(make), h("span", { class: "rail-spacer" }), ...bottom.map(make));
   const sync = (): void => buttons.forEach((b, id) => b.setAttribute("aria-pressed", String(isOpen(id))));
   onWmChange(sync);
   sync();
-}
-
-/** Alerts badge: count of unacknowledged alerts, coloured by the worst priority (info/low/medium/high/critical). */
-export function setAlertBadge(count: number, worst: string): void {
-  if (!badge) return;
-  badge.hidden = count === 0;
-  badge.textContent = count > 99 ? "99+" : String(count);
-  badge.className = `tb-badge sev-${worst}`;
-  buttons.get("queue")?.setAttribute("aria-label", `${T.alerts}: ${count} unacknowledged`);
 }

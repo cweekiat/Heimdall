@@ -12,9 +12,10 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { Alert, Aoi, Cell, Evidence, TrackPt } from "./api";
 import { h } from "./dom";
 import { haversineNm } from "./geoutil";
-import { circleRing, dedupeTail, distNm, toLatLon } from "./aogeo";
+import { RADIUS_MAX_NM, circleRing, dedupeTail, distNm, toLatLon } from "./aogeo";
 import type { DisplayAo, LonLat } from "./aogeo";
-import { css, currentMode, intensity, rgba, setMode, severityStyle, surfaceRgba } from "./theme/palette";
+import { css, currentMode, intensity, monitorCss, monitorRgba, rgba, satCss, setMode, severityStyle, surfaceRgba } from "./theme/palette";
+import { GNSS_RGB } from "./spectrummodel";
 
 type RGBA = [number, number, number, number];
 
@@ -67,6 +68,12 @@ maplibregl.setWorkerUrl(workerUrl);
 // Offline basemap: pmtiles:// URLs are served by HTTP range requests to /basemap/world.pmtiles.
 maplibregl.addProtocol("pmtiles", new Protocol().tile);
 
+/** Default and "recenter" view: South-East Asia. */
+export const HOME = { lon: 110, lat: 8, zoom: 3.6 };
+/** Zooming out past GLOBE_IN turns the map into a globe; zooming in past GLOBE_OUT flattens it. */
+export const GLOBE_IN = 2.7;
+export const GLOBE_OUT = 3.3;
+
 export type DrawMode = "circle" | "polygon";
 export type DrawResult =
   | { shape: "circle"; lat: number; lon: number; radius_nm: number }
@@ -102,6 +109,8 @@ export class OpsMap {
   private draw: { mode: DrawMode; pts: LonLat[]; cursor: LonLat | null; dragging: boolean } | null = null;
   /** Fires (debounced by the caller) when the view changes; used to refetch visible traffic. */
   onMove: () => void = () => undefined;
+  /** Every frame while the view moves (for HTML cards pinned to map positions). */
+  onViewChange: () => void = () => undefined;
   /** Extra deck layers (traffic, notices) drawn above the alert cells and below alert markers. */
   extraLayers: (tool: MapState["tool"], zoom: number) => unknown[] = () => [];
 
@@ -114,18 +123,32 @@ export class OpsMap {
   ) {
     this.map = new maplibregl.Map({
       container,
-      style: { version: 8, sources: {}, layers: [] },
-      center: [108, 14],
-      zoom: 3.2,
+      style: { version: 8, sources: {}, layers: [] }, // placeholder: deck's overlay needs a style
+      center: [HOME.lon, HOME.lat],
+      zoom: HOME.zoom,
       attributionControl: { compact: true },
     });
-    this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    this.map.addControl(new maplibregl.ScaleControl({ unit: "nautical", maxWidth: 120 }), "bottom-left");
+    this.map.addControl(new maplibregl.ScaleControl({ unit: "nautical", maxWidth: 120 }), "bottom-right");
+    this.map.on("style.load", () => {
+      if (this.readyFired || !this.map.getStyle()?.layers?.length) return; // skip the empty placeholder
+      this.readyFired = true;
+      // ready = the real style is in and the first tiles are drawn (or 8 s, whichever comes first);
+      // "load"/"idle" are unreliable here (style swapped at start, traffic re-renders constantly)
+      const t0 = Date.now();
+      const iv = window.setInterval(() => {
+        if ((this.map.isStyleLoaded() && this.map.areTilesLoaded()) || Date.now() - t0 > 8000) {
+          window.clearInterval(iv);
+          this.onReady();
+        }
+      }, 150);
+    });
+    this.map.on("zoom", () => this.autoProjection());
     this.map.on("mousemove", (e) => this.onCursor(e.lngLat.lng, e.lngLat.lat, this.map.getZoom()));
     this.wireDraw();
     this.map.on("zoomend", () => this.render());
     this.map.on("zoom", () => this.frame.poke());
     this.map.on("moveend", () => this.onMove());
+    this.map.on("move", () => this.onViewChange());
     this.map.on("click", (e) => {
       if (this.draw) return;
       if (this.state.tool === "none") return;
@@ -137,8 +160,15 @@ export class OpsMap {
     });
     this.map.addControl(this.overlay as unknown as maplibregl.IControl);
     this.layers = new BaseLayers(this.map, provider, overlays, theme);
+    this.layers.onStyleLoad = () => this.applyProjection(); // setStyle resets the projection
     this.layers.onBaseChange = (id) => void this.checkOffline(id === "offline");
     this.layers.applyInitial();
+    // Watchdog: on some start-ups the first style never reaches "loaded" (no events at all, blank
+    // basemap; seen before this change too). Re-applying the same base recovers, so do it twice.
+    for (const ms of [4000, 10000])
+      window.setTimeout(() => {
+        if (!this.readyFired && !this.map.isStyleLoaded()) this.layers.setBase(this.layers.currentId());
+      }, ms);
     this.map.dragRotate.disable();
     this.map.touchZoomRotate.disableRotation();
     this.map.setMaxPitch(85);
@@ -153,6 +183,64 @@ export class OpsMap {
 
   viewMode(): ViewMode {
     return view.mode;
+  }
+
+  /** First full render (style + tiles): the loading screen waits for it. */
+  onReady: () => void = () => undefined;
+  /** Fires when the projection flips between globe and flat map. */
+  onProjection: (globe: boolean) => void = () => undefined;
+  private globe = false;
+  private readyFired = false;
+
+  isGlobe(): boolean {
+    return this.globe;
+  }
+
+  private applyProjection(): void {
+    try {
+      this.map.setProjection({ type: this.globe ? "globe" : "mercator" });
+      if (this.globe)
+        this.map.setSky({ "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 4, 0.6, 6, 0] } as never);
+    } catch {
+      /* style not ready yet: style.load re-applies */
+    }
+  }
+
+  private setGlobe(on: boolean): void {
+    if (on === this.globe) return;
+    this.globe = on;
+    this.container.classList.toggle("globe", on);
+    this.applyProjection();
+    this.onProjection(on);
+    this.render();
+  }
+
+  private autoProjection(): void {
+    if (this.draw) return; // never flip under a half-drawn area
+    const z = this.map.getZoom();
+    if (!this.globe && z < GLOBE_IN) this.setGlobe(true);
+    else if (this.globe && z > GLOBE_OUT) this.setGlobe(false);
+  }
+
+  /** The 3D / 2D button: globe = zoom out to the whole Earth; 2D = back to a flat regional view. */
+  toggleGlobe(): void {
+    if (this.globe) {
+      this.setGlobe(false);
+      this.map.easeTo({ zoom: Math.max(HOME.zoom, this.map.getZoom()), pitch: 0, bearing: 0, duration: 600 });
+    } else {
+      this.setGlobe(true);
+      this.map.easeTo({ zoom: Math.min(1.8, this.map.getZoom()), pitch: 0, duration: 800 });
+    }
+  }
+
+  /** Fly to a point at a given zoom (tour scenes). */
+  view(lon: number, lat: number, zoom: number): void {
+    this.map.flyTo({ center: [lon, lat], zoom, bearing: 0, pitch: 0, duration: 1400 });
+  }
+
+  /** Recenter on South-East Asia (the home view). */
+  home(): void {
+    this.map.flyTo({ center: [HOME.lon, HOME.lat], zoom: HOME.zoom, bearing: 0, pitch: 0, duration: 1200 });
   }
 
   setView(mode: ViewMode): void {
@@ -191,14 +279,17 @@ export class OpsMap {
       const d = this.draw;
       if (!d) return;
       d.cursor = at(e);
-      if (d.mode === "circle" && d.dragging) this.onDraw({ kind: "progress", text: `Radius ${distNm(d.pts[0]!, d.cursor).toFixed(1)} nm. Release to finish.`, ready: false });
+      if (d.mode === "circle" && d.dragging) {
+        const nm = distNm(d.pts[0]!, d.cursor);
+        this.onDraw({ kind: "progress", text: nm > RADIUS_MAX_NM ? `Radius ${RADIUS_MAX_NM} nm (the maximum). Release to finish.` : `Radius ${nm.toFixed(1)} nm. Release to finish.`, ready: false });
+      }
       if (d.mode === "circle" ? d.dragging : d.pts.length > 0) this.render();
     };
     const up = (e: { lngLat: { lng: number; lat: number } }): void => {
       const d = this.draw;
       if (!d || d.mode !== "circle" || !d.dragging) return;
       d.dragging = false;
-      const nm = Math.round(distNm(d.pts[0]!, at(e)) * 10) / 10;
+      const nm = Math.min(RADIUS_MAX_NM, Math.round(distNm(d.pts[0]!, at(e)) * 10) / 10);
       if (nm < 1) {
         d.pts = [];
         this.onDraw({ kind: "progress", text: "Press on the centre, then drag outwards.", ready: false });
@@ -290,7 +381,7 @@ export class OpsMap {
     if (!d || !d.pts.length) return [];
     let path: LonLat[] = [];
     if (d.mode === "circle") {
-      if (d.dragging && d.cursor) path = circleRing(d.pts[0]![1], d.pts[0]![0], Math.max(0.5, distNm(d.pts[0]!, d.cursor)));
+      if (d.dragging && d.cursor) path = circleRing(d.pts[0]![1], d.pts[0]![0], Math.min(RADIUS_MAX_NM, Math.max(0.5, distNm(d.pts[0]!, d.cursor))));
     } else {
       path = [...d.pts, ...(d.cursor ? [d.cursor] : []), d.pts[0]!];
     }
@@ -358,6 +449,15 @@ export class OpsMap {
     return { x: p.x, y: p.y };
   }
 
+  /** On the visible side of the globe (always true on the flat map). */
+  facing(lon: number, lat: number): boolean {
+    if (!this.globe) return true;
+    const c = this.map.getCenter();
+    const r = Math.PI / 180;
+    const cos = Math.sin(lat * r) * Math.sin(c.lat * r) + Math.cos(lat * r) * Math.cos(c.lat * r) * Math.cos((lon - c.lng) * r);
+    return cos > 0.15;
+  }
+
   /** Pan (keep zoom) so follow mode keeps a moving target in view. */
   panTo(lon: number, lat: number): void {
     this.map.easeTo({ center: [lon, lat], duration: 400 });
@@ -409,11 +509,13 @@ export class OpsMap {
           })),
         } as never,
         stroked: true,
-        filled: false,
-        getLineColor: (f: { properties: { role: string; active: boolean } }) =>
-          f.properties.role === "control" ? rgba("notice", f.properties.active ? 0.6 : 0.3) : rgba("neutral", f.properties.active ? 0.7 : 0.35),
-        getLineWidth: 2,
+        filled: true,
+        // monitored = green outline + faint green fill; not monitored = thin grey outline only
+        getFillColor: (f: { properties: { active: boolean } }) => (f.properties.active ? monitorRgba(0.07) : [0, 0, 0, 0]),
+        getLineColor: (f: { properties: { active: boolean } }) => (f.properties.active ? monitorRgba(0.9) : rgba("neutral", 0.4)),
+        getLineWidth: (f: { properties: { active: boolean } }) => (f.properties.active ? 2.5 : 1.5),
         lineWidthUnits: "pixels",
+        updateTriggers: { getFillColor: currentMode(), getLineColor: currentMode() },
       }),
       new GeoJsonLayer({
         id: "aoi-selected",
@@ -564,9 +666,11 @@ export function legend(): HTMLElement {
     sw(dot(css("alert")), "Red: needs attention (an alert). Bigger and stronger = higher priority"),
     sw(`background:${css("alert", 0.25)};outline:1px solid ${css("alert")}`, "Red area: share of aircraft with bad GPS (stronger = more)"),
     sw(dot(css("neutral")), "Grey-blue: normal aircraft, ships and tracks (aircraft are planes, ships are arrows)"),
-    sw(`background:${css("military")};transform:rotate(45deg)`, "Amber diamond: military aircraft. Amber ring: selected"),
+    sw(`background:${css("military")};clip-path:polygon(50% 0,62% 38%,100% 55%,62% 62%,58% 88%,72% 100%,28% 100%,42% 88%,38% 62%,0 55%,38% 38%)`, "Amber plane: military aircraft. Amber ring: selected"),
     sw(`background:transparent;outline:1px dashed ${css("notice")}`, "Grey outline: navigation warning or NOTAM area"),
-    sw(`background:transparent;outline:2px solid ${css("neutral")}`, "Thin outline: a monitored area. Draw your own with the pen icon (amber = selected)"),
+    sw(`background:${monitorCss(0.15)};outline:2px solid ${monitorCss()}`, "Green outline: an area you are monitoring (grey = drawn, not monitored; amber = selected)"),
+    sw(`background:linear-gradient(90deg, rgb(${GNSS_RGB.green.join(",")}) 33%, rgb(${GNSS_RGB.yellow.join(",")}) 33% 66%, rgb(${GNSS_RGB.red.join(",")}) 66%)`, "GNSS map: green < 2 %, yellow 2-10 %, red > 10 % of aircraft with degraded GPS"),
+    sw(`background:${satCss()};border-radius:50%`, "Cyan dot and line: a satellite and its ground track (bright = next 100 min)"),
     sw(`background:${css("notice", 0.35)};outline:1px solid ${css("notice")}`, "Grey box: too little data to judge (no data is not no activity)"),
   );
 }

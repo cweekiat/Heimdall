@@ -60,6 +60,8 @@ export class SpectrumLayers {
   private tip: HTMLElement;
   private timers: number[] = [];
   private liveBox = h("div", { class: "spectrum-toggles" });
+  private boxes = new Map<SpectrumLayer, HTMLElement>();
+  private labels = new Map<SpectrumLayer, string>();
   private dailyBox = h("div", { class: "spectrum-toggles" });
   readonly ladder = h("nav", { class: "band-ladder", "aria-label": "RF bands" });
   private alerts: { bands?: string[] | null; status: string }[] = [];
@@ -172,13 +174,46 @@ export class SpectrumLayers {
     return this.dailyBox;
   }
 
+  /** Fires after layer data or panel state changes (the filter page refreshes its rows). */
+  onPanels: () => void = () => undefined;
+
+  /** Extra controls under a switched-on layer (GNSS date picker, HF band), else null. */
+  extra(l: SpectrumLayer): HTMLElement | null {
+    if (!this.on(l)) return null;
+    return l === "gnss" ? this.gnssControls() : l === "hf" ? this.hfSelect() : null;
+  }
+
+  /** Short status text for a layer row ("12 open", newest data date ...). */
+  layerStatus(l: SpectrumLayer): string {
+    return this.note(l);
+  }
+
+  /** One layer's toggle plus its extra controls (GNSS date, HF band), for the filter page. */
+  control(l: SpectrumLayer, label?: string): HTMLElement {
+    let b = this.boxes.get(l);
+    if (!b) {
+      b = h("div", { class: "spectrum-toggles" });
+      this.boxes.set(l, b);
+      if (label) this.labels.set(l, label);
+      this.drawBox(l);
+    }
+    return b;
+  }
+
+  private drawBox(l: SpectrumLayer): void {
+    const b = this.boxes.get(l);
+    if (!b) return;
+    const extra = l === "gnss" && this.on("gnss") ? this.gnssControls() : l === "hf" && this.on("hf") ? this.hfSelect() : "";
+    b.replaceChildren(this.toggle(l, this.note(l)), extra);
+  }
+
   private toggle(l: SpectrumLayer, note: string): HTMLElement {
     const i = h("input", { type: "checkbox" });
     i.checked = this.on(l);
     i.addEventListener("change", () =>
       setFilter({ spectrum: i.checked ? [...filters.spectrum.filter((x) => x !== l), l] : filters.spectrum.filter((x) => x !== l) }),
     );
-    return h("label", { class: "chk" }, i, SPECTRUM_LABEL[l], note ? h("span", { class: "note" }, ` · ${note}`) : null);
+    return h("label", { class: "chk" }, i, this.labels.get(l) ?? SPECTRUM_LABEL[l], note ? h("span", { class: "note" }, ` · ${note}`) : null);
   }
 
   private gnssControls(): HTMLElement {
@@ -232,6 +267,8 @@ export class SpectrumLayers {
   }
 
   private drawPanels(): void {
+    for (const l of this.boxes.keys()) this.drawBox(l);
+    this.onPanels();
     this.liveBox.replaceChildren(
       ...LIVE_LAYERS.flatMap((l) => [this.toggle(l, this.note(l)), l === "hf" && this.on("hf") ? this.hfSelect() : ""]),
     );

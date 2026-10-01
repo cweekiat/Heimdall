@@ -5,9 +5,10 @@ Timestamps are stored as naive UTC TIMESTAMP and returned tz-aware (UTC).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from pydantic import BaseModel
 
 from heimdall.adapters.alert_ref import format_ref, parse_ref, ref_day
 from heimdall.geo import BBox, Ident
+from heimdall.logging import get_logger
 from heimdall.schemas import (
     ActionRequest,
     AircraftObs,
@@ -32,6 +34,7 @@ from heimdall.schemas import (
 )
 
 T_MIN = datetime(1970, 1, 1, tzinfo=UTC)
+_log = get_logger("heimdall.duckdb")
 
 
 def _to_db(dt: datetime | None) -> datetime | None:
@@ -128,12 +131,17 @@ _DDL = [
     _EVT.ddl(),
     "ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS is_global BOOLEAN",
     "ALTER TABLE vessels ADD COLUMN IF NOT EXISTS is_global BOOLEAN",
-    "CREATE INDEX IF NOT EXISTS ix_aircraft ON aircraft (h3_r4, ts)",
-    "CREATE INDEX IF NOT EXISTS ix_vessels ON vessels (h3_r4, ts)",
-    "CREATE INDEX IF NOT EXISTS ix_events ON events (h3_r4, ts)",
+    # No secondary ART indexes on the observation tables: DuckDB's zonemaps already prune the
+    # time-ordered scans, and deleting from a non-unique ART index (event upsert, janitor purge)
+    # hit "Failed to delete all rows from index", which invalidates the whole database
+    # (2026-10-01 crash). Drop them on existing files too.
+    "DROP INDEX IF EXISTS ix_aircraft",
+    "DROP INDEX IF EXISTS ix_vessels",
+    "DROP INDEX IF EXISTS ix_events",
     "CREATE TABLE IF NOT EXISTS evidence (id VARCHAR PRIMARY KEY, kind VARCHAR, h3_cell VARCHAR,"
     " window_end TIMESTAMP, created_at TIMESTAMP, doc VARCHAR)",
-    "CREATE INDEX IF NOT EXISTS ix_evidence ON evidence (h3_cell, kind, window_end)",
+    # INSERT OR REPLACE deletes from every index on the table: same bug class as above
+    "DROP INDEX IF EXISTS ix_evidence",
     "CREATE TABLE IF NOT EXISTS alerts (id VARCHAR PRIMARY KEY, kind VARCHAR, severity VARCHAR,"
     " status VARCHAR, aoi VARCHAR, confidence DOUBLE, first_seen TIMESTAMP, last_seen TIMESTAMP,"
     " doc VARCHAR)",
@@ -157,29 +165,83 @@ _DDL = [
 
 
 class DuckDBStore:
-    def __init__(self, path: str | Path = ":memory:", read_only: bool = False) -> None:
+    def __init__(
+        self,
+        path: str | Path = ":memory:",
+        read_only: bool = False,
+        memory_limit: str | None = "1GB",
+        threads: int | None = 4,
+    ) -> None:
         p = str(path)
         if p != ":memory:" and not read_only:
             Path(p).parent.mkdir(parents=True, exist_ok=True)
+        self._path = p
+        self._cfg: dict[str, str] = {}
+        # DuckDB defaults to 80 % of RAM and all cores; on a laptop that starves everything else
+        if memory_limit:
+            self._cfg["memory_limit"] = memory_limit
+        if threads:
+            self._cfg["threads"] = str(threads)
         self._lock = threading.RLock()
-        self._con = duckdb.connect(p, read_only=read_only)
         self.read_only = read_only
-        if not read_only:
+        self._con = self._connect()
+
+    def _connect(self) -> duckdb.DuckDBPyConnection:
+        con = duckdb.connect(self._path, read_only=self.read_only, config=dict(self._cfg))
+        if not self.read_only:
             for stmt in _DDL:
-                self._con.execute(stmt)
+                con.execute(stmt)
+        return con
+
+    def _recover(self, err: Exception) -> None:
+        """A FatalException invalidates the DuckDB instance until it is reopened; reopen once so
+        one bad statement cannot take the API and the writer down for the rest of the run."""
+        with self._lock:
+            with contextlib.suppress(Exception):
+                self._con.close()
+            self._con = self._connect()
+        _log.error("duckdb_reopened", path=self._path, error=str(err)[:300])
 
     # ------------------------------------------------------------------ helpers
     def _exec(self, sql: str, params: Sequence[Any] = ()) -> list[tuple[Any, ...]]:
-        with self._lock:
-            return self._con.execute(sql, list(params)).fetchall()
+        try:
+            with self._lock:
+                return self._con.execute(sql, list(params)).fetchall()
+        except duckdb.FatalException as e:
+            self._recover(e)
+            with self._lock:
+                return self._con.execute(sql, list(params)).fetchall()
 
     def _read(self, sql: str, params: Sequence[Any] = ()) -> list[tuple[Any, ...]]:
         """Read on a private cursor so API reads never wait for the writer lock (026a)."""
+        try:
+            return self._read_once(sql, params)
+        except duckdb.FatalException as e:
+            self._recover(e)
+            return self._read_once(sql, params)
+
+    def _read_once(self, sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
         cur = self._con.cursor()
         try:
             return cur.execute(sql, list(params)).fetchall()
         finally:
             cur.close()
+
+    @contextlib.contextmanager
+    def _writing(self) -> Iterator[None]:
+        """Write lock; a fatal DuckDB error reopens the store before re-raising (the batch is
+        lost from the hot store only; the lake already has it)."""
+        with self._lock:
+            try:
+                yield
+            except duckdb.FatalException as e:
+                self._recover(e)
+                raise
+
+    @staticmethod
+    def _count(res: list[tuple[Any, ...]]) -> int:
+        """Affected-row count of a DuckDB DELETE (one row, one column)."""
+        return int(res[0][0]) if res and res[0] and res[0][0] is not None else 0
 
     def _insert(self, t: _Table, rows: Sequence[BaseModel]) -> int:
         if not rows:
@@ -193,7 +255,7 @@ class DuckDBStore:
         Called with the write lock held or not: the Arrow build happens outside the lock.
         """
         tbl = t.to_arrow(rows)
-        with self._lock:
+        with self._writing():
             name = f"_batch_{t.name}"
             self._con.register(name, tbl)
             try:
@@ -259,19 +321,20 @@ class DuckDBStore:
     def purge_global(self, before: datetime) -> int:
         """Delete display-only global rows older than `before` (024g janitor)."""
         n = 0
-        with self._lock:
+        with self._writing():
             for t in ("aircraft", "vessels"):
+                # count only: `RETURNING 1` materialised millions of rows in Python
                 r = self._con.execute(
-                    f"DELETE FROM {t} WHERE is_global AND ts < ? RETURNING 1", [_to_db(before)]
+                    f"DELETE FROM {t} WHERE is_global AND ts < ?", [_to_db(before)]
                 ).fetchall()
-                n += len(r)
+                n += self._count(r)
         return n
 
     def purge_hot(self, obs_before: datetime, events_before: datetime | None = None) -> int:
         """Retention (026a): drop aircraft/vessel rows older than `obs_before` and events older
         than `events_before`. The lake keeps everything; this only bounds the hot store."""
         n = 0
-        with self._lock:
+        with self._writing():
             for t, cut in (
                 ("aircraft", obs_before),
                 ("vessels", obs_before),
@@ -279,10 +342,8 @@ class DuckDBStore:
             ):
                 if cut is None:
                     continue
-                r = self._con.execute(
-                    f"DELETE FROM {t} WHERE ts < ? RETURNING 1", [_to_db(cut)]
-                ).fetchall()
-                n += len(r)
+                r = self._con.execute(f"DELETE FROM {t} WHERE ts < ?", [_to_db(cut)]).fetchall()
+                n += self._count(r)
         return n
 
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
@@ -290,16 +351,23 @@ class DuckDBStore:
             return 0
         latest = {r.id: r for r in rows}  # last write wins, also within the batch
         tbl = _EVT.to_arrow(list(latest.values()))
-        with self._lock:  # delete-by-id + insert atomically (ADR-004); readers see either state
+        with (
+            self._writing()
+        ):  # delete-by-id + insert atomically (ADR-004); readers see either state
             self._con.execute("BEGIN")
             try:
-                self._con.executemany("DELETE FROM events WHERE id = ?", [[i] for i in latest])
                 self._con.register("_batch_events", tbl)
+                # one set-based delete instead of one statement per id
+                self._con.execute("DELETE FROM events WHERE id IN (SELECT id FROM _batch_events)")
                 cols = ", ".join(_EVT.cols)
                 self._con.execute(f"INSERT INTO events ({cols}) SELECT {cols} FROM _batch_events")
                 self._con.unregister("_batch_events")
                 self._con.execute("COMMIT")
+            except duckdb.FatalException:
+                raise  # the instance is invalid; ROLLBACK would fail too
             except Exception:
+                with contextlib.suppress(Exception):
+                    self._con.unregister("_batch_events")
                 self._con.execute("ROLLBACK")
                 raise
         return len(latest)
@@ -312,10 +380,13 @@ class DuckDBStore:
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[AircraftObs]:
         sql, p = self._filters(h3_r4, bbox, ident, "hex")
         if sql is None:
             return []
+        if local_only:  # 024g display-only rows never feed detectors; skip them in SQL
+            sql += " AND NOT coalesce(is_global, false)"
         return self._window(_AIR, start, end, sql, p)
 
     def vessels_window(
@@ -326,10 +397,13 @@ class DuckDBStore:
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[VesselObs]:
         sql, p = self._filters(h3_r4, bbox, ident, "mmsi")
         if sql is None:
             return []
+        if local_only:  # 024g display-only rows never feed detectors; skip them in SQL
+            sql += " AND NOT coalesce(is_global, false)"
         return self._window(_SEA, start, end, sql, p)
 
     def events_window(
@@ -400,7 +474,7 @@ class DuckDBStore:
             return format_ref(day, n)
 
     def upsert_alert(self, alert: Alert) -> None:
-        with self._lock:
+        with self._writing():
             alert = alert.model_copy(update={"ref": self._ref_for(alert)})
             self._con.execute(
                 "INSERT OR REPLACE INTO alerts (id, kind, severity, status, aoi, confidence,"
@@ -442,7 +516,7 @@ class DuckDBStore:
             where.append("aoi = ?")
             params.append(aoi)
         clause = f"WHERE {' AND '.join(where)}" if where else ""
-        rows = self._exec(
+        rows = self._read(  # API/SSE poll: private cursor, never queued behind the writer
             f"SELECT doc FROM alerts {clause} ORDER BY last_seen DESC LIMIT ?", [*params, limit]
         )
         return [Alert.model_validate_json(r[0]) for r in rows]

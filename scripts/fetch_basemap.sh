@@ -81,6 +81,23 @@ else
   echo "world.pmtiles exists; skipping (FORCE=1 to refetch)"
 fi
 
+# 2b. Whole-world overview (zoom 0-WORLD_MAXZOOM), drawn under the regional file so the globe and
+#     areas outside BBOX have coastlines, borders and names. WORLD=0 skips it.
+if [ "${WORLD:-1}" = "1" ] && { [ ! -s "$OUT/overview.pmtiles" ] || [ "${FORCE:-0}" = "1" ]; }; then
+  [ -n "${SRC:-}" ] || for i in 0 1 2 3 4 5 6 7 8 9 10; do
+    D="$(date -u -v-"${i}"d +%Y%m%d 2>/dev/null || date -u -d "-${i} day" +%Y%m%d)"
+    if curl --proto =https -fsI --max-time 30 "$BUILD_HOST/$D.pmtiles" >/dev/null 2>&1; then
+      SRC="$BUILD_HOST/$D.pmtiles"
+      break
+    fi
+  done
+  [ -n "${SRC:-}" ] || { echo "no Protomaps daily build found at $BUILD_HOST" >&2; exit 1; }
+  echo "Extracting world overview from $SRC maxzoom=${WORLD_MAXZOOM:-6}"
+  rm -f "$OUT/overview.pmtiles.part"
+  "$PMT" extract "$SRC" "$OUT/overview.pmtiles.part" --maxzoom="${WORLD_MAXZOOM:-6}"
+  mv "$OUT/overview.pmtiles.part" "$OUT/overview.pmtiles"
+fi
+
 # 3. Fonts (glyph PBFs) and sprites from protomaps/basemaps-assets
 if [ -z "$(ls -A "$OUT/fonts" 2>/dev/null)" ] || [ -z "$(ls -A "$OUT/sprites" 2>/dev/null)" ] \
   || [ "${FORCE:-0}" = "1" ]; then
@@ -97,7 +114,7 @@ fi
 
 # 4. Report size + checksums
 echo "--- data/basemap ---"
-du -sh "$OUT/world.pmtiles" "$OUT/fonts" "$OUT/sprites"
+du -sh "$OUT/world.pmtiles" "$OUT"/overview.pmtiles "$OUT/fonts" "$OUT/sprites" 2>/dev/null || true
 if command -v shasum >/dev/null 2>&1; then SUM="shasum -a 256"; else SUM="sha256sum"; fi
-(cd "$OUT" && $SUM world.pmtiles | tee SHA256SUMS)
+(cd "$OUT" && $SUM world.pmtiles $( [ -f "$OUT/overview.pmtiles" ] && echo overview.pmtiles ) | tee SHA256SUMS)
 echo "Basemap ready in $OUT"

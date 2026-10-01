@@ -17,11 +17,13 @@ function make(missing: string[] = []) {
 
 test("step list follows the workflow and covers the required anchors", () => {
   const ids = TOUR_STEPS.map((s) => s.id);
-  for (const k of ["toolbar", "map", "layers", "queue", "details", "evidence", "trust", "actions", "log", "sources"]) assert.ok(ids.includes(k), k);
+  for (const k of ["toolbar", "gnss", "alert", "heat", "satellites", "area", "filters", "queue", "details", "sources"]) assert.ok(ids.includes(k), k);
   const body = TOUR_STEPS.map((s) => s.body).join(" ");
   assert.match(body, /52 km/);
   assert.match(body, /not a single aircraft/);
   assert.match(body, /amber is military/);
+  assert.ok(TOUR_STEPS.length <= 10, "keep the tour short");
+  for (const s of TOUR_STEPS) assert.ok(s.body.length <= 240, `${s.id} is too long`);
   for (const s of TOUR_STEPS) assert.ok(s.title && s.body && s.anchor);
 });
 
@@ -56,13 +58,15 @@ test("relaunch resets to step 1", () => {
 });
 
 test("missing anchor is skipped both ways, without a crash", () => {
-  const { c, log } = make([TOUR_STEPS[1]!.anchor, TOUR_STEPS[0]!.anchor]);
+  const missing = [TOUR_STEPS[1]!.anchor, TOUR_STEPS[0]!.anchor];
+  const live = TOUR_STEPS.filter((s) => !missing.includes(s.anchor));
+  const { c, log } = make(missing);
   c.start();
-  assert.equal(log[0], TOUR_STEPS[2]!.id);
+  assert.equal(log[0], live[0]!.id);
   c.next();
-  assert.equal(log[1], TOUR_STEPS[3]!.id);
+  assert.equal(log[1], live[1]!.id);
   c.back();
-  assert.equal(log[2], TOUR_STEPS[2]!.id);
+  assert.equal(log[2], live[0]!.id);
   c.back();
   assert.equal(log.length, 3);
 });

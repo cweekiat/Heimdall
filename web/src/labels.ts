@@ -13,6 +13,7 @@ export const KIND_LABEL: Record<string, string> = {
   event_surge: "Burst of news events",
   warning_area: "Warning area",
   composite: "Several signs in one place",
+  spectrum_anomaly: "Radio band far from normal",
 };
 
 export const KIND_ICON: Record<string, IconName> = {
@@ -54,20 +55,20 @@ export const CORROBORATION_LABEL: Record<string, string> = {
 export const confidenceLabel = (c: number): string => (c >= 0.75 ? "High" : c >= 0.45 ? "Medium" : "Low");
 export const coverageLabel = (c: number): string => (c >= 0.7 ? "Good" : c >= 0.4 ? "Limited" : "Poor");
 
-export const PRIORITY_WORD: Record<string, string> = { P1: "Critical", P2: "High", P3: "Medium", P4: "Low" };
+export const PRIORITY_WORD: Record<string, string> = { P1: "Critical", P2: "Warning" };
 
 export const T = {
   brand: "HEIMDALL",
   brandTip: "Public-source information only. Alerts are unconfirmed until a second source agrees.",
   area: "Area",
-  areas: "Areas",
-  drawAreas: "Draw areas",
+  areas: "Area status",
+  drawAreas: "Area of Ops",
   alerts: "Alerts",
   type: "Type",
   status: "Status",
   source: "Source",
-  layers: "Layers & filters",
-  view3d: "Switch between flat (2D) and tilted (3D) map",
+  layers: "Filters",
+  view3d: "Switch between the 3D globe and the flat 2D map",
   compass: "Reset north and flatten the map",
   sources: "Data sources",
   actions: "Actions",

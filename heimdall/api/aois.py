@@ -36,6 +36,8 @@ def aois_router(svc: AoiService) -> APIRouter:
             return _bad(422, INVALID)
         try:
             u = await svc.create(body)
+        except ValueError:
+            return _bad(422, INVALID)
         except AoiLimitError:
             return _bad(409, f"at most {MAX_USER_AOIS} user areas")
         return JSONResponse(u.model_dump(mode="json"), status_code=201)

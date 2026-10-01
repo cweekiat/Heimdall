@@ -47,13 +47,16 @@ class ReplayStore(MemoryStore):
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[AircraftObs]:
         i, j = bisect.bisect_left(self._ts, start), bisect.bisect_left(self._ts, end)
         rows = self.aircraft[i:j]
         return [
             r
             for r in rows
-            if (h3_r4 is None or r.h3_r4 in h3_r4) and obs_match(r, bbox, ident, "hex")
+            if (h3_r4 is None or r.h3_r4 in h3_r4)
+            and obs_match(r, bbox, ident, "hex")
+            and not (local_only and r.is_global)
         ]
 
     def upsert_evidence(self, ev: Evidence) -> None:
