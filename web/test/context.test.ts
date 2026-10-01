@@ -8,17 +8,17 @@ const { parseContext, renderContext, effect, gloss, EMPTY_WEATHER, EMPTY_IMAGERY
 const load = (n: string) => parseContext(JSON.parse(readFileSync(new URL(`../src/__fixtures__/context_${n}.json`, import.meta.url), "utf8")));
 const dump = (el: unknown): string => (el as { dump(): string }).dump();
 
-test("confounders present: notes, confidence effect, footprints, three passes with UTC and local", () => {
+test("confounders present: notes, confidence effect, footprints, three passes in the display zone and local", () => {
   const text = dump(renderContext(load("confounders"), { tz: "Asia/Yangon" }));
   assert.match(text, /Things that could explain this/);
   assert.match(text, /Cloud cover 85%/);
   assert.match(text, /confidence lowered ×0\.8/);
   assert.match(text, /geomagnetic storm \(Kp 6\)/);
   assert.match(text, /Can this be checked\?/);
-  assert.match(text, /sentinel-2b · 2026-09-29 04:00 UTC · cloud 38%/);
+  assert.match(text, /sentinel-2b · 09-29 12:00 SGT · cloud 38%/);
   assert.match(text, /radar, sees through cloud/);
   for (const sat of ["SENTINEL-2A (MSI)", "SENTINEL-1A (C-SAR)", "SENTINEL-2B (MSI)"]) assert.ok(text.includes(sat));
-  assert.match(text, /2026-10-01 03:30 UTC · 01 Oct, 10:00 local/);
+  assert.match(text, /10-01 11:30 SGT · 01 Oct, 10:00 local/);
 });
 
 test("none: honest empty states, no alarming words", () => {

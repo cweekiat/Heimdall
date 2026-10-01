@@ -2,7 +2,7 @@
 // Config areas are read-only ("config"). The server validates everything again; errors are shown as plain text.
 import { api } from "./api";
 import type { Aoi, UserAoi } from "./api";
-import { circleProblem, circleRing, MAX_USER_AREAS, nameProblem, polygonProblem, polygonRing } from "./aogeo";
+import { circleProblem, circleRing, MAX_USER_AREAS, nameProblem, polygonProblem, polygonRing, RADIUS_MAX_NM } from "./aogeo";
 import type { DisplayAo } from "./aogeo";
 import { h } from "./dom";
 import type { DrawEvent, DrawMode, DrawResult } from "./map";
@@ -28,6 +28,11 @@ export class Areas {
   onChange: () => void = () => undefined;
   /** The set of monitored areas changed on the server: refetch areas, alerts and traffic. */
   onServerChange: () => void = () => undefined;
+  /** Show a busy indicator while a save/delete is in flight. */
+  busyHook: <T>(label: string, p: Promise<T>) => Promise<T> = (_l, p) => p;
+  /** Header shortcuts to the per-area views. */
+  openWatch: () => void = () => undefined;
+  openBoard: () => void = () => undefined;
   private body: HTMLElement;
   private hidden = new Set<string>();
   private drawer: Drawer | null = null;
@@ -48,10 +53,10 @@ export class Areas {
       id: "draw",
       title: T.drawAreas,
       icon: "draw",
-      x: -60,
       y: EDGE_TOP + 8,
-      w: 380,
-      h: 540,
+      x: 72,
+      w: 400,
+      h: 600,
       onOpen: () => {
         void this.reload();
         this.render();
@@ -118,11 +123,11 @@ export class Areas {
     this.drawer?.startDraw(mode);
   }
 
-  private async run(fn: () => Promise<unknown>, serverChange = true): Promise<boolean> {
+  private async run(fn: () => Promise<unknown>, serverChange = true, label = "Saving area"): Promise<boolean> {
     if (this.busy) return false;
     this.busy = true;
     try {
-      await fn();
+      await this.busyHook(label, fn());
       this.error = "";
       this.user = await api.userAois();
       if (serverChange) this.onServerChange();
@@ -238,7 +243,7 @@ export class Areas {
             "div",
             { class: "confirm", role: "alert" },
             h("span", {}, `Delete ${u.label}? Data collection there stops.`),
-            h("button", { class: "danger", type: "button", onclick: () => { this.confirm = null; if (this.selected === u.id) this.selected = null; void this.run(() => api.deleteAoi(u.id)); } }, "Delete"),
+            h("button", { class: "danger", type: "button", onclick: () => { this.confirm = null; if (this.selected === u.id) this.selected = null; void this.run(() => api.deleteAoi(u.id), true, "Deleting area"); } }, "Delete"),
             h("button", { type: "button", onclick: () => { this.confirm = null; this.render(); } }, "Keep"),
           )
         : h("div", { class: "ao-ctl" }, ...controls),
@@ -260,7 +265,13 @@ export class Areas {
       h(
         "div",
         { class: "body ao-body" },
-        h("p", { class: "note" }, "Draw an area on the map, name it, and choose which areas to monitor. Monitored areas get data collection and alerts."),
+        h(
+          "div",
+          { class: "row ao-views" },
+          h("button", { type: "button", onclick: () => this.openWatch(), title: "Each area against its own normal, band by band" }, "Spectrum watch"),
+          h("button", { type: "button", onclick: () => this.openBoard(), title: "Open alerts and coverage per area" }, "Area status"),
+        ),
+        h("p", { class: "note" }, `Draw an area on the map (up to ${RADIUS_MAX_NM} nautical miles radius), name it, and choose which areas to monitor. Monitored areas get data collection and alerts.`),
         h(
           "div",
           { class: "row" },
@@ -280,7 +291,7 @@ export class Areas {
           : null,
         this.draft ? this.form(this.draft) : null,
         this.error ? h("div", { class: "fail", role: "alert" }, this.error) : null,
-        h("ul", { class: "ao-list" }, ...rows),
+        rows.length ? h("ul", { class: "ao-list" }, ...rows) : h("p", { class: "empty" }, "No areas yet. Draw a circle or a polygon to start collecting data and alerts there."),
       ),
     );
   }

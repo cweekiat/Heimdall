@@ -1,294 +1,144 @@
-// Alert details window: header + Now / Why / Trend / Log tabs + triage footer.
-// Every view surfaces the explanation: what fired (value vs normal), data coverage, source and truth badges,
-// corroboration and the "Clears when" line. Raw numbers live only under "Technical details".
-// Actions come only from /api/playbook ids.
-import { api } from "./api";
-import type { ActionRec, AlertDetail, AlertStatus, Note } from "./api";
-import { ago, fmtNum, fmtTime, h } from "./dom";
+// Alert details: one short, factual view. What was detected, where and when, which sources saw it,
+// why it was flagged (each rule: measured value against its threshold and the normal level) and the
+// affected aircraft / vessels. Two actions: Acknowledge and Clear. No grading adjectives.
+import type { AlertDetail, AlertStatus, Evidence, Rule } from "./api";
+import { fmtNum, fmtTime, h } from "./dom";
+import { fmtLatLon, toMgrs } from "./geoutil";
 import { icon, iconButton } from "./icons";
-import type { IconName } from "./icons";
-import { alertTitle, aoiName, CORROBORATION_LABEL, confidenceLabel, coverageLabel, KIND_ICON, kindLabel, sourceLabel, T, truthLabel } from "./labels";
-import { chart, PRIORITY, STATUS_LABEL, table } from "./panels";
-import { explainBlock } from "./explain";
-import { ctxSection } from "./context";
-import { technicalDetails } from "./technical";
-import { addNote, loadDetail, patch, state, triage } from "./store";
+import { aoiName, kindLabel, T } from "./labels";
+import { PRIORITY, STATUS_LABEL, table } from "./panels";
+import { patch, state, triage } from "./store";
 
-type Pending = null | { kind: "dismissed" | "shelved" | "note" };
-let pending: Pending = null;
-let pendingFor: string | null = null;
+/** Recorded with every Clear (the backend requires a reason to close an alert). */
+export const CLEAR_REASON = "Cleared by analyst";
+
 let error = "";
 
-export function openTriage(kind: "dismissed" | "shelved" | "note"): void {
-  pending = { kind };
-  pendingFor = state.selected;
-  patch({ tab: kind === "note" ? "log" : state.tab });
-  renderInspector(document.getElementById("inspector")!);
-}
+const pct = (v: number): string => `${v < 0.1 ? (v * 100).toFixed(1) : Math.round(v * 100)} %`;
+const OP: Record<string, string> = { ">=": "≥", "<=": "≤", ">": ">", "<": "<", "==": "=", "!=": "≠" };
 
-// ------------------------------------------------------------------ tabs
+/** Source key / provider -> what kind of data it is. */
+const SOURCE_TYPE: Record<string, string> = {
+  "adsb.lol": "ADS-B",
+  "adsb.fi": "ADS-B",
+  adsb_lol: "ADS-B",
+  adsb_fi: "ADS-B",
+  opensky: "ADS-B",
+  aisstream: "AIS",
+  nga_msi: "NGA navigation warnings",
+  faa_nms_notam: "FAA NOTAMs",
+  firms: "NASA FIRMS heat detections",
+  swpc: "NOAA space weather",
+  open_meteo: "Open-Meteo weather",
+  celestrak: "CelesTrak orbits",
+  wspr_live: "WSPR",
+  pskreporter: "PSK Reporter",
+  satnogs: "SatNOGS",
+  sentinel1_rfi: "Sentinel-1 RFI",
+  smap_rfi: "SMAP RFI",
+};
+const DOMAIN_NAME: Record<string, string> = { air: "Aircraft (ADS-B)", sea: "Ships (AIS)", space: "Satellite", events: "Weather / notices", spectrum: "Radio spectrum", cyber: "Network" };
 
-const pct = (v: number): string => `${v < 0.1 ? (v * 100).toFixed(1) : Math.round(v * 100)}%`;
-
-/** One plain sentence describing what was seen versus the normal level. */
-function plainSentence(d: AlertDetail): string {
-  const ev = d.evidence[0];
-  const rule = ev?.rules.find((r) => r.baseline !== null && r.value !== null);
-  if (ev && rule && rule.value !== null && rule.baseline !== null && rule.value <= 1 && d.alert.kind === "gnss_jamming") {
-    const total = ev.coverage.n_quality || ev.coverage.n_observed;
-    const n = Math.round(rule.value * total);
-    return total > 0 ? T.lostGps(n, total, pct(rule.value), pct(rule.baseline)) : T.affectedNow(pct(rule.value), pct(rule.baseline));
-  }
-  if (rule && rule.value !== null && rule.baseline !== null && rule.value <= 1) return T.affectedNow(pct(rule.value), pct(rule.baseline));
-  return `${kindLabel(d.alert.kind)} near ${aoiName(d.alert.aoi)}.`;
-}
-
-function factRow(ic: IconName, text: string, tip: string): HTMLElement {
-  return h("span", { class: "fact", title: tip }, icon(ic), text);
-}
-
-type Kid = Node | string | null | undefined | false;
-
-function tabNow(d: AlertDetail): Kid[] {
-  const a = d.alert;
-  const ev = d.evidence[0];
-  const covWord = ev ? coverageLabel(ev.coverage.confidence) : "Poor";
-  const mins = Math.max(0, (new Date(a.last_seen).getTime() - new Date(a.first_seen).getTime()) / 60000);
-  return [
-    h(
-      "div",
-      { class: "facts" },
-      factRow(KIND_ICON[a.kind] ?? "warn", kindLabel(a.kind), "Type"),
-      factRow("area", aoiName(a.aoi), T.area),
-      factRow("clock", T.since(ago(a.first_seen)), "When it started"),
-      factRow("seen", T.seenFor(mins), "How long it has persisted"),
-      factRow("coverage", T.dataCoverage(covWord), "How much data supports this"),
-    ),
-    explainBlock(a, d.evidence),
-    ctxSection(a.id),
-    h("p", { class: "plain" }, plainSentence(d)),
-    ev?.counterfactual && h("p", { class: "clears" }, h("strong", {}, `${T.clearsWhen}: `), ev.counterfactual),
-    h("h3", {}, "Things involved"),
-    h(
-      "div",
-      { class: "row" },
-      ...(d.evidence.flatMap((e) => e.entities).length
-        ? [...new Set(d.evidence.flatMap((e) => e.entities))].map((e) =>
-            h("button", { class: "chip", onclick: () => patch({ selectedEntity: e }), "aria-pressed": String(state.selectedEntity === e) }, e),
-          )
-        : [h("span", { class: "note" }, "None attached.")]),
-    ),
-    h("h3", {}, "Suggested next steps"),
-    a.recommended_actions.length ? h("ul", {}, ...a.recommended_actions.map((x) => h("li", {}, x))) : h("div", { class: "note" }, "None."),
-    technicalDetails(d),
-  ];
-}
-
-function tabWhy(d: AlertDetail): Kid[] {
-  const a = d.alert;
-  const ev = d.evidence[0];
-  const bullets: Node[] = [];
-  for (const e of d.evidence) {
-    for (const r of e.rules) {
-      bullets.push(h("li", { class: r.passed ? "pass" : "fail" }, `${r.passed ? "Yes" : "No"}: ${r.description}`));
+/** "ADS-B (adsb.lol, adsb.fi)" from the providers and record sources of the evidence. */
+export function sourceLine(evs: Evidence[]): string {
+  const by = new Map<string, Set<string>>();
+  for (const e of evs) {
+    for (const p of [...e.coverage.providers, ...e.records.map((r) => r.source)]) {
+      const t = SOURCE_TYPE[p] ?? p;
+      if (!by.has(t)) by.set(t, new Set());
+      if (t !== p) by.get(t)!.add(p.replace("_", "."));
     }
   }
-  return [
-    h("h3", {}, "How much to trust it"),
-    h(
-      "div",
-      { class: "row" },
-      h("span", { class: "badge grade" }, sourceLabel(a.admiralty.reliability)),
-      h("span", { class: "badge grade" }, truthLabel(a.admiralty.credibility)),
-      h("span", { class: `badge ${a.corroboration_status}` }, CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status),
-      h("span", { class: "note" }, `Confidence: ${confidenceLabel(a.confidence)}`),
-    ),
-    h("h3", {}, "What triggered it"),
-    bullets.length ? h("ul", { class: "why" }, ...bullets) : h("div", { class: "note" }, "No rule details recorded."),
-    ev && h("h3", {}, "Data coverage"),
-    ev && h("div", {}, `${T.dataCoverage(coverageLabel(ev.coverage.confidence))} (${ev.coverage.n_quality} good reports out of ${ev.coverage.n_observed} seen)`),
-    ev && h("div", { class: "bar" }, h("i", { style: `width:${ev.coverage.confidence * 100}%` })),
-    ...d.evidence.flatMap((e) => [
-      e.counterfactual && h("h3", {}, T.clearsWhen),
-      e.counterfactual && h("div", { class: "cf" }, e.counterfactual),
-      h("h3", {}, "What we cannot see"),
-      e.gaps.length ? h("ul", {}, ...e.gaps.map((g) => h("li", {}, g))) : h("div", { class: "note" }, "None recorded (this does not mean there are none)."),
-    ]),
-    h("h3", {}, "Other sources"),
-    a.corroborations.length
-      ? table(["Type", "Agrees?", "Note"], a.corroborations.map((c) => [c.domain, c.relation, c.note]))
-      : h("div", { class: "note" }, T.noSecondSource),
-    technicalDetails(d),
-  ];
+  return [...by.entries()].map(([t, ps]) => (ps.size ? `${t} (${[...ps].sort().join(", ")})` : t)).join("; ") || "Not recorded";
 }
 
-let trendHours = 24;
+/** One factual line per rule: "<what>: <value> (alert at ≥ <threshold>; normal <baseline>)". */
+export function ruleLine(r: Rule): string {
+  const nums = [r.value, r.threshold, r.baseline].filter((x): x is number => x !== null);
+  const share = /share|ratio|fraction|percent|%/i.test(r.description) && nums.every((x) => x >= 0 && x <= 1);
+  const f = (v: number): string => (share ? pct(v) : fmtNum(v, 1));
+  const ctx = [r.threshold !== null ? `alert at ${OP[r.op] ?? r.op} ${f(r.threshold)}` : "", r.baseline !== null ? `normal ${f(r.baseline)}` : ""].filter(Boolean).join("; ");
+  return `${r.description}: ${r.value === null ? "n/a" : f(r.value)}${ctx ? ` (${ctx})` : ""}`;
+}
 
-function tabTrend(d: AlertDetail): Node[] {
+/** Entity id -> kind and label: 6 hex chars = aircraft (ICAO), 9 digits = vessel (MMSI). */
+export function entityLabel(e: string): { kind: "aircraft" | "vessel" | "other"; text: string } {
+  if (/^[0-9a-f]{6}$/i.test(e)) return { kind: "aircraft", text: `Aircraft ${e.toUpperCase()}` };
+  if (/^\d{9}$/.test(e)) return { kind: "vessel", text: `Vessel MMSI ${e}` };
+  return { kind: "other", text: e };
+}
+
+const kv = (rows: [string, Node | string | null | false][]): HTMLElement =>
+  h("dl", { class: "facts-kv" }, ...rows.filter(([, v]) => v !== null && v !== false && v !== "").flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v as Node | string)]));
+
+function body(d: AlertDetail): Node[] {
   const a = d.alert;
-  const host = h("div", {}, h("div", { class: "note" }, "Loading history..."));
-  const rule = d.evidence[0]?.rules.find((r) => r.baseline !== null || r.threshold !== null);
-  if (a.h3_cell) {
-    api
-      .metric(a.h3_cell, "degraded_ratio", trendHours)
-      .then((pts) =>
-        pts.length
-          ? host.replaceChildren(
-              chart(pts, rule?.baseline ?? null, rule?.threshold ?? null),
-              h("div", { class: "note" }, `Share of aircraft affected, last ${trendHours} h (blue), against the normal level (grey dashed) and the alert line (amber dotted)`),
-            )
-          : host.replaceChildren(h("div", { class: "note" }, "No history recorded for this area.")),
-      )
-      .catch(() => host.replaceChildren(h("div", { class: "note" }, "History unavailable.")));
-  } else host.replaceChildren(h("div", { class: "note" }, "This alert has no area, so no trend is available."));
-  const ev = d.evidence[0];
-  const onset = new Date(a.first_seen).getTime();
-  const hrs = Math.max(0, (Date.now() - onset) / 3600_000);
+  const evs = d.evidence;
+  const ev = evs[0];
+  const mins = Math.max(0, Math.round((new Date(a.last_seen).getTime() - new Date(a.first_seen).getTime()) / 60000));
+  const dur = mins >= 120 ? `${(mins / 60).toFixed(1)} h` : `${mins} min`;
+  const f = ev?.features ?? {};
+  const affected = typeof f.bad === "number" && typeof f.total === "number" ? `${f.bad} of ${f.total} aircraft in the cell` : null;
+  const emitter =
+    typeof f.emitter_lat === "number" && typeof f.emitter_lon === "number"
+      ? `${fmtLatLon(f.emitter_lat, f.emitter_lon)}${typeof f.ellipse_major_km === "number" ? ` (± ${Math.round(f.ellipse_major_km / 2)} km)` : ""}`
+      : null;
+  const supporting = a.corroborations.filter((c) => c.relation !== "context");
+  const adjust = a.corroborations.filter((c) => c.relation === "context");
+  const rules = evs.flatMap((e) => e.rules.filter((r) => r.passed));
+  const ents = [...new Set(evs.flatMap((e) => e.entities))].map((e) => ({ id: e, ...entityLabel(e) }));
   return [
-    h(
-      "div",
-      { class: "row" },
-      ...[24, 168].map((hh) =>
-        h("button", { "aria-pressed": String(trendHours === hh), onclick: () => { trendHours = hh; renderInspector(document.getElementById("inspector")!); } }, hh === 24 ? "24 h" : "7 d"),
-      ),
-    ),
-    host,
-    h("h3", {}, "Outlook"),
-    h(
-      "div",
-      {},
-      `Started ${fmtTime(a.first_seen)} (${hrs.toFixed(1)} h ago). `,
-      ev?.counterfactual ? `${T.clearsWhen}: ${ev.counterfactual}` : "No clearing condition provided.",
-    ),
+    kv([
+      ["Detected", kindLabel(a.kind)],
+      ["Area", aoiName(a.aoi)],
+      ["Position", a.lat !== null && a.lon !== null ? `${fmtLatLon(a.lat, a.lon)} · MGRS ${toMgrs(a.lat, a.lon)}` : null],
+      ["First seen", fmtTime(a.first_seen)],
+      ["Last seen", `${fmtTime(a.last_seen)} (${dur})`],
+      ["Sources", sourceLine(evs)],
+      ["Also seen by", supporting.length ? supporting.map((c) => `${DOMAIN_NAME[c.domain] ?? c.domain}: ${c.note}`).join("; ") : null],
+      ["Data", ev ? `${ev.coverage.n_observed} aircraft observed, ${ev.coverage.n_quality} with GPS accuracy data` : null],
+      ["Affected", affected],
+      ["Estimated emitter", emitter],
+      ["Confidence", `${Math.round(a.confidence * 100)} %${adjust.length ? ` (${adjust.map((c) => c.note).join("; ")})` : ""}`],
+    ]),
+    h("h3", {}, "Why it was flagged"),
+    rules.length ? h("ul", { class: "why" }, ...rules.map((r) => h("li", {}, ruleLine(r)))) : h("p", { class: "note" }, "Rule values not recorded."),
+    h("h3", {}, `Affected ${ents.some((e) => e.kind === "vessel") ? (ents.some((e) => e.kind === "aircraft") ? "aircraft and vessels" : "vessels") : "aircraft"} (${ents.length})`),
+    ents.length
+      ? h(
+          "div",
+          { class: "row ents" },
+          ...ents.map((e) =>
+            h(
+              "button",
+              { type: "button", class: `chip ent-${e.kind}`, title: "Show its recent track", "aria-pressed": String(state.selectedEntity === e.id), onclick: () => patch({ selectedEntity: e.id }) },
+              icon(e.kind === "vessel" ? "ship" : "plane", 14),
+              e.text,
+            ),
+          ),
+        )
+      : h("p", { class: "note" }, "None listed (area-wide detection)."),
   ];
 }
-
-function logEntry(n: Note): HTMLElement {
-  const tag = n.kind === "status" ? `status: ${STATUS_LABEL[n.status_to ?? ""] ?? n.status_to}` : n.kind === "shelve" ? `shelved until ${fmtTime(n.shelve_until)}` : n.kind;
-  return h("div", { class: "log" }, h("time", {}, `${fmtTime(n.ts)} · ${n.user} · ${tag}`), n.text);
-}
-
-function tabLog(d: AlertDetail): Node[] {
-  const items: { ts: string; el: HTMLElement }[] = [
-    ...d.notes.map((n) => ({ ts: n.ts, el: logEntry(n) })),
-    ...d.actions.map((x) => ({ ts: x.ts, el: actionRow(x) })),
-    ...d.feedback.map((f) => ({
-      ts: f.ts,
-      el: h("div", { class: "log" }, h("time", {}, `${fmtTime(f.ts)} · ${f.user} · verdict`), `${f.verdict}${f.reason ? `: ${f.reason}` : ""}`),
-    })),
-  ].sort((x, y) => y.ts.localeCompare(x.ts));
-  return items.length ? items.map((i) => i.el) : [h("div", { class: "empty" }, "No notes yet. Add a note to record your reasoning for the next shift.")];
-}
-
-function actionRow(x: ActionRec): HTMLElement {
-  const act = (fn: () => Promise<unknown>) => async () => {
-    await fn();
-    if (state.selected) await loadDetail(state.selected);
-  };
-  return h(
-    "div",
-    { class: "log" },
-    h("time", {}, `${fmtTime(x.ts)} · action`),
-    h("span", { class: "chip" }, x.action_id),
-    " ",
-    h("span", { class: "badge" }, x.status),
-    x.status === "proposed" && h("button", { class: "primary", onclick: act(() => api.approve(x.id)) }, "Approve"),
-    x.status === "proposed" && h("button", { onclick: act(() => api.reject(x.id)) }, "Reject"),
-  );
-}
-
-// ------------------------------------------------------------------ footer (triage + playbook)
-
-const isoLocal = (hours: number): string => new Date(Date.now() + hours * 3600_000).toISOString().slice(0, 16);
 
 function footer(d: AlertDetail): HTMLElement {
   const a = d.alert;
-  const t = (s: AlertStatus, ic: IconName, label: string, cls = "") =>
-    h("button", { class: `tri ${cls}`.trim(), title: label, disabled: a.status === s, onclick: () => void run(triage(a.id, s)) }, icon(ic), label);
-  const tb = (ic: IconName, label: string, kind: "dismissed" | "shelved" | "note", cls = "") =>
-    h("button", { class: `tri ${cls}`.trim(), title: label, onclick: () => openTriage(kind) }, icon(ic), label);
-  const run = async (p: Promise<string | null>): Promise<void> => {
-    error = (await p) ?? "";
-    pending = null;
+  const run = async (s: AlertStatus, reason?: string): Promise<void> => {
+    error = (await triage(a.id, s, reason)) ?? "";
     renderInspector(document.getElementById("inspector")!);
   };
-  const form = (): HTMLElement | null => {
-    if (!pending || pendingFor !== a.id) return null;
-    const text = h("input", {
-      type: "text",
-      "aria-label": pending.kind === "note" ? "Note" : "Reason",
-      placeholder: pending.kind === "note" ? "Analyst note" : "Reason (required)",
-      id: "pending-text",
-    });
-    const until = h("input", { type: "datetime-local", "aria-label": "Shelve until (UTC)", value: isoLocal(4) });
-    const kind = pending.kind;
-    const submit = () => {
-      const v = text.value.trim();
-      if (!v) {
-        error = kind === "note" ? "Note is empty" : "A reason is required";
-        renderInspector(document.getElementById("inspector")!);
-        return;
-      }
-      if (kind === "note") void run(addNote(a.id, v));
-      else if (kind === "dismissed") void run(triage(a.id, "dismissed", v));
-      else void run(triage(a.id, "shelved", v, new Date(until.value + "Z").toISOString()));
-    };
-    text.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") submit();
-      if (e.key === "Escape") {
-        pending = null;
-        renderInspector(document.getElementById("inspector")!);
-      }
-    });
-    setTimeout(() => text.focus(), 0);
-    return h(
-      "div",
-      { class: "row" },
-      text,
-      kind === "shelved" && h("label", {}, "until (UTC) ", until),
-      h("button", { class: "primary", onclick: submit }, kind === "note" ? T.note : kind === "dismissed" ? T.dismiss : T.shelve),
-      h("button", { onclick: () => { pending = null; renderInspector(document.getElementById("inspector")!); } }, "Cancel"),
-    );
-  };
-  const pb = d.playbook.filter((p) => p.applies_to.length === 0 || p.applies_to.includes(a.kind));
   return h(
     "div",
     { class: "foot" },
     h(
       "div",
-      { class: "row" },
-      t("acknowledged", "ack", T.ack),
-      t("under_review", "review", T.review),
-      t("confirmed", "confirm", T.confirm, "primary"),
-      tb("dismiss", T.dismiss, "dismissed", "danger"),
-      tb("shelve", T.shelve, "shelved"),
-      tb("note", T.note, "note"),
+      { class: "row tri-row" },
+      h("button", { class: "tri primary", title: "I have seen it (a)", disabled: a.status === "acknowledged", onclick: () => void run("acknowledged") }, icon("ack"), T.ack),
+      h("button", { class: "tri", title: "Close this alert; it is logged and returns if the activity escalates (d)", disabled: a.status === "dismissed", onclick: () => void run("dismissed", CLEAR_REASON) }, icon("dismiss"), "Clear"),
     ),
-    form(),
     error && h("div", { class: "fail", role: "alert" }, error),
-    pb.length > 0 &&
-      h(
-        "div",
-        { class: "row" },
-        h("span", { class: "note" }, "Suggested actions:"),
-        ...pb.map((p) =>
-          h(
-            "button",
-            {
-              title: `${p.label} (risk: ${p.risk})`,
-              onclick: async () => {
-                await api.propose(a.id, p.id).catch((e) => { error = String(e); });
-                await loadDetail(a.id);
-              },
-            },
-            `Propose: ${p.label}${p.risk === "high" ? " (high risk)" : ""}`,
-          ),
-        ),
-      ),
   );
 }
-
-// ------------------------------------------------------------------ main
 
 export function renderInspector(root: HTMLElement): void {
   const d = state.detail;
@@ -296,62 +146,39 @@ export function renderInspector(root: HTMLElement): void {
     root.replaceChildren(h("div", { class: "empty" }, T.selectPrompt));
     return;
   }
-  if (pendingFor !== d.alert.id) {
-    pending = null;
-    error = "";
-  }
   const a = d.alert;
   const pr = PRIORITY[a.severity]!;
   const prev = root.querySelector<HTMLElement>(".body")?.scrollTop ?? 0;
-  const tabs: [typeof state.tab, string][] = [["now", "Now"], ["why", "Why"], ["trend", "Trend"], ["log", `Notes (${d.notes.length + d.actions.length})`]];
-  const content = state.tab === "now" ? tabNow(d) : state.tab === "why" ? tabWhy(d) : state.tab === "trend" ? tabTrend(d) : tabLog(d);
-  const typing = document.activeElement instanceof HTMLInputElement && root.contains(document.activeElement) ? document.activeElement : null;
-  const draft = typing?.value;
   root.replaceChildren(
     h(
       "div",
       { class: "head" },
-      h("h2", {}, `${pr.icon} ${alertTitle(a)}`),
+      h("h2", {}, `${kindLabel(a.kind)} · ${aoiName(a.aoi)}`),
       h(
         "div",
         { class: "row" },
-        h("span", { class: `badge sev-${a.severity}` }, `${pr.label} priority`),
-        h("span", { class: "badge grade" }, sourceLabel(a.admiralty.reliability)),
-        h("span", { class: "badge grade" }, truthLabel(a.admiralty.credibility)),
-        h("span", { class: `badge ${a.corroboration_status}` }, CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status),
+        h("span", { class: `badge sev-${pr.p === "P1" ? "critical" : "medium"}` }, `${pr.icon} ${pr.label}`),
         h("span", { class: "badge" }, STATUS_LABEL[a.status] ?? a.status),
-        h("span", { class: "note" }, `Confidence: ${confidenceLabel(a.confidence)}`),
+        a.ref ? h("span", { class: "note" }, a.ref) : null,
       ),
     ),
-    h(
-      "div",
-      { class: "tabs", role: "tablist" },
-      ...tabs.map(([k, l]) => h("button", { role: "tab", "aria-selected": String(state.tab === k), onclick: () => patch({ tab: k }) }, l)),
-    ),
-    h("div", { class: "body", role: "tabpanel" }, ...content),
+    h("div", { class: "body inspector-body" }, ...body(d)),
     footer(d),
   );
   root.querySelector<HTMLElement>(".body")!.scrollTop = prev;
-  if (draft) {
-    const t = root.querySelector<HTMLInputElement>("#pending-text");
-    if (t) t.value = draft;
-  }
 }
 
-/** Entity inspector (aircraft / hex): last fixes and the alerts that reference it. */
-export function renderEntity(root: HTMLElement, hex: string): void {
-  const refs = state.alerts.filter((a) => a.id === state.selected);
-  const tr = state.tracks.find((t) => t.hex === hex);
+/** Entity view (aircraft or vessel): last fixes and the selected alert. */
+export function renderEntity(root: HTMLElement, id: string): void {
+  const tr = state.tracks.find((t) => t.hex === id);
   root.replaceChildren(
-    h("div", { class: "head" }, h("h2", {}, `Aircraft ${hex}`), iconButton("undo", "Back to alert", () => patch({ selectedEntity: null }))),
+    h("div", { class: "head" }, h("h2", {}, entityLabel(id).text), iconButton("undo", "Back to alert", () => patch({ selectedEntity: null }))),
     h(
       "div",
       { class: "body" },
       tr
-        ? table(["Time", "Lat", "Lon", "Altitude", "Speed"], tr.path.slice(-8).reverse().map((p) => [fmtTime(p.ts), p.lat.toFixed(3), p.lon.toFixed(3), fmtNum(p.alt, 0), fmtNum(p.gs, 0)]))
-        : h("div", { class: "note" }, "No track loaded."),
-      h("h3", {}, "Mentioned in"),
-      ...refs.map((a) => h("div", {}, alertTitle(a))),
+        ? table(["Time", "Lat", "Lon", "Altitude (ft)", "Speed (kn)"], tr.path.slice(-8).reverse().map((p) => [fmtTime(p.ts), p.lat.toFixed(3), p.lon.toFixed(3), fmtNum(p.alt, 0), fmtNum(p.gs, 0)]))
+        : h("div", { class: "note" }, "No recent track loaded."),
     ),
   );
 }

@@ -1,30 +1,32 @@
 // Modal overlays: help (?) and shift summary with local Markdown download.
+import { fmtDT } from "./tz";
 import type { Alert } from "./api";
 import { fmtTime, h } from "./dom";
 import type { IconName } from "./icons";
 import { createWindow, EDGE_LEFT, EDGE_TOP, closeWindow, getBody, openWindow } from "./wm";
-import { aoiName, CORROBORATION_LABEL, kindLabel, SOURCE_LABEL, T, truthLabel } from "./labels";
+import { aoiName, kindLabel, T } from "./labels";
+import { sourceNames } from "./explain";
 import { PRIORITY, STATUS_LABEL } from "./panels";
 import { state } from "./store";
 import { startTour } from "./tour/overlay";
 
 export const SHORTCUTS: [string, string][] = [
-  ["/", "Search alerts"],
+  ["/", "Search (areas, alerts, flights, ships, lat, lon)"],
   ["j / k", "Next / previous alert"],
   ["Enter", "Open the highlighted alert"],
-  ["a", "Acknowledge"],
-  ["r", "Start review"],
-  ["c", "Confirm"],
-  ["d", "Dismiss (asks for a reason)"],
-  ["s", "Snooze (reason and until)"],
-  ["n", "Add note"],
+  ["a", "Acknowledge the selected alert"],
+  ["d", "Clear the selected alert"],
   ["f", "Fly to selection"],
   ["1 - 5", "Jump to area 1-5"],
-  ["q", "Alerts window"],
-  ["b", "Areas window"],
-  ["l", "Layers & filters window"],
+  ["q", "Alerts"],
+  ["o", "Area of Ops"],
+  ["b", "Area status board"],
+  ["w", "Spectrum watch"],
+  ["l", "Filters"],
+  ["g", "3D globe / 2D map"],
+  ["0", "Recenter on South-East Asia"],
+  [",", "Settings"],
   ["u", "Data sources window"],
-  ["x", "Actions window"],
   ["t", "Timeline window"],
   ["h", "Shift report window"],
   ["Space", "Play / pause timeline"],
@@ -40,8 +42,6 @@ const DETECTORS: [string, string][] = [
   ["Several signs in one place", "Different kinds of data agree on the same place and time. Agreement raises how likely the alert is to be true."],
 ];
 
-const GRADES: [string, string][] = Object.entries(SOURCE_LABEL).map(([k, v]) => [k, `Source: ${v}`]);
-const CRED: [string, string][] = [1, 2, 3, 4, 5, 6].map((n) => [String(n), truthLabel(n)]);
 
 function open(id: string, title: string, ic: IconName, ...body: (Node | string | false)[]): void {
   createWindow({ id, title, icon: ic, w: 460, h: 520, x: EDGE_LEFT + 60, y: EDGE_TOP + 20 });
@@ -62,16 +62,13 @@ export function showHelp(): void {
     h("h2", {}, "Keyboard shortcuts"),
     dl(SHORTCUTS),
     h("h2", {}, "Reading the map"),
-    h("p", {}, "Priorities: ▲▲ Critical, ▲ High, ■ Medium, ● Low. Colour is never the only cue. Heimdall does not label anything hostile or friendly."),
+    h("p", {}, "Two alert categories: ▲ Critical (look now; a small card pops up on the map) and ● Warning. Colour is never the only cue. Heimdall does not label anything hostile or friendly."),
     h("p", {}, "Areas: green means few aircraft affected, amber some, red many. Grey outline: too little data to judge (no data is not no activity)."),
-    h("h2", {}, "How much to trust an alert"),
-    h("p", {}, "Every alert has two badges: how reliable the source is, and how likely the information is true."),
-    dl(GRADES),
-    dl(CRED),
-    h("p", { class: "note" }, "\"No second source yet\" never means false."),
+    h("h2", {}, "Confidence"),
+    h("p", {}, "Each alert shows a confidence percentage: how much data covered the area and how many independent sources agree. The alert lists its sources by name and the rule values that made it fire."),
     h("h2", {}, "What the alerts mean"),
     ...DETECTORS.flatMap(([k, v]) => [h("h3", {}, k), h("p", {}, v)]),
-    h("p", { class: "note" }, "Windows: drag the title bar to move, drag edges to resize. Reset layout in the toolbar brings them back."),
+    h("p", { class: "note" }, "Windows: drag the title bar to move, drag edges to resize. Settings > Reset window layout brings them back."),
   );
 }
 
@@ -89,7 +86,7 @@ export function shiftMarkdown(hours: number, now = Date.now()): string {
     for (const g of [...new Set(xs.map((a) => aoiName(a.aoi)))].sort()) {
       out.push(`- **${g}**`);
       for (const a of xs.filter((x) => aoiName(x.aoi) === g)) {
-        out.push(`  - ${PRIORITY[a.severity]!.label} · ${kindLabel(a.kind)} · ${SOURCE_LABEL[a.admiralty.reliability] ?? "Unknown"} source, ${truthLabel(a.admiralty.credibility).toLowerCase()} · ${CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status} · ${STATUS_LABEL[a.status] ?? a.status} · first ${fmtTime(a.first_seen)}`);
+        out.push(`  - ${PRIORITY[a.severity]!.label} · ${kindLabel(a.kind)} · confidence ${Math.round(a.confidence * 100)} % · sources ${sourceNames(a)} · ${STATUS_LABEL[a.status] ?? a.status} · first ${fmtTime(a.first_seen)}`);
       }
     }
     return out.length ? out : ["- none"];
@@ -97,7 +94,7 @@ export function shiftMarkdown(hours: number, now = Date.now()): string {
   return [
     `# Heimdall shift report`,
     ``,
-    `Generated ${new Date(now).toISOString().slice(0, 16).replace("T", " ")}Z, covering the last ${hours} h. Public-source information, unconfirmed until a second source agrees.`,
+    `Generated ${fmtDT(now)}, covering the last ${hours} h. Public-source information.`,
     ``,
     `## Opened (${opened.length})`,
     ...byAoi(opened),

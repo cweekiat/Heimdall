@@ -4,7 +4,25 @@ Run: `uv run python -m heimdall.api.demo` (synthetic data, port 8000) and `cd we
 (port 5173, proxies `/api`). Production: `npm run build`; FastAPI serves `web/dist` at `/`.
 The API binds 127.0.0.1 by default (`api.host`).
 
-## Views
+## Current layout (tasks 035–037; supersedes older notes below where they differ)
+- **Top bar**: brand, clock (display time zone, default Singapore; Settings → Time zone), live/freshness on the left;
+  search centred (areas, alerts, loaded flights/ships, `lat, lon`; local data only); **Alerts**, Timeline and
+  **Shift report** on the right.
+- **Left rail** (widens on hover): Area of Ops `o`, Data sources `u`, Settings `,`, Help `?`, About `i`. No actions board.
+- **Bottom left**: map-type picker (Google-Maps style), **Filters** button, minimised legend chip.
+- **Bottom right**: recenter (SE Asia), compass, 3D/2D, zoom. Zooming out past ~2.7 turns the map into an offline globe
+  with live satellites (`GET /api/satellites`) drawn at altitude with past/next paths.
+- **Areas of Ops**: none by default; drawn circles/polygons limited to 250 nm; monitored areas outlined green.
+- **Alerts**: two categories, **Critical** (red, small pop-up card on the map from zoom 3) and **Warning**. Details are one
+  factual view: detected time, area, position + MGRS, first/last seen, sources, confidence %, affected aircraft/vessels,
+  and "Why it was flagged" (value vs alert threshold and normal). Actions: **Acknowledge** and **Clear** only.
+- **Filters** only show/hide data (never change ingestion): Data type (source) rows such as Aircraft (ADS-B), GNSS and
+  radio spectrum, Earth observation, alerts/notices, detections (ship gone dark, military aircraft circling, …), quick filters.
+- **Data sources**: plain names, On/Off switch with no confirmation; click a keyed source for an API key pop-up.
+- **Offline basemap**: regional `world.pmtiles` (z0–10) plus optional whole-world `overview.pmtiles` (z0–6, `WORLD=1`).
+- Loading screen at start-up; busy pill for slower actions. Guided tour: 10 short steps with example scenes.
+
+## Views (original task 004 design)
 1. **Map** - MapLibre + deck.gl with a layer switcher (top-right "Layers"). Heimdall layers are a
    separate deck.gl overlay canvas (`interleaved: false`) so they stay on top of every base and
    overlay. Choices persist in localStorage (`hm.base`, `hm.overlays`). See "Map layers" below. H3 r4 hexes coloured by degraded ratio
@@ -16,8 +34,7 @@ The API binds 127.0.0.1 by default (`api.host`).
 3. **Evidence card** - rules table (value / op / threshold / baseline / pass), coverage and
    persistence, Admiralty grade, corroboration matrix (uncorroborated is shown as such, never
    "false"), counterfactual, gaps, entities and records, metric-vs-baseline chart.
-4. **Actions board** - only ids returned by `/api/playbook` for the alert kind. Propose -> Approve /
-   Reject; analyst Confirm / Dismiss with a reason. Approval is a stub: it records, runs nothing.
+4. **Actions board** - removed from the UI in task 037 (`/api/actions` and `/api/playbook` remain).
 5. **Data health** - per source freshness, records/hour, error rate, reliability grade.
 
 Layout: 3 columns at 1280 px, detail overlay below 1100 px, single panel with tab bar at 390 px.
@@ -30,12 +47,11 @@ Shortcuts are ignored while typing in a field; `Esc` always closes the topmost t
 
 | Key | Action |
 |---|---|
-| `/` | Search alerts |
+| `/` | Search (top centre) |
 | `j` / `k` | Next / previous alert |
 | `Enter` | Open highlighted alert |
-| `a` / `r` / `c` | Acknowledge / Under review / Confirm |
-| `d` / `s` | Dismiss / Shelve (both ask for a reason; shelve also asks until when) |
-| `n` | Add analyst note |
+| `a` | Acknowledge |
+| `d` | Clear |
 | `f` | Fly to selection |
 | `1`-`5` | Jump to AOI 1-5 |
 | `l` | Layers drawer |
@@ -119,7 +135,7 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
 - **Live traffic** (`web/src/traffic.ts`): aircraft and ships from `/api/traffic/air|sea`, only for
   the visible box. Air refreshes every 5 s, ships every 30 s; polling pauses in a hidden tab and
   requests never overlap. Aircraft are silhouettes turned to their track and tinted by altitude
-  (grey on the ground, teal low, violet high). Military aircraft are hollow diamonds. A thin amber ring
+  (grey on the ground, teal low, violet high). Military aircraft use the same plane icon in amber. A thin amber ring
   means a GPS problem; a red halo means the aircraft or ship is part of an alert. Ships are arrows along
   their course (a dot when stationary), coloured by type. Below zoom 5 one marker per screen cell is shown
   with a count. Hover for a one-line tooltip; click for a card (details, 30 min / 2 h path, Follow,
@@ -128,13 +144,11 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
   per-source tick boxes with live counts; military only, altitude band, ship type chips,
   only things in alerts, callsign/name/MMSI search. Saved in `hm.filters.v1`. Also holds the base map,
   overlays, coverage and look-back controls.
-- **Data sources** (`sources.ts`): status, last update, records per hour and an On/Off switch
-  (`POST /api/sources/{key}`; switching off asks "Stop collecting from X?"). Refreshes every 10 s.
-  Keys are never shown, only "Add X_KEY to .env".
+- **Data sources** (`sources.ts`): grouped plain-named sources with status, last update and an On/Off switch
+  (`POST /api/sources/{key}`, no confirmation). Refreshes every 10 s. Clicking a keyed source opens a key pop-up
+  (`keysui.ts`); keys are never shown back.
 - **Warnings and NOTAMs** (`notices.ts`): hatched areas from `/api/notices`; click for reference,
   type, valid times (Z), altitude band and the original text in an "unverified" box.
-- **Actions** (`actionsboard.ts`): Proposed, Approved, Done, Rejected columns from `/api/actions`.
-  Approve and reject appear on proposed cards only; high-risk items ask for a second confirmation.
 
 ## RF band ladder and spectrum layers (task 030, ADR-008)
 - **Band ladder** (left edge of the map; a dropdown under 600 px): HF · VHF marine · L 1090 · L1 GNSS · L 1.4 GHz · C SAR,

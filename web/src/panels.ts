@@ -1,9 +1,10 @@
 // Shared UI helpers, alert queue and data-health view.
+import { fmtDT, fmtHM, tzLabel } from "./tz";
 import type { Alert } from "./api";
 import { ago, fmtTime, h } from "./dom";
 import { css } from "./theme/palette";
 import { explainBlock } from "./explain";
-import { alertTitle, aoiName, confidenceLabel, CORROBORATION_LABEL, kindLabel, PRIORITY_WORD, SOURCE_LABEL, T, truthLabel } from "./labels";
+import { alertTitle, aoiName, kindLabel, PRIORITY_WORD, SOURCE_LABEL, T } from "./labels";
 import { api } from "./api";
 import { patch, refreshAll, selectAlert, state, triage } from "./store";
 import { filters as mapFilters } from "./filters";
@@ -12,14 +13,16 @@ import { inBand } from "./spectrummodel";
 const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 export const priority = (a: Alert): number => SEV_RANK[a.severity]! * a.confidence;
 
-/** At most 4 priorities (ISA-18.2 practice). Icon + text, never colour alone. */
+/** Two alert categories in the UI: Critical (critical + high severity) and Warning (the rest).
+ * Severity stays five-level in the data (detectors, fusion, ordering); icon + text, never colour alone. */
 export const PRIORITY: Record<string, { p: string; icon: string; label: string }> = {
-  critical: { p: "P1", icon: "▲▲", label: "Critical" },
-  high: { p: "P2", icon: "▲", label: "High" },
-  medium: { p: "P3", icon: "■", label: "Medium" },
-  low: { p: "P4", icon: "●", label: "Low" },
-  info: { p: "P4", icon: "●", label: "Info" },
+  critical: { p: "P1", icon: "▲", label: "Critical" },
+  high: { p: "P1", icon: "▲", label: "Critical" },
+  medium: { p: "P2", icon: "●", label: "Warning" },
+  low: { p: "P2", icon: "●", label: "Warning" },
+  info: { p: "P2", icon: "●", label: "Warning" },
 };
+export const isCritical = (a: { severity: string }): boolean => PRIORITY[a.severity]?.p === "P1";
 
 export const STATUS_LABEL: Record<string, string> = {
   new: "New",
@@ -82,7 +85,7 @@ export function chart(points: { ts: string; value: number }[], baseline: number 
     const t = t0 + ((t1 - t0) / 3) * i;
     const d = new Date(t);
     const span = t1 - t0 > 36 * 3600_000;
-    const lbl = span ? `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}` : `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
+    const lbl = span ? fmtDT(d).slice(0, 5) : fmtHM(d);
     mk("text", { x: String(x(t)), y: String(H - 8), "text-anchor": i === 0 ? "start" : i === 3 ? "end" : "middle", class: "ax" }, lbl);
   }
   if (baseline !== null) mk("path", { d: `M${L} ${y(baseline)} H${W - R}`, class: "ln base" });
@@ -95,7 +98,7 @@ export function chart(points: { ts: string; value: number }[], baseline: number 
       h("span", {}, h("i", { class: "k val" }), "aircraft affected"),
       baseline !== null && h("span", {}, h("i", { class: "k base" }), `normal ${(baseline * 100).toFixed(1)}%`),
       threshold !== null && h("span", {}, h("i", { class: "k thr" }), `alert line ${(threshold * 100).toFixed(1)}%`),
-      h("span", { class: "note" }, "x: UTC time, y: % affected"),
+      h("span", { class: "note" }, `x: time (${tzLabel()}), y: % affected`),
     ),
   );
   return wrap;
@@ -186,7 +189,7 @@ export function renderQueue(root: HTMLElement): void {
       sel("Type", "kind", uniq(state.alerts.map((a) => a.kind)), kindLabel),
       sel("Status", "status", ["open", "new", "acknowledged", "under_review", "shelved", "confirmed", "dismissed", "expired"], (s) => STATUS_LABEL[s] ?? "Open"),
       sel("Source", "grade", ["A", "B", "C", "D", "E", "F"], (g) => SOURCE_LABEL[g] ?? g),
-      sel("Priority", "priority", ["P1", "P2", "P3", "P4"], (p) => PRIORITY_WORD[p] ?? p),
+      sel("Category", "priority", ["P1", "P2"], (p) => PRIORITY_WORD[p] ?? p),
       group,
     ),
     h(
@@ -235,11 +238,7 @@ function renderQueueList(list: HTMLElement): void {
         h(
           "div",
           { class: "m" },
-          h("span", { class: "badge grade", title: "How reliable the source is" }, SOURCE_LABEL[a.admiralty.reliability] ?? "Unknown"),
-          h("span", { class: "badge grade", title: "How likely it is true" }, truthLabel(a.admiralty.credibility)),
-          h("span", { class: `badge ${a.corroboration_status}` }, CORROBORATION_LABEL[a.corroboration_status] ?? a.corroboration_status),
           h("span", {}, STATUS_LABEL[a.status] ?? a.status),
-          h("span", {}, `Confidence: ${confidenceLabel(a.confidence)}`),
           h("span", { title: fmtTime(a.first_seen) }, ago(a.last_seen)),
         ),
       ),

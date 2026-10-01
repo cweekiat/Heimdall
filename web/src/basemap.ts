@@ -152,6 +152,7 @@ export class BaseLayers {
     this.overlays = new Set(!this.online ? ov.filter((x) => !OVERLAYS.find((o) => o.id === x)?.thirdParty) : ov);
     this.map.on("style.load", () => {
       try {
+        this.onStyleLoad();
         this.refresh();
       } catch (e) {
         console.warn("overlay refresh failed", e);
@@ -170,6 +171,28 @@ export class BaseLayers {
 
   /** Fires when the base changes so the app can check the offline files are present. */
   onBaseChange: (id: string) => void = () => undefined;
+  /** Fires after any base/overlay/online change (map-type picker, settings page). */
+  onListChange: () => void = () => undefined;
+
+  /** Base maps on offer, for the map-type picker. */
+  list(): { id: string; label: string; thirdParty: boolean }[] {
+    return this.bases.map((b) => ({ id: b.id, label: b.label, thirdParty: b.thirdParty }));
+  }
+
+  currentId(): string {
+    return this.baseId;
+  }
+
+  isOnline(): boolean {
+    return this.online;
+  }
+
+  overlayList(): { id: string; label: string; license: string; on: boolean }[] {
+    return OVERLAYS.filter((o) => this.online || !o.thirdParty).map((o) => ({ id: o.id, label: o.label, license: o.license, on: this.overlays.has(o.id) }));
+  }
+
+  /** Projection etc. re-applied by the map after every style load. */
+  onStyleLoad: () => void = () => undefined;
 
   setOnline(on: boolean): void {
     this.online = on && this.provider !== "none";
@@ -214,6 +237,7 @@ export class BaseLayers {
     this.map.setStyle(this.current().style(), this.styleOpts());
     this.renderPanel();
     this.onBaseChange(id);
+    this.onListChange();
   }
 
   toggleOverlay(id: string, on: boolean): void {
@@ -221,6 +245,8 @@ export class BaseLayers {
     else this.overlays.delete(id);
     safeSet("hm.overlays", JSON.stringify([...this.overlays]));
     this.refresh();
+    this.renderPanel();
+    this.onListChange();
   }
 
   /** Remove every hm-* layer/source and re-add the enabled overlays in canonical order. */
@@ -386,12 +412,7 @@ export class BaseLayers {
   private renderPanel(): void {
     const third = this.online;
     this.panelEl.replaceChildren(
-      h("fieldset", {}, h("legend", {}, "Base map"),
-        ...this.bases.map((b) =>
-          h("label", {}, h("input", { type: "radio", name: "hm-base", checked: b.id === this.baseId, onchange: () => this.setBase(b.id) }), b.label),
-        ),
-      ),
-      h("fieldset", {}, h("legend", {}, "Overlays"),
+      h("fieldset", {}, h("legend", {}, "Map overlays"),
         ...OVERLAYS.filter((o) => third || !o.thirdParty).map((o) =>
           h("label", { title: o.license }, h("input", { type: "checkbox", checked: this.overlays.has(o.id), onchange: (e) => this.toggleOverlay(o.id, (e.target as HTMLInputElement).checked) }), o.label),
         ),

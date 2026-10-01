@@ -76,7 +76,7 @@ async def pump(conn: Connector, bus: Bus) -> None:
 GLOBAL_AIR = "global/aircraft"  # 024g lake partitions (display-only, short retention)
 GLOBAL_SEA = "global/vessels"
 GLOBAL_SEEN_TTL = timedelta(minutes=10)
-JANITOR_S = 3600.0
+JANITOR_S = 600.0  # small, frequent purges (an hourly one deleted 6.6 M rows at once)
 
 DEDUPE_TTL_S = 30.0
 DEDUPE_DT_S = 2.0
@@ -250,9 +250,13 @@ class Writer:
         try:
             while True:
                 await asyncio.sleep(interval)
-                await asyncio.to_thread(self.flush)
+                try:
+                    await asyncio.to_thread(self.flush)
+                except Exception as e:  # one failed write must not stop ingest for good
+                    log.error("flush_failed", error=f"{type(e).__name__}: {str(e)[:300]}")
         finally:
-            self.flush()
+            with contextlib.suppress(Exception):
+                self.flush()
 
 
 async def janitor_loop(
@@ -261,15 +265,20 @@ async def janitor_loop(
     retention_days: int,
     hot_h: float | None = None,
     hot_events_h: float | None = None,
+    hot_global_h: float | None = None,
 ) -> None:
-    """024g: drop display-only global data older than `retention_days`; AOI data is untouched."""
+    """024g: drop display-only global data older than `retention_days` (lake) or `hot_global_h`
+    (hot store); AOI data is untouched."""
     while True:
         try:
             cutoff = datetime.now(UTC) - timedelta(days=retention_days)
             purge = getattr(lake, "purge_global", None)
             n_files = await asyncio.to_thread(purge, cutoff) if purge else 0
             fn = getattr(store, "purge_global", None)
-            n_rows = await asyncio.to_thread(fn, cutoff) if fn else 0
+            store_cut = (
+                datetime.now(UTC) - timedelta(hours=hot_global_h) if hot_global_h else cutoff
+            )
+            n_rows = await asyncio.to_thread(fn, store_cut) if fn else 0
             if n_files or n_rows:
                 log.info("janitor_global", lake_dirs=n_files, store_rows=n_rows)
             hot = getattr(store, "purge_hot", None)
@@ -288,8 +297,11 @@ async def health_loop(
     conns: Sequence[Connector] | Callable[[], Sequence[Connector]], store: Store
 ) -> None:
     while True:
-        for c in conns() if callable(conns) else conns:
-            store.upsert_health(c.health())
+        try:
+            for c in conns() if callable(conns) else conns:
+                store.upsert_health(c.health())
+        except Exception as e:  # health bookkeeping must never end the loop
+            log.warning("health_failed", error=f"{type(e).__name__}: {str(e)[:300]}")
         await asyncio.sleep(HEALTH_S)
 
 
@@ -356,7 +368,12 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         # ADR-002: analyst state lives in its own file so pipeline upserts never overwrite it
         analyst_path = Path(cfg.storage.duckdb_path).with_name("analyst.duckdb")
         store: Store = CompositeStore(
-            DuckDBStore(cfg.storage.duckdb_path), DuckDBStore(analyst_path)
+            DuckDBStore(
+                cfg.storage.duckdb_path,
+                memory_limit=cfg.storage.duckdb_memory_limit,
+                threads=cfg.storage.duckdb_threads,
+            ),
+            DuckDBStore(analyst_path, memory_limit="256MB", threads=1),
         )
     except duckdb.Error as e:
         # DuckDB holds an exclusive file lock (ADR-002): another heimdall process may own it.
@@ -367,8 +384,16 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         log.error("store_unavailable", error=str(e), path=cfg.storage.duckdb_path)
         print(msg, file=sys.stderr)
         raise SystemExit(2) from e
+    if not cfg.use_config_aois:
+        # areas of operation come only from what the analyst draws (data/state/aois.json)
+        cfg.aois = [a for a in cfg.aois if a.origin != "config"]
     src_cfg = load_sources()
-    all_src = src_cfg.get("sources", {})
+    # only sources that can run and are not retired are managed (and listed in Data sources)
+    all_src = {
+        k: v
+        for k, v in src_cfg.get("sources", {}).items()
+        if (k in ADSB_PROVIDERS or "impl" in v) and not v.get("retired")
+    }
 
     def build_one(key: str) -> Connector | None:
         # a toggled-on source overrides `enabled: false` from sources.yaml
@@ -388,6 +413,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
         cfg,
         manager,
         all_src,
+        background=True,
     )
     live = LivePositions()
     writer = Writer(bus, lake, store, live=live)
@@ -421,6 +447,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
                 cfg.storage.global_retention_days,
                 cfg.storage.hot_retention_h,
                 cfg.storage.hot_retention_events_h,
+                cfg.storage.hot_retention_global_h,
             )
         ),
         asyncio.create_task(health_loop(lambda: manager.connectors, store)),

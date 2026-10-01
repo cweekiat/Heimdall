@@ -18,7 +18,7 @@ from typing import Any
 
 from heimdall.logging import get_logger
 from heimdall.ports import Connector
-from heimdall.schemas import Domain, SourceReliability, SourceState
+from heimdall.schemas import KEY_CONNECTORS, Domain, SourceReliability, SourceState
 
 log = get_logger("heimdall.sources_ctl")
 
@@ -179,7 +179,13 @@ class SourceManager:
         )
 
     def list(self) -> builtins.list[SourceState]:
-        return [self._state(k) for k in self._cfg]
+        out = []
+        for k in self._cfg:
+            st = self._state(k)
+            st.about = str(self._cfg[k].get("about") or "") or None
+            st.keys = [n for n, c in KEY_CONNECTORS.items() if c == k]
+            out.append(st)
+        return out
 
     def _dead(self, key: str) -> bool:
         t = self._tasks.get(key)
@@ -197,6 +203,14 @@ class SourceManager:
                 await self._stop(key)
             self._save()
         return self._state(key)
+
+    def update_aois(self, key: str, aois: builtins.list[Any]) -> bool:
+        """Give a running connector a new area list in place; False when it cannot take one."""
+        fn = getattr(self._conns.get(key), "set_aois", None)
+        if fn is None:
+            return False
+        fn(aois)
+        return True
 
     async def restart(self, key: str) -> None:
         if key not in self._cfg:

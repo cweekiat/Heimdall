@@ -1,5 +1,6 @@
 // Spectrum model (task 030, ADR-008): bands, layer groups, GNSS map colours, hover text.
 // Pure functions, no deck.gl or DOM, so they run under node --test. All strings end up in textContent.
+import { fmtDT } from "./tz.ts";
 import type { LayerFeature } from "./p3model.ts";
 
 // ------------------------------------------------------------------ bands (ladder, frequency order)
@@ -155,7 +156,7 @@ export function stepDay(days: string[], cur: string, dir: -1 | 1): string {
 
 export function spectrumHover(layer: SpectrumLayer, f: LayerFeature): string {
   const p = f.properties;
-  const t = p.ts ? `${new Date(p.ts).toISOString().slice(0, 16).replace("T", " ")}Z` : "";
+  const t = p.ts ? fmtDT(p.ts) : "";
   switch (layer) {
     case "hf": {
       const snr = num(p.snr_med);
@@ -182,7 +183,7 @@ export function spectrumHover(layer: SpectrumLayer, f: LayerFeature): string {
 export function newestLabel(features: LayerFeature[]): string {
   const ts = features.map((f) => Date.parse(f.properties.ts)).filter(Number.isFinite);
   if (!ts.length) return "no data yet";
-  return `newest ${new Date(Math.max(...ts)).toISOString().slice(0, 16).replace("T", " ")}Z`;
+  return `newest ${fmtDT(Math.max(...ts))}`;
 }
 
 /** HF spot radius (px) from spot count, log scale 3..14. */

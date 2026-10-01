@@ -3,6 +3,7 @@ import {
   Activity, Ban, Box, Compass, Bell, ChartLine, Check, CircleDashed, CircleDot, CircleHelp, Clock, Crosshair, Database, Eye, FileText, Focus,
   Gauge, Globe, Hourglass, Info, Trash2, Layers, LayoutGrid, ListChecks, ListFilter, Maximize2, Minus, Pencil, Pentagon, Plane, Plus, Radio, RotateCcw,
   Ruler, Search, Ship, ShieldAlert, StickyNote, SunMoon, TriangleAlert, Undo2, Waypoints, X, Zap, createElement,
+  Satellite, Settings, KeyRound, EyeOff, ChevronRight, LocateFixed, Map as MapIcon, Earth, ChevronUp, ChevronDown, LoaderCircle,
 } from "lucide";
 import type { IconNode } from "lucide";
 
@@ -13,6 +14,7 @@ const ICONS = {
   shelve: Hourglass, note: Pencil, warn: TriangleAlert, plane: Plane, ship: Ship, radio: Radio, gps: Crosshair, coverage: Gauge,
   clock: Clock, area: Globe, seen: Zap, follow: Focus, undo: Undo2, waypoints: Waypoints, notice: StickyNote, dashed: CircleDashed,
   about: Info, trash: Trash2, draw: Pentagon, filter: ListFilter, cube: Box, compass: Compass,
+  orbit: Satellite, settings: Settings, home: LocateFixed, map: MapIcon, globe: Earth, up: ChevronUp, down: ChevronDown, spinner: LoaderCircle, key: KeyRound, eyeOff: EyeOff, right: ChevronRight,
 } satisfies Record<string, IconNode>;
 
 export type IconName = keyof typeof ICONS;

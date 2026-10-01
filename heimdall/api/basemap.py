@@ -88,52 +88,87 @@ def _serve(path: Path, request: Request) -> Response:
     )
 
 
-def build_style(theme: str = "light") -> dict[str, Any]:
+OVERVIEW = "overview.pmtiles"  # optional whole-world low-zoom file (fetch_basemap.sh, WORLD=1)
+# region covered by world.pmtiles (fetch_basemap.sh BBOX); overview labels are hidden inside it so
+# names are not drawn twice
+REGION_BBOX = (32.0, -12.0, 145.0, 42.0)
+
+
+def _layers(src: str, c: dict[str, str], suffix: str, outside: list[Any] | None) -> list[Any]:
+    def f(extra: list[Any] | None) -> dict[str, Any]:
+        return {"filter": extra} if extra else {}
+
+    return [
+        {
+            "id": f"earth{suffix}",
+            "type": "fill",
+            "source": src,
+            "source-layer": "earth",
+            "paint": {"fill-color": c["bg"]},
+        },
+        {
+            "id": f"water{suffix}",
+            "type": "fill",
+            "source": src,
+            "source-layer": "water",
+            "paint": {"fill-color": c["water"]},
+        },
+        {
+            "id": f"boundaries{suffix}",
+            "type": "line",
+            "source": src,
+            "source-layer": "boundaries",
+            "paint": {"line-color": c["line"], "line-width": 0.8, "line-dasharray": [3, 2]},
+        },
+        {
+            "id": f"roads{suffix}",
+            "type": "line",
+            "source": src,
+            "source-layer": "roads",
+            "minzoom": 6,
+            "paint": {"line-color": c["line"], "line-width": 0.5},
+            **f(outside),
+        },
+        {
+            "id": f"places{suffix}",
+            "type": "symbol",
+            "source": src,
+            "source-layer": "places",
+            "layout": {
+                "text-field": ["get", "name"],
+                "text-font": ["Noto Sans Regular"],
+                "text-size": 11,
+            },
+            "paint": {"text-color": c["text"]},
+            **f(outside),
+        },
+    ]
+
+
+def build_style(theme: str = "light", overview: bool = False) -> dict[str, Any]:
+    """Offline style. With `overview` (a whole-world z0-6 file) the world is drawn first and the
+    detailed regional file on top, so the globe and areas outside the region are not blank."""
     c = _THEMES.get(theme, _THEMES["light"])
     src = "protomaps"
+    sources: dict[str, Any] = {src: {"type": "vector", "url": "pmtiles:///basemap/world.pmtiles"}}
+    # areas with no tiles at all look like open water rather than land without coastlines
+    layers: list[Any] = [
+        {"id": "background", "type": "background", "paint": {"background-color": c["water"]}}
+    ]
+    if overview:
+        sources["world"] = {"type": "vector", "url": f"pmtiles:///basemap/{OVERVIEW}"}
+        w, s_, e, n = REGION_BBOX
+        ring = [[w, s_], [e, s_], [e, n], [w, n], [w, s_]]
+        outside = ["!", ["within", {"type": "Polygon", "coordinates": [ring]}]]
+        layers += _layers("world", c, "-world", outside)
+    layers += _layers(src, c, "", None)
     return {
         "version": 8,
         "name": f"heimdall-{theme}",
         "glyphs": "/basemap/fonts/{fontstack}/{range}.pbf",
         "sprite": f"/basemap/sprites/v4/{theme}",
-        "sources": {src: {"type": "vector", "url": "pmtiles:///basemap/world.pmtiles"}},
-        "layers": [
-            {"id": "background", "type": "background", "paint": {"background-color": c["bg"]}},
-            {
-                "id": "water",
-                "type": "fill",
-                "source": src,
-                "source-layer": "water",
-                "paint": {"fill-color": c["water"]},
-            },
-            {
-                "id": "boundaries",
-                "type": "line",
-                "source": src,
-                "source-layer": "boundaries",
-                "paint": {"line-color": c["line"], "line-width": 0.8, "line-dasharray": [3, 2]},
-            },
-            {
-                "id": "roads",
-                "type": "line",
-                "source": src,
-                "source-layer": "roads",
-                "minzoom": 6,
-                "paint": {"line-color": c["line"], "line-width": 0.5},
-            },
-            {
-                "id": "places",
-                "type": "symbol",
-                "source": src,
-                "source-layer": "places",
-                "layout": {
-                    "text-field": ["get", "name"],
-                    "text-font": ["Noto Sans Regular"],
-                    "text-size": 11,
-                },
-                "paint": {"text-color": c["text"]},
-            },
-        ],
+        "sources": sources,
+        "layers": layers,
     }
 
 
@@ -151,7 +186,12 @@ def basemap_router(base_dir: Path | None = None) -> APIRouter:
 
     @router.get("/basemap/style.json")
     def style(theme: str = "light") -> JSONResponse:
-        return JSONResponse(build_style(theme if theme in _THEMES else "light"))
+        return JSONResponse(
+            build_style(
+                theme if theme in _THEMES else "light",
+                overview=(base() / OVERVIEW).is_file(),
+            )
+        )
 
     @router.api_route("/basemap/{file:path}", methods=["GET", "HEAD"])
     def serve(file: str, request: Request) -> Response:

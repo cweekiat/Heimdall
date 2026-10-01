@@ -8,20 +8,26 @@
   <body>
     <main id="mapwrap" aria-label="Operational map">
       <div id="map" data-tour="map"></div>
-      <div id="mapctl" aria-label="Map controls"></div>
+      <div id="maptype" aria-label="Map type"></div>
       <div id="legend" data-tour="legend"></div>
+      <div id="mapctl" aria-label="Map controls"></div>
       <div id="readout" aria-live="off"></div>
     </main>
-    <header id="statusbar" aria-label="Status strip">
-      <strong class="brand" id="brand">HEIMDALL</strong>
-      <span id="clock" aria-label="UTC time"></span>
-      <span id="live" class="live-dot" role="status" aria-label="Offline"></span>
-      <span class="sb-spacer"></span>
-      <span id="sb-counts" aria-label="Open alerts by priority"></span>
-      <span id="sb-fresh" aria-label="Data source health"></span>
-      <span id="sb-tools"></span>
+    <header id="statusbar" aria-label="Top bar">
+      <div class="tb-left">
+        <strong class="brand" id="brand">HEIMDALL</strong>
+        <span id="clock" aria-label="Time (display zone, set in Settings)" title="Time zone: Settings"></span>
+        <span id="live" class="live-dot" role="status" aria-label="Offline"></span>
+        <span id="sb-fresh" aria-label="Data source health"></span>
+        <span id="sb-tools"></span>
+      </div>
+      <div id="search" class="tb-center" role="search"></div>
+      <div class="tb-right">
+        <span id="sb-counts" aria-label="Open alerts by priority"></span>
+        <span id="sb-actions" data-tour="topbar"></span>
+      </div>
     </header>
-    <nav id="toolbar" data-tour="toolbar" aria-label="Windows"></nav>
+    <nav id="toolbar" data-tour="toolbar" aria-label="Pages"></nav>
     <div id="toast" hidden role="alert"></div>
     <div id="hidden-hosts" hidden>
       <div id="board" aria-label="Areas"></div>

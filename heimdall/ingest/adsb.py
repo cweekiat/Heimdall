@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import random
 import time
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Callable, Sequence
@@ -73,6 +74,16 @@ def sweep_grid(
     return out
 
 
+def spread_order(n: int) -> list[int]:
+    """A permutation of range(n) whose prefixes are spread evenly over the input order."""
+    if n <= 1:
+        return list(range(n))
+    step = max(1, round(n * 0.6180339887))
+    while math.gcd(step, n) != 1:
+        step += 1
+    return [(i * step) % n for i in range(n)]
+
+
 class AdsbAggregatorConnector:
     """One connector per provider (adsb_lol / adsb_fi), own rate limit.
 
@@ -97,6 +108,7 @@ class AdsbAggregatorConnector:
         sweep: Sequence[AOI] = (),
         sweep_every: int = 2,
         sweep_backoff: int = 12,
+        sweep_start: int | None = None,
     ) -> None:
         self.name = name
         self.provider = provider or name.replace("_", ".")
@@ -111,11 +123,19 @@ class AdsbAggregatorConnector:
         # GNSS world sweep (task 031, global map): after every `sweep_every` AOI polls, one sweep
         # point. Rows are marked is_global (display + lake only, never AOI detectors). A point
         # that returns no aircraft is skipped for `sweep_backoff` passes (oceans, poles).
-        self.sweep = list(sweep)
+        # visit order: a golden-ratio stride through the (south-to-north) grid, so even a partial
+        # pass spreads over the whole world. In grid order a pass took hours to get past the
+        # tropics and every restart began again at 50 S: Europe was almost never reached.
+        self.sweep = [sweep[i] for i in spread_order(len(sweep))]
         self.sweep_every = max(1, sweep_every)
         self.sweep_backoff = sweep_backoff
         self._k = 0  # AOI round-robin position
-        self._j = 0  # sweep position
+        # sweep position; random start so restarts do not keep re-visiting the same points
+        self._j = (
+            sweep_start
+            if sweep_start is not None
+            else (random.randrange(len(self.sweep)) if self.sweep else 0)
+        )
         self._pass = 0  # completed sweep passes
         self._skip_until: dict[int, int] = {}
         self._stop = False
@@ -129,6 +149,11 @@ class AdsbAggregatorConnector:
         self.records_hour = SlidingCounter()
         self.n_dropped = 0
         self.denied: str | None = None  # set on HTTP 401/403: stop polling until restarted
+
+    def set_aois(self, aois: Sequence[AOI]) -> None:
+        """New area list without a restart (keeps the sweep position and rate-limit state)."""
+        self.aois = list(aois)
+        self._k = 0
 
     def url_for(self, aoi: AOI) -> str:
         radius = min(aoi.radius_nm, MAX_RADIUS_NM)
@@ -229,6 +254,9 @@ class AdsbAggregatorConnector:
 
     async def stream(self) -> AsyncIterator[Sequence[BaseModel]]:
         while not self._stop and not self.denied:
+            if not self.aois and not self.sweep:  # nothing to poll yet (no areas drawn)
+                await asyncio.sleep(self.idle_sleep_s)
+                continue
             n_err = self.n_err
             obs = await self.poll_once()
             if obs:

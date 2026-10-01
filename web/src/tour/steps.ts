@@ -1,5 +1,6 @@
-// Tour content: the operational workflow monitor -> triage -> verify -> decide -> log, in plain words.
-// Each step points at a real element through a data-tour or data-win attribute.
+// Tour content: short, one idea per step. Map steps draw an EXAMPLE scene (tour/demo.ts) so the
+// analyst sees what each visual looks like before real data arrives.
+import type { DemoScene } from "./demo";
 
 export interface TourStep {
   id: string;
@@ -12,99 +13,85 @@ export interface TourStep {
   open?: string;
   /** Select the first alert first, so the details window has something to show. */
   needsAlert?: boolean;
+  /** Example visuals to draw on the map for this step. */
+  demo?: DemoScene;
 }
 
 export const TOUR_STEPS: TourStep[] = [
   {
     id: "toolbar",
     phase: "Monitor",
-    title: "The toolbar",
-    body: "Each icon opens or closes a window: alerts, areas, layers, data sources, actions, timeline and shift summary. Hover an icon to see its keyboard key. The ? icon starts this tour again.",
+    title: "Welcome to Heimdall",
+    body: "Pages are on the left (hover to see names). Search is at the top, alerts top right, map controls bottom right. The next steps show example data on the map.",
     anchor: '[data-tour="toolbar"]',
   },
   {
-    id: "map",
+    id: "gnss",
     phase: "Monitor",
-    title: "The map and what its colours mean",
-    body: "A red area marker is one map cell about 52 km across where GPS jamming was detected during a time window. It is not a single aircraft. Alerts about one vessel or one aircraft are single-track alerts and sit on that track. On the traffic layers, neutral colour is normal traffic and amber is military.",
+    title: "GPS interference map",
+    body: "Each hexagon is about 52 km across and shows the share of aircraft with poor GPS: green under 2 %, yellow 2-10 %, red over 10 %. It is not a single aircraft. Rolling 24 h, refreshed every 15 min.",
     anchor: '[data-tour="map"]',
+    demo: "gnss",
   },
   {
-    id: "legend",
-    phase: "Monitor",
-    title: "Legend and 2D / 3D",
-    body: "The legend explains the symbols. Use the 2D / 3D buttons in the map controls to tilt the map and show altitude. A grey outline means too little data to judge, which is not the same as no activity.",
-    anchor: '[data-tour="legend"]',
+    id: "alert",
+    phase: "Triage",
+    title: "Alerts on the map",
+    body: "A red dot is an alert. Critical alerts get a small card with the basics; warnings are paler dots. Aircraft and ships are grey-blue; amber is military.",
+    anchor: '[data-tour="map"]',
+    demo: "alert",
   },
   {
-    id: "layers",
-    phase: "Monitor",
-    title: "Layers and filters",
-    body: "Switch aircraft, ships, notices and coverage on or off, and filter what you see. Turn things off when the map is busy.",
-    anchor: '[data-win="layers"]',
-    open: "layers",
+    id: "heat",
+    phase: "Verify",
+    title: "Heat spots",
+    body: "Amber circles are satellite fire and heat detections (NASA FIRMS). Bigger means hotter. Useful to check a fire, flare or strike near an alert.",
+    anchor: '[data-tour="map"]',
+    demo: "heat",
   },
   {
-    id: "draw",
+    id: "satellites",
     phase: "Monitor",
-    title: "Draw your own area",
-    body: "Open Draw areas (the pen icon) to mark an area you care about. Draw a circle by pressing the centre and dragging out, or a polygon by clicking corners and double-clicking to finish. Name it, then switch Monitoring on to collect data and raise alerts there. Areas from the configuration file are marked config and cannot be edited.",
-    anchor: '[data-win="draw"]',
-    open: "draw",
+    title: "Satellites and passes",
+    body: "Zoomed out, the map becomes a globe. Satellites are drawn at their height with a line to the ground; the bright line is where each goes in the next 100 minutes.",
+    anchor: '[data-tour="map"]',
+    demo: "satellites",
+  },
+  {
+    id: "area",
+    phase: "Monitor",
+    title: "Areas of operation",
+    body: "Draw areas (up to 250 nm) in Area of Ops. Green outline = monitored: data is collected and alerts are raised there. Grey = drawn but not monitored.",
+    anchor: '[data-tour="map"]',
+    demo: "area",
+  },
+  {
+    id: "filters",
+    phase: "Monitor",
+    title: "Filters",
+    body: "Show or hide layers (aircraft, ships, GNSS, C-band, L-band, heat spots, satellites) and each type of detection. Filters never change what is collected.",
+    anchor: ".filter-btn",
   },
   {
     id: "queue",
     phase: "Triage",
-    title: "The alert queue",
-    body: "Alerts are sorted by priority. Red means attention now. Start at the top and click one to select it and see it on the map. The number on the toolbar icon counts alerts nobody has acknowledged yet.",
-    anchor: '[data-win="queue"]',
-    open: "queue",
+    title: "The alert list",
+    body: "Two categories: Critical and Warning. The number on the button counts alerts nobody has acknowledged yet.",
+    anchor: '[data-for="queue"]',
   },
   {
     id: "details",
-    phase: "Verify",
-    title: "Alert details",
-    body: "The top shows the reference (for example HMD-20260930-0007), the sources behind the alert, and one plain sentence. Quote the reference when you report or discuss an alert.",
-    anchor: '[data-win="inspector"]',
-    needsAlert: true,
-  },
-  {
-    id: "evidence",
-    phase: "Verify",
-    title: "Why it fired, and what would clear it",
-    body: "What triggered it lists each rule with the measured value against its threshold and the normal level. The trend chart shows the affected share against normal. Clears when says what would make the alert go away. Data coverage tells you how much of the area we could actually see.",
-    anchor: '[data-win="inspector"]',
-    needsAlert: true,
-  },
-  {
-    id: "trust",
-    phase: "Verify",
-    title: "Corroboration and Admiralty grade",
-    body: "Two badges show how reliable the source is (A to F) and how likely the information is true (1 to 6). Other sources lists independent confirmation. No second source yet never means false; it only means not confirmed yet.",
-    anchor: '[data-win="inspector"]',
-    needsAlert: true,
-  },
-  {
-    id: "actions",
     phase: "Decide",
-    title: "The actions board",
-    body: "Actions come only from an approved list (the playbook). Pick one that fits the evidence. You cannot type your own commands here, and nothing runs without your decision.",
-    anchor: '[data-win="actions"]',
-    open: "actions",
-  },
-  {
-    id: "log",
-    phase: "Log",
-    title: "Log your decision",
-    body: "Acknowledge or dismiss the alert and say whether it was useful. That record goes into the shift summary and helps tune thresholds later. The timeline shows what happened and when.",
-    anchor: '[data-win="timeline"]',
-    open: "timeline",
+    title: "Alert details",
+    body: "Why it fired, the evidence and how much to trust it. Two actions: Acknowledge (I have seen it) or Clear (close it; it is logged).",
+    anchor: '[data-win="inspector"]',
+    needsAlert: true,
   },
   {
     id: "sources",
-    phase: "Monitor",
-    title: "Data sources and API keys",
-    body: "Check that each source is fresh. Turn a source on or off here, and add optional API keys. Keys are stored on this computer only and are never shown again after saving.",
+    phase: "Log",
+    title: "Data sources",
+    body: "See what is collecting and switch sources on or off. Click a source that needs a key to paste it.",
     anchor: '[data-win="sources"]',
     open: "sources",
   },

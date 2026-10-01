@@ -25,6 +25,7 @@ from heimdall.backtest.replay_io import read_bundle, read_obs_parquet
 from heimdall.geo import BBox, Ident, h3_cell, h3_center, in_bbox
 from heimdall.ports import Store
 from heimdall.schemas import (
+    KEY_CONNECTORS,
     ActionRequest,
     Admiralty,
     AircraftObs,
@@ -289,6 +290,7 @@ def seed(store: Store, seed_value: int = 7) -> Store:
     _seed_notices(store, now)
     _seed_p3(store, now)
     _seed_spectrum(store, now)
+    _seed_orbits(store, now)
     _seed_spectrum_metrics(store, now)
     _seed_actions(store, now)
     return store
@@ -424,6 +426,65 @@ def _seed_spectrum(store: Store, now: datetime) -> None:
             attrs={"role": "confounder", "kp": 3.33, "g_scale": 0, "r_scale": 0, "s_scale": 0},
         )
     )
+    store.insert_events(out)
+
+
+# Synthetic sun-synchronous elements (shapes of the configured CelesTrak satellites, epoch = now)
+_DEMO_SATS = (
+    (39634, "SENTINEL-1A", 14.59, 98.18, 40.0, 10.0),
+    (62261, "SENTINEL-1C", 14.59, 98.18, 40.0, 190.0),
+    (37849, "SUOMI NPP", 14.19, 98.75, 120.0, 60.0),
+    (43013, "NOAA 20", 14.19, 98.75, 120.0, 240.0),
+    (54234, "NOAA 21", 14.19, 98.75, 120.0, 150.0),
+)
+
+
+# synthetic GNSS (MEO, ~20,200 km) and a space station, tagged with their CelesTrak group
+_DEMO_GROUP_SATS = (
+    *(
+        (90000 + i, f"GNSS DEMO {i + 1}", 2.0056, 55.0, 60.0 * (i % 6), 30.0 * i, "GNSS")
+        for i in range(12)
+    ),
+    (25544, "ISS (ZARYA)", 15.5, 51.6, 200.0, 0.0, "Space station"),
+)
+
+
+def _seed_orbits(store: Store, now: datetime) -> None:
+    """Demo `orbit_elements` so the globe shows moving satellites (positions are synthetic)."""
+    out: list[GeoEvent] = []
+    rows = [(*r, None) for r in _DEMO_SATS] + list(_DEMO_GROUP_SATS)
+    for norad, name, mm, inc, raan, ma, group in rows:
+        omm = {
+            "OBJECT_NAME": name,
+            "EPOCH": now.strftime("%Y-%m-%dT%H:%M:%S.%f"),
+            "MEAN_MOTION": mm,
+            "ECCENTRICITY": 0.0001,
+            "INCLINATION": inc,
+            "RA_OF_ASC_NODE": raan,
+            "ARG_OF_PERICENTER": 90.0,
+            "MEAN_ANOMALY": ma,
+            "NORAD_CAT_ID": norad,
+            "BSTAR": 3.0e-05,
+            "MEAN_MOTION_DOT": 0.0,
+            "MEAN_MOTION_DDOT": 0.0,
+        }
+        out.append(
+            GeoEvent(
+                id=f"celestrak|{norad}|demo",
+                ts=now,
+                source="celestrak",
+                domain=Domain.SPACE,
+                kind="orbit_elements",
+                title=f"{name} elements",
+                attrs={
+                    "role": "context",
+                    "norad_id": norad,
+                    "name": name,
+                    "omm": omm,
+                    **({"group": group} if group else {}),
+                },
+            )
+        )
     store.insert_events(out)
 
 
@@ -729,8 +790,11 @@ class LiveDemoStore(MemoryStore):
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[AircraftObs]:
-        rows = super().aircraft_window(start, end, h3_r4, bbox=bbox, ident=ident)
+        rows = super().aircraft_window(
+            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only
+        )
         if h3_r4 is not None:
             return rows
         for ts in _grid(start, end, datetime.now(UTC)):
@@ -764,8 +828,11 @@ class LiveDemoStore(MemoryStore):
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[VesselObs]:
-        rows = super().vessels_window(start, end, h3_r4, bbox=bbox, ident=ident)
+        rows = super().vessels_window(
+            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only
+        )
         if h3_r4 is not None:
             return rows
         dark_at = self.boot - timedelta(minutes=3)
@@ -814,12 +881,15 @@ class DemoSources:
     def __init__(self) -> None:
         self._s: dict[str, SourceState] = {}
         self._natural: dict[str, tuple[str, str | None]] = {}
+        reg = config.sources().get("sources", {})
         for i, (key, label, dom, status, detail) in enumerate(self._ROWS):
             quiet = status in ("needs_key", "off")
             self._natural[key] = (status, detail)
             self._s[key] = SourceState(
                 key=key,
-                label=label,
+                label=str(reg.get(key, {}).get("label") or label),
+                about=reg.get(key, {}).get("about"),
+                keys=[n for n, c in KEY_CONNECTORS.items() if c == key],
                 domain=dom,
                 enabled=status != "off",
                 status=status,  # type: ignore[arg-type]
@@ -888,12 +958,15 @@ class ReplayDemoStore(ReplayStore):
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[AircraftObs]:
         if end - start >= self.span:
             return []
         out: list[AircraftObs] = []
         for r0, r1, shift in self._segments(start, end):
-            rows = super().aircraft_window(r0, r1, h3_r4, bbox=bbox, ident=ident)
+            rows = super().aircraft_window(
+                r0, r1, h3_r4, bbox=bbox, ident=ident, local_only=local_only
+            )
             out += [o.model_copy(update={"ts": o.ts + shift}) for o in rows]
         return out
 

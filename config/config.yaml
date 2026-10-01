@@ -6,6 +6,9 @@ storage:
   global_retention_days: 7   # 024g: lake/global/* + is_global store rows; AOI data is kept
   hot_retention_h: 6         # 026a: aircraft/vessels kept in DuckDB this long (lake keeps all)
   hot_retention_events_h: 720  # 026a: events (notices 30 d, thermal/night-lights days); deviates from 6 h in spec
+  hot_retention_global_h: 1  # worldwide display rows in DuckDB (OpenSky ~11k/90 s = 2.6 M rows per 6 h, 2026-10-01 crash)
+  duckdb_memory_limit: 1GB   # DuckDB default is 80 % of RAM
+  duckdb_threads: 4
   bus: memory          # memory | redis (scale-out)
   store: duckdb        # duckdb | clickhouse (scale-out)
 
@@ -26,6 +29,10 @@ ui:
   # carto = CARTO vector tiles; none = fully private blank local style (no third-party requests).
   basemap: openfreemap   # openfreemap | carto | none
   overlays: [borders]    # default-on overlays: borders | military | eez | seamarks | graticule
+
+# Live runtime starts with no areas: the analyst draws them (Area of Ops page). The list below is
+# kept as presets for the demo, the Hormuz replay, backtests and tests.
+use_config_aois: false
 
 aois:
   # role: primary = monitored & alerted; control = calibration/validation only

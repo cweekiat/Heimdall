@@ -21,11 +21,11 @@ test("name rules mirror the server", () => {
   for (const bad of ["<b>x</b>", "a;b", "a/b", "é", " lead"]) assert.ok(g.nameProblem(bad), bad);
 });
 
-test("circle radius limits 5..500 nm", () => {
+test("circle radius limits 5..250 nm", () => {
   assert.ok(g.circleProblem(0, 0, 4.9));
   assert.equal(g.circleProblem(0, 0, 5), null);
-  assert.equal(g.circleProblem(0, 0, 500), null);
-  assert.ok(g.circleProblem(0, 0, 500.1));
+  assert.equal(g.circleProblem(0, 0, 250), null);
+  assert.ok(g.circleProblem(0, 0, 250.1));
   assert.ok(g.circleProblem(91, 0, 50));
   assert.ok(g.circleProblem(0, Number.NaN, 50));
 });
@@ -36,7 +36,8 @@ test("polygon limits: vertices, span, degenerate, range", () => {
   assert.ok(g.polygonProblem(box.slice(0, 2)));
   assert.ok(g.polygonProblem([[0, 0], [1, 1], [2, 2]]));
   assert.ok(g.polygonProblem([[0, 0], [0, 10.5], [1, 5]]));
-  assert.equal(g.polygonProblem([[0, 0], [0, 10], [1, 5]]), null);
+  assert.ok(g.polygonProblem([[0, 0], [0, 10], [1, 5]])); // 10 deg wide: beyond the 250 nm circle
+  assert.equal(g.polygonProblem([[0, 0], [0, 7], [1, 3.5]]), null);
   assert.ok(g.polygonProblem([[0, 0], [95, 1], [1, 2]]));
   const many = Array.from({ length: 201 }, (_, i): [number, number] => [Math.sin(i) , Math.cos(i)]);
   assert.ok(g.polygonProblem(many));
@@ -59,4 +60,11 @@ test("double-click duplicate point is dropped; clicks convert to lat/lon", () =>
   const pts: [number, number][] = [[1, 2], [3, 4], [3, 4], [3, 4]];
   assert.deepEqual(g.dedupeTail(pts), [[1, 2], [3, 4]]);
   assert.deepEqual(g.toLatLon([[103.123456789, 1.987654321]]), [[1.98765, 103.12346]]);
+});
+
+test("polygon must fit in a 250 nm circle", () => {
+  const small: [number, number][] = [[1, 103], [1, 105], [3, 105], [3, 103]];
+  assert.equal(g.polygonProblem(small), null);
+  const big: [number, number][] = [[0, 100], [0, 109], [9, 109], [9, 100]];
+  assert.match(g.polygonProblem(big) ?? "", /250 nautical miles/);
 });

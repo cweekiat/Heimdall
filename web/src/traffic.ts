@@ -204,6 +204,36 @@ export class Traffic {
     this.onCounts();
   }
   getCounts = (): Record<string, number> => this.counts;
+  /** Aircraft and ships currently loaded for the view (for the filter page). */
+  totals = (): Record<string, number> => {
+    // zoomed out the view is drawn from density cells, not individual points
+    const n = (pts: number, cells: DensityRow[]): number => pts || cells.reduce((a, c) => a + c.count, 0);
+    return { air: n(this.air.length, this.airCells), sea: n(this.sea.length, this.seaCells) };
+  };
+
+  /** Loaded aircraft/ships matching a callsign, hex, registration, ship name or MMSI (top search). */
+  search(q: string, max = 6): { label: string; detail: string; lon: number; lat: number; pick: () => void }[] {
+    const s = q.trim().toLowerCase();
+    if (s.length < 2) return [];
+    const out: { label: string; detail: string; lon: number; lat: number; pick: () => void }[] = [];
+    for (const a of this.air) {
+      if (out.length >= max) break;
+      if (![a.flight, a.hex, a.registration].some((v) => v?.toLowerCase().includes(s))) continue;
+      out.push({
+        label: (a.flight ?? "").trim() || a.hex.toUpperCase(),
+        detail: `Aircraft ${a.hex.toUpperCase()}${a.registration ? ` · ${a.registration}` : ""}`,
+        lon: a.lon,
+        lat: a.lat,
+        pick: () => this.select({ kind: "air", id: a.hex }),
+      });
+    }
+    for (const v of this.sea) {
+      if (out.length >= max) break;
+      if (!(v.name?.toLowerCase().includes(s) || String(v.mmsi).includes(s))) continue;
+      out.push({ label: v.name || String(v.mmsi), detail: `Ship · MMSI ${v.mmsi}`, lon: v.lon, lat: v.lat, pick: () => this.select({ kind: "sea", id: v.mmsi }) });
+    }
+    return out;
+  }
 
   start(): void {
     void this.pollAll();
@@ -357,11 +387,11 @@ export class Traffic {
         visible: fade > 0.01,
         iconAtlas: this.icons,
         iconMapping: MAPPING,
-        getIcon: (d) => (d.row.mil ? "diamond" : "plane"),
+        getIcon: () => "plane", // military = the same plane in amber (shape no longer differs)
         getPosition: (d) => [d.row.lon, d.row.lat, this.z(d.row)],
         getAngle: (d) => -(d.row.track ?? 0),
         updateTriggers: { getPosition: [view.mode, view.exaggeration] },
-        getSize: (d) => (d.row.mil ? 27 : 26),
+        getSize: (d) => (d.row.mil ? 28 : 26),
         getColor: (d) => (isMil(d.row) ? rgba("military", 1) : rgba("neutral", 0.95)),
         sizeUnits: "pixels",
         pickable: pick,

@@ -45,6 +45,11 @@ class StorageCfg(BaseModel):
     # detector lookbacks (minutes) plus trails (<=24 h); events serve day-scale layers/notices.
     hot_retention_h: float = 6
     hot_retention_events_h: float = 720
+    hot_retention_global_h: float = (
+        1  # worldwide display rows in DuckDB (the live index serves now)
+    )
+    duckdb_memory_limit: str = "1GB"
+    duckdb_threads: int = 4
     bus: str = "memory"
     store: str = "duckdb"
 
@@ -72,6 +77,9 @@ class Settings(BaseModel):
     api: ApiCfg = Field(default_factory=ApiCfg)
     ui: UiCfg = Field(default_factory=UiCfg)
     aois: list[AOI] = Field(default_factory=list)
+    # live runtime: False = start with no areas; the analyst draws them (config list = presets
+    # for demo, replay, backtests and tests)
+    use_config_aois: bool = True
     detectors: dict[str, dict[str, Any]] = Field(default_factory=dict)
     schedule: dict[str, dict[str, Any]] = Field(default_factory=dict)  # per source, e.g. run_utc
 

@@ -82,3 +82,20 @@ async def test_bad_response_degrades() -> None:
     assert await c.poll_once() == []
     assert c.health().status == "degraded"
     await c.aclose()
+
+
+@respx.mock
+async def test_groups_tagged_and_area_edit_recomputes_without_fetch() -> None:
+    route = respx.get(f"{BASE}/NORAD/elements/gp.php").mock(
+        return_value=httpx.Response(200, json=_payload())
+    )
+    c = _conn(groups={"gnss": "GNSS"})
+    out = await c.poll_once()
+    assert route.call_count == 2  # one per configured satellite + one per group
+    tagged = [e for e in out if e.kind == "orbit_elements" and e.attrs.get("group") == "GNSS"]
+    assert tagged
+    calls = route.call_count
+    c.set_aois([AOI(name="new", lat=1.3, lon=103.8, radius_nm=100)])
+    passes = c._passes(NOW)
+    assert route.call_count == calls  # cached elements: no new request
+    assert all(p.attrs["aoi"] == "new" for p in passes.values())

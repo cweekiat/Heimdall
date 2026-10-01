@@ -1,5 +1,6 @@
 // P3 layer model (task 023b): pure functions, no deck.gl or DOM, so they run under node --test.
 // Wire shapes follow docs/tasks/023a-context-api.md. Every string here ends up in textContent.
+import { fmtDT } from "./tz.ts";
 
 export type P3Layer = "thermal" | "imagery" | "overpass";
 export const P3_LAYERS: P3Layer[] = ["thermal", "imagery", "overpass"];
@@ -57,7 +58,7 @@ export function parseLayer(raw: unknown): LayerFC {
 }
 
 export const fmtZ = (iso: string | null | undefined): string =>
-  iso ? `${new Date(iso).toISOString().slice(0, 16).replace("T", " ")}Z` : "unknown time";
+  iso ? fmtDT(iso) : "unknown time";
 
 /** Heat-spot radius in pixels from fire radiative power (MW), log scale, 4..18 px. */
 export function thermalRadius(frp: number | null): number {

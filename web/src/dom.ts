@@ -1,3 +1,5 @@
+import { fmtDT } from "./tz.ts";
+
 // Tiny DOM helper. Text is ALWAYS set via textContent: scraped/news strings are untrusted data.
 
 type Child = Node | string | number | null | undefined | false;
@@ -21,8 +23,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
-export const fmtTime = (iso: string | null): string =>
-  iso ? new Date(iso).toISOString().slice(5, 16).replace("T", " ") + "Z" : "-";
+/** Month-day time in the analyst's display zone (Settings > Time zone), e.g. "10-01 14:32 SGT". */
+export const fmtTime = (iso: string | null): string => (iso ? fmtDT(iso) : "-");
 
 export const fmtNum = (v: number | null | undefined, d = 2): string =>
   v === null || v === undefined ? "-" : Number.isInteger(v) ? String(v) : v.toFixed(d);

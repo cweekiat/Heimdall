@@ -517,16 +517,13 @@ def tick(
         for k, d in (("jamming", 30), ("spoofing", 30), ("orbit", 75))
     )
     # 024g: worldwide display rows (no NIC/NACp) never feed AOI detectors
-    obs_all = [
-        o for o in store.aircraft_window(now - timedelta(minutes=lookback), now) if not o.is_global
-    ]
+    # filtered in the store: loading them and dropping them here cost ~0.5 M objects per tick
+    obs_all = store.aircraft_window(now - timedelta(minutes=lookback), now, local_only=True)
     v_lookback = max(
         float(d.get("ais_gap", {}).get("window_h", 24)) * 60 + 5
         for d in [settings.detectors, *dets.values()]
     )
-    ves_all = [
-        v for v in store.vessels_window(now - timedelta(minutes=v_lookback), now) if not v.is_global
-    ]
+    ves_all = store.vessels_window(now - timedelta(minutes=v_lookback), now, local_only=True)
     notice_days = max(
         float(d.get("warning_area", {}).get("notice_lookback_days", 30))
         for d in [settings.detectors, *dets.values()]

@@ -16,6 +16,14 @@ export const PALETTE: Record<Token, Record<Mode, Rgb>> = {
   notice: { dark: [160, 170, 186], light: [96, 108, 124] },
   base: { dark: [235, 241, 247], light: [20, 32, 43] },
 };
+/** Satellites and their ground tracks: their own cyan, never read as an alert or as military. */
+export const SATELLITE: Record<Mode, Rgb> = { dark: [86, 200, 235], light: [0, 122, 163] };
+export const satRgba = (alpha: number, m: Mode = mode): Rgba => [...SATELLITE[m], Math.round(alpha * 255)] as Rgba;
+export const satCss = (m: Mode = mode): string => `rgb(${SATELLITE[m].join(",")})`;
+/** Monitored area of operation: green outline + faint fill ("data collected and alerting here"). */
+export const MONITOR: Record<Mode, Rgb> = { dark: [63, 185, 80], light: [26, 127, 55] };
+export const monitorRgba = (alpha: number, m: Mode = mode): Rgba => [...MONITOR[m], Math.round(alpha * 255)] as Rgba;
+export const monitorCss = (alpha = 1, m: Mode = mode): string => `rgba(${MONITOR[m].join(",")},${alpha})`;
 /** Chrome surface used for text halos and map backgrounds. */
 export const SURFACE: Record<Mode, Rgb> = { dark: [11, 16, 22], light: [233, 238, 243] };
 

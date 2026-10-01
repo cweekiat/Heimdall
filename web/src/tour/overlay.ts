@@ -4,6 +4,14 @@ import { selectAlert, state } from "../store";
 import { closeWindow, isOpen, openWindow } from "../wm";
 import { markTourSeen, TourController, tourSeen } from "./controller";
 import type { TourStep } from "./steps";
+import { DEMO_VIEW, tourDemo } from "./demo";
+
+/** Wired by main: move the camera and redraw the map for example scenes. */
+export const tourMap: { view: (lon: number, lat: number, zoom: number) => void; redraw: () => void; home: () => void } = {
+  view: () => undefined,
+  redraw: () => undefined,
+  home: () => undefined,
+};
 
 let ctl: TourController | null = null;
 let root: HTMLElement | null = null;
@@ -53,7 +61,7 @@ function render(s: TourStep | null, i: number, total: number): void {
   }
   root.hidden = false;
   card.replaceChildren(
-    h("div", { class: "tour-phase" }, `${s.phase} - step ${i + 1} of ${total}`),
+    h("div", { class: "tour-phase" }, `Step ${i + 1} of ${total}${s.demo ? " · example data on the map" : ""}`),
     h("h2", { id: "tour-title" }, s.title),
     h("p", {}, s.body),
     h(
@@ -70,6 +78,10 @@ function render(s: TourStep | null, i: number, total: number): void {
 }
 
 function prepare(s: TourStep): void {
+  const was = tourDemo.scene;
+  tourDemo.scene = s.demo ?? null;
+  if (s.demo) tourMap.view(...DEMO_VIEW[s.demo]);
+  if (was !== tourDemo.scene) tourMap.redraw();
   if (s.open && !isOpen(s.open)) {
     openWindow(s.open);
     opened.push(s.open);
@@ -106,6 +118,11 @@ function ensure(): TourController {
     onChange: render,
     onEnd: () => {
       markTourSeen(storage());
+      if (tourDemo.scene) {
+        tourDemo.scene = null;
+        tourMap.redraw();
+        tourMap.home();
+      }
       for (const id of opened) if (id !== "inspector") closeWindow(id);
       opened = [];
     },

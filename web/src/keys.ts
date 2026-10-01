@@ -1,5 +1,5 @@
 // Global keyboard map. Ignored while typing in a field (except Esc).
-import { openTriage } from "./inspector";
+import { CLEAR_REASON } from "./inspector";
 import { showHelp } from "./overlays";
 import { visibleAlerts } from "./panels";
 import { patch, selectAlert, selectAoi, state, triage } from "./store";
@@ -37,8 +37,7 @@ export function installKeys(windows: Record<string, () => void>): void {
     switch (e.key) {
       case "/": {
         e.preventDefault();
-        openWindow("queue");
-        document.getElementById("q")?.focus();
+        document.getElementById("global-q")?.focus();
         break;
       }
       case "j": move(1); break;
@@ -52,11 +51,7 @@ export function installKeys(windows: Record<string, () => void>): void {
         break;
       }
       case "a": needSel((id) => void triage(id, "acknowledged")); break;
-      case "r": needSel((id) => void triage(id, "under_review")); break;
-      case "c": needSel((id) => void triage(id, "confirmed")); break;
-      case "d": needSel(() => openTriage("dismissed")); break;
-      case "s": needSel(() => openTriage("shelved")); break;
-      case "n": needSel(() => openTriage("note")); break;
+      case "d": needSel((id) => void triage(id, "dismissed", CLEAR_REASON)); break;
       case "f": {
         const a = state.alerts.find((x) => x.id === sel);
         if (a && a.lat !== null && a.lon !== null) patch({ fly: { lat: a.lat, lon: a.lon, n: Date.now() } });

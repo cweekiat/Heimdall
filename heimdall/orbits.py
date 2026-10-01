@@ -166,3 +166,45 @@ def passes(
         )
         i = j + 1
     return out
+
+
+def ground_track(
+    sat: Satrec, start: datetime, n: int, step_s: float
+) -> list[tuple[float, float, float] | None]:
+    """(lat, lon, alt_km) sub-satellite points at n samples from `start` (None where SGP4 fails).
+
+    TEME -> ECEF by GMST rotation (as `elevations`), then ECEF -> geodetic (WGS84, Bowring)."""
+    t0 = start.astimezone(UTC)
+    offs = np.arange(n) * step_s
+    jd0, fr0 = jday(t0.year, t0.month, t0.day, t0.hour, t0.minute, t0.second + t0.microsecond / 1e6)
+    fr = fr0 + offs / 86400.0
+    jd = np.full(n, jd0)
+    err, r, _v = sat.sgp4_array(jd, fr)
+    theta = np.array([gstime(a + b) for a, b in zip(jd, fr, strict=True)])
+    c, s = np.cos(theta), np.sin(theta)
+    x = c * r[:, 0] + s * r[:, 1]
+    y = -s * r[:, 0] + c * r[:, 1]
+    z = r[:, 2]
+    e2 = WGS84_F * (2 - WGS84_F)
+    b = WGS84_A * (1 - WGS84_F)
+    ep2 = (WGS84_A**2 - b**2) / b**2
+    p = np.hypot(x, y)
+    th = np.arctan2(z * WGS84_A, p * b)
+    lat = np.arctan2(z + ep2 * b * np.sin(th) ** 3, p - e2 * WGS84_A * np.cos(th) ** 3)
+    lon = np.arctan2(y, x)
+    nrad = WGS84_A / np.sqrt(1 - e2 * np.sin(lat) ** 2)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        alt = p / np.cos(lat) - nrad
+    out: list[tuple[float, float, float] | None] = []
+    for i in range(n):
+        if err[i] != 0 or not np.isfinite(lat[i]) or not np.isfinite(alt[i]):
+            out.append(None)
+            continue
+        out.append(
+            (
+                round(float(np.degrees(lat[i])), 4),
+                round(float(np.degrees(lon[i])), 4),
+                round(float(alt[i]), 1),
+            )
+        )
+    return out

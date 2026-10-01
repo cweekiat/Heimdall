@@ -62,6 +62,7 @@ class FakeStore:
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[AircraftObs]:
         return [
             o
@@ -69,6 +70,7 @@ class FakeStore:
             if start <= o.ts < end
             and (h3_r4 is None or o.h3_r4 in h3_r4)
             and obs_match(o, bbox, ident, "hex")
+            and not (local_only and o.is_global)
         ]
 
     def vessels_window(
@@ -79,9 +81,14 @@ class FakeStore:
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[VesselObs]:
         return [
-            v for v in self.vessels if start <= v.ts < end and obs_match(v, bbox, ident, "mmsi")
+            v
+            for v in self.vessels
+            if start <= v.ts < end
+            and obs_match(v, bbox, ident, "mmsi")
+            and not (local_only and v.is_global)
         ]
 
     def events_window(

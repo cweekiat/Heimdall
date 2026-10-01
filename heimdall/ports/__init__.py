@@ -72,6 +72,7 @@ class Store(Protocol):
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[AircraftObs]: ...
     def vessels_window(
         self,
@@ -81,6 +82,7 @@ class Store(Protocol):
         *,
         bbox: BBox | None = None,
         ident: Ident | None = None,
+        local_only: bool = False,
     ) -> list[VesselObs]: ...
     def events_window(
         self, start: datetime, end: datetime, kinds: Sequence[str] | None = None

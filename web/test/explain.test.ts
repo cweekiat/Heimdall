@@ -8,16 +8,16 @@ const { explainBlock, plainSummary } = await import("../src/explain.ts");
 const { KeysSection, KEY_BANNER } = await import("../src/keysui.ts");
 const fx = JSON.parse(readFileSync(new URL("./fixtures.json", import.meta.url), "utf8"));
 
-test("area card shows ref, every source with grade, and the plain sentence", () => {
+test("area card shows ref, every source by name, confidence and the plain sentence", () => {
   const { alert, evidence } = fx.area;
   const text = (explainBlock(alert, evidence) as never as { dump(): string }).dump();
   assert.match(text, /HMD-20260930-0007/);
-  for (const s of alert.sources) assert.ok(text.includes(s.connector) && text.includes(s.family));
-  assert.match(text, /B2/);
-  assert.match(text, /C3/);
+  for (const s of alert.sources) assert.ok(text.includes(s.connector.replace("_", ".")));
+  assert.match(text, /confidence \d+ %/);
+  assert.doesNotMatch(text, /reliable|probably|possibly|doubtful|second source/i);
   assert.equal(
     plainSummary(alert, evidence),
-    "Area ~52 km where GPS jamming detected between 14:10–15:40 UTC, 37 aircraft affected",
+    "Area ~52 km where GPS jamming detected between 22:10–23:40 SGT, 37 aircraft affected",
   );
 });
 
@@ -25,9 +25,8 @@ test("single-track card says ship, id and time window", () => {
   const { alert, evidence } = fx.track;
   const text = (explainBlock(alert, evidence) as never as { dump(): string }).dump();
   assert.match(text, /HMD-20260930-0008/);
-  assert.match(text, /aisstream/);
-  assert.match(text, /B3/);
-  assert.equal(plainSummary(alert, evidence), "Ship 5630xxxxx reported impossible positions between 09:00–09:30 UTC");
+  assert.match(text, /Sources: aisstream/);
+  assert.equal(plainSummary(alert, evidence), "Ship 5630xxxxx reported impossible positions between 17:00–17:30 SGT");
 });
 
 test("keys form: PUT gets the value, input cleared, value absent from DOM and storage, banner shown", async () => {

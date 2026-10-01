@@ -358,6 +358,8 @@ class SourceState(BaseModel):
     error_rate: float = 0.0
     reliability: SourceReliability = SourceReliability.F
     needs_key: bool = False
+    about: str | None = None  # one plain sentence for the Data sources page
+    keys: list[str] = Field(default_factory=list)  # API key names this source can use
 
 
 # ADR-006: API keys the UI may set (write-only). Maps key name -> connector key in sources.yaml.
@@ -388,6 +390,7 @@ class KeyStatus(BaseModel):
 AOI_NAME_PATTERN = r"^[A-Za-z0-9_-][A-Za-z0-9 _-]{0,39}$"
 MAX_USER_AOIS = 20
 MAX_POLYGON_SPAN_DEG = 10.0
+MAX_AOI_RADIUS_NM = 250.0  # = the ADS-B providers' query radius; polygons: bounding circle
 
 
 class UserAoiIn(BaseModel):
@@ -401,7 +404,7 @@ class UserAoiIn(BaseModel):
     shape: Literal["circle", "polygon"]
     lat: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
     lon: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
-    radius_nm: float | None = Field(default=None, ge=5, le=500, allow_inf_nan=False)
+    radius_nm: float | None = Field(default=None, ge=5, le=MAX_AOI_RADIUS_NM, allow_inf_nan=False)
     # (lat, lon) vertices, open ring (the first point is not repeated)
     polygon: list[tuple[float, float]] | None = Field(default=None, min_length=3, max_length=200)
 

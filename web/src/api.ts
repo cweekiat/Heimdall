@@ -270,11 +270,31 @@ export interface SourceState {
   error_rate: number;
   reliability: string;
   needs_key: boolean;
+  /** One plain sentence about the source. */
+  about?: string | null;
+  /** API key names this source can use (empty = no key). */
+  keys: string[];
 }
 export interface BoardAction extends ActionRec {
   alert: { id: string; title: string; kind: string; severity: string };
   label: string;
   risk: "low" | "high";
+}
+
+export interface SatPos {
+  norad_id: number;
+  name: string;
+  sensor: string;
+  lat: number;
+  lon: number;
+  alt_km: number;
+  epoch: string;
+  /** "Earth observation" | "GNSS" | "Space station" | ... */
+  group: string;
+  /** [lon, lat, alt_km] every 60 s, oldest first, ending at "now". */
+  past: [number, number, number][];
+  /** [lon, lat, alt_km] every 60 s from "now". */
+  next: [number, number, number][];
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -355,6 +375,7 @@ export const api = {
     req<unknown>(`/api/layers/${encodeURIComponent(layer)}?aoi=${encodeURIComponent(aoi)}${hours ? `&hours=${hours}` : ""}`, { signal }),
   /** GNSS interference day map (task 031): date = YYYY-MM-DD or last24h. Parsed by spectrummodel.parseGnssDay. */
   gnssDay: (date: string, signal?: AbortSignal) => req<unknown>(`/api/gnss/day?date=${encodeURIComponent(date)}`, { signal }),
+  satellites: () => req<{ ts: string; satellites: SatPos[] }>("/api/satellites?past_min=30&next_min=100"),
   gnssDays: () => req<{ days: string[]; last24h: boolean }>("/api/gnss/days"),
   /** Spectrum status board (task 033). Parsed by spectrummodel.parseStatus. */
   spectrumStatus: () => req<unknown>("/api/spectrum/status"),

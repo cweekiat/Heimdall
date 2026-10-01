@@ -7,7 +7,7 @@ export type LatLon = [number, number];
 export const NAME_MAX = 40;
 export const NAME_RE = /^[A-Za-z0-9_-][A-Za-z0-9 _-]{0,39}$/;
 export const RADIUS_MIN_NM = 5;
-export const RADIUS_MAX_NM = 500;
+export const RADIUS_MAX_NM = 250; // = the ADS-B query radius (server: MAX_AOI_RADIUS_NM)
 export const VERTEX_MIN = 3;
 export const VERTEX_MAX = 200;
 export const SPAN_MAX_DEG = 10;
@@ -102,7 +102,17 @@ export function polygonProblem(poly: LatLon[]): string | null {
   const s = span(poly);
   if (s.lat > SPAN_MAX_DEG || s.lon > SPAN_MAX_DEG) return `The area is too large: at most ${SPAN_MAX_DEG} degrees across.`;
   if (Math.abs(area2(poly)) < 1e-9) return "The points are in a line. Spread them out.";
+  if (boundingRadiusNm(poly) > RADIUS_MAX_NM) return `The area is too large: it must fit in a circle of ${RADIUS_MAX_NM} nautical miles radius.`;
   return null;
+}
+
+/** Radius of the circle the server derives for a polygon (bbox centre to the furthest vertex), nm. */
+export function boundingRadiusNm(poly: LatLon[]): number {
+  if (!poly.length) return 0;
+  const la = poly.map((p) => p[0]);
+  const lo = poly.map((p) => p[1]);
+  const c: LonLat = [(Math.min(...lo) + Math.max(...lo)) / 2, (Math.min(...la) + Math.max(...la)) / 2];
+  return Math.max(...poly.map((p) => distNm(c, [p[1], p[0]])));
 }
 
 /** Drops a repeated last point (a double-click adds the same point twice). */
