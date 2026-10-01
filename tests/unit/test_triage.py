@@ -211,3 +211,18 @@ def test_clear_all_expires_open_alerts_with_audit(client: TestClient, store: Mem
     assert all(a.status == S.EXPIRED for a in store.list_alerts() if a.id in ids)
     assert store.notes_for(ids[0])[-1].text == "cleared by user"
     assert client.post("/api/alerts/clear").json() == {"cleared": 0}
+
+
+def test_042_resolve_closes_real_activity_and_can_reopen() -> None:
+    from datetime import UTC, datetime
+
+    from heimdall.api.triage import validate
+    from heimdall.fuse.fusion import ACTIVE
+    from heimdall.schemas import AlertStatus as S
+
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    assert validate(S.CONFIRMED, S.RESOLVED, None, None, now) is None
+    assert validate(S.ACKNOWLEDGED, S.RESOLVED, None, None, now) is None
+    assert validate(S.RESOLVED, S.UNDER_REVIEW, None, None, now) is None
+    assert validate(S.NEW, S.RESOLVED, None, None, now) is not None  # acknowledge first
+    assert S.RESOLVED not in ACTIVE  # closed: new activity opens a new alert

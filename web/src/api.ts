@@ -1,6 +1,6 @@
 // Typed client for the Heimdall API. Mirrors heimdall/schemas.py.
 
-export type AlertStatus = "new" | "acknowledged" | "under_review" | "shelved" | "confirmed" | "dismissed" | "expired";
+export type AlertStatus = "new" | "acknowledged" | "under_review" | "shelved" | "confirmed" | "resolved" | "dismissed" | "expired";
 export interface Note {
   id: string;
   alert_id: string;

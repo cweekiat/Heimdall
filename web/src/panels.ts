@@ -4,11 +4,13 @@ import type { Alert } from "./api";
 import { ago, fmtTime, h } from "./dom";
 import { css } from "./theme/palette";
 import { explainBlock } from "./explain";
-import { alertTitle, aoiName, kindLabel, PRIORITY_WORD, SOURCE_LABEL, T } from "./labels";
+import { alertTitle, aoiName, kindLabel, PRIORITY_WORD, T } from "./labels";
 import { api } from "./api";
 import { patch, refreshAll, selectAlert, state, triage } from "./store";
 import { filters as mapFilters } from "./filters";
 import { inBand } from "./spectrummodel";
+import { ended, STAGES, stageOf } from "./workflow";
+import type { Stage } from "./workflow";
 
 const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 export const priority = (a: Alert): number => SEV_RANK[a.severity]! * a.confidence;
@@ -29,9 +31,10 @@ export const STATUS_LABEL: Record<string, string> = {
   acknowledged: "Acknowledged",
   under_review: "Under review",
   shelved: "Shelved",
-  confirmed: "Confirmed",
-  dismissed: "Dismissed",
-  expired: "Expired",
+  confirmed: "Confirmed real",
+  resolved: "Closed: ended",
+  dismissed: "Closed: false alarm",
+  expired: "Ended on its own",
 };
 
 /** Responsive table: scrolls inside its own wrapper; stacked label/value rows at <768px. */
@@ -137,9 +140,11 @@ export function sparkline(values: (number | null)[], baseline: number | null): S
 
 // ------------------------------------------------------------------ queue
 
+export const STAGE_DEFAULT: Stage = "action";
 const uniq = (xs: (string | null)[]): string[] => [...new Set(xs.filter((x): x is string => !!x))].sort();
 
-export function visibleAlerts(): Alert[] {
+/** Alerts matching the queue filters; `stage` "all" ignores the stage tab (the map shows every open alert). */
+export function visibleAlerts(stage: Stage | "all" = (state.filters.status || STAGE_DEFAULT) as Stage): Alert[] {
   const f = state.filters;
   const w = state.window;
   const q = f.q.trim().toLowerCase();
@@ -149,7 +154,7 @@ export function visibleAlerts(): Alert[] {
         (!f.aoi || a.aoi === f.aoi) &&
         inBand(a, mapFilters.band) &&
         (!f.kind || a.kind === f.kind) &&
-        (!f.status || (f.status === "open" ? ["new", "acknowledged", "under_review"].includes(a.status) : a.status === f.status)) &&
+        (stage === "all" || stageOf(a.status) === stage) &&
         (!f.grade || a.admiralty.reliability === f.grade) &&
         (!f.priority || PRIORITY[a.severity]!.p === f.priority) &&
         (!q || `${alertTitle(a)} ${a.summary}`.toLowerCase().includes(q)) &&
@@ -179,27 +184,39 @@ export function renderQueue(root: HTMLElement): void {
     { "aria-label": "Group by", onchange: (e) => set("group", (e.target as HTMLSelectElement).value) },
     ...(["none", "aoi", "priority"] as const).map((g) => h("option", { value: g, selected: f.group === g }, `Group: ${g === "aoi" ? "area" : g}`)),
   );
-  root.replaceChildren(
+  const stage = (f.status || "action") as Stage;
+  const n = (st: Stage): number => state.alerts.filter((a) => stageOf(a.status) === st).length;
+  const tabs = h(
+    "div",
+    { class: "stage-tabs", role: "tablist", "aria-label": "Alert stage" },
+    ...STAGES.map((st) =>
+      h(
+        "button",
+        { type: "button", role: "tab", class: `stage-tab st-${st.id}`, title: st.hint, "aria-selected": String(stage === st.id), onclick: () => set("status", st.id) },
+        st.label,
+        st.id !== "closed" ? h("span", { class: "stage-n" }, String(n(st.id))) : null,
+      ),
+    ),
+  );
+  const parts: (HTMLElement | null)[] = [
     h("h2", { id: "qcount" }, T.alerts),
+    tabs,
     search,
     h(
       "div",
       { class: "filters" },
       sel("Area", "aoi", uniq(state.alerts.map((a) => a.aoi)), aoiName),
       sel("Type", "kind", uniq(state.alerts.map((a) => a.kind)), kindLabel),
-      sel("Status", "status", ["open", "new", "acknowledged", "under_review", "shelved", "confirmed", "dismissed", "expired"], (s) => STATUS_LABEL[s] ?? "Open"),
-      sel("Source", "grade", ["A", "B", "C", "D", "E", "F"], (g) => SOURCE_LABEL[g] ?? g),
       sel("Category", "priority", ["P1", "P2"], (p) => PRIORITY_WORD[p] ?? p),
       group,
     ),
-    h(
-      "div",
-      { class: "row" },
-      h("button", { id: "bulk-ack", onclick: () => void bulkAck() }, "Acknowledge selected"),
-    ),
+    stage === "action"
+      ? h("div", { class: "row" }, h("button", { id: "bulk-ack", onclick: () => void bulkAck() }, "Acknowledge selected"))
+      : null,
     list,
-    clearControl(root),
-  );
+    stage === "action" ? clearControl(root) : null,
+  ];
+  root.replaceChildren(...parts.filter((x): x is HTMLElement => x !== null));
   renderQueueList(list);
 }
 
@@ -239,9 +256,15 @@ function renderQueueList(list: HTMLElement): void {
           "div",
           { class: "m" },
           h("span", {}, STATUS_LABEL[a.status] ?? a.status),
+          stageOf(a.status) === "closed"
+            ? null
+            : h("span", { class: ended(a) ? "act ended" : "act live" }, ended(a) ? `activity ended ${ago(a.last_seen)}` : "activity ongoing"),
           h("span", { title: fmtTime(a.first_seen) }, ago(a.last_seen)),
         ),
       ),
+      a.status === "new"
+        ? h("button", { type: "button", class: "qack", title: "Acknowledge: I own this (a)", onclick: () => void triage(a.id, "acknowledged") }, "Acknowledge")
+        : null,
     );
   };
   const nodes: Node[] = [];

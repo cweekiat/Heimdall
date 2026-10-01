@@ -1,16 +1,19 @@
 // Alert details: one short, factual view. What was detected, where and when, which sources saw it,
 // why it was flagged (each rule: measured value against its threshold and the normal level) and the
-// affected aircraft / vessels. Two actions: Acknowledge and Clear. No grading adjectives.
+// affected aircraft / vessels. 042: a "Next step" box with the checks for this alert type, and actions that
+// follow the workflow (Acknowledge -> Confirm real / False alarm (reason) / Shelve -> Close: ended / Reopen).
+// No grading adjectives.
 import type { AlertDetail, AlertStatus, Evidence, Rule } from "./api";
 import { fmtNum, fmtTime, h } from "./dom";
 import { fmtLatLon, toMgrs } from "./geoutil";
 import { icon, iconButton } from "./icons";
 import { aoiName, kindLabel, T } from "./labels";
+import { CHECKS, FALSE_ALARM_REASONS, nextStep, SHELVE_HOURS, stageOf } from "./workflow";
 import { PRIORITY, STATUS_LABEL, table } from "./panels";
 import { patch, state, triage } from "./store";
 
-/** Recorded with every Clear (the backend requires a reason to close an alert). */
-export const CLEAR_REASON = "Cleared by analyst";
+/** Reason recorded when an alert is closed as a false alarm from the keyboard (d). */
+export const CLEAR_REASON = "False alarm (closed from the keyboard)";
 
 let error = "";
 
@@ -92,7 +95,18 @@ function body(d: AlertDetail): Node[] {
     .flatMap((e) => e.rules.filter((r) => r.passed))
     .filter((r) => !seenRule.has(r.rule) && Boolean(seenRule.add(r.rule)));
   const ents = [...new Set(evs.flatMap((e) => e.entities))].map((e) => ({ id: e, ...entityLabel(e) }));
+  const checks = CHECKS[a.kind] ?? [];
+  const open = stageOf(a.status) !== "closed";
   return [
+    h(
+      "div",
+      { class: `next-step st-${stageOf(a.status)}` },
+      h("b", {}, "Next step: "),
+      nextStep(a),
+      open && checks.length
+        ? h("ul", { class: "checks" }, ...checks.map((c) => h("li", {}, c)))
+        : null,
+    ),
     kv([
       ["Detected", kindLabel(a.kind)],
       ["Area", aoiName(a.aoi)],
@@ -126,21 +140,51 @@ function body(d: AlertDetail): Node[] {
   ];
 }
 
+let menu: "" | "false" | "shelve" = "";
+
 function footer(d: AlertDetail): HTMLElement {
   const a = d.alert;
-  const run = async (s: AlertStatus, reason?: string): Promise<void> => {
-    error = (await triage(a.id, s, reason)) ?? "";
+  const run = async (st: AlertStatus, reason?: string, until?: string): Promise<void> => {
+    menu = "";
+    error = (await triage(a.id, st, reason, until)) ?? "";
     renderInspector(document.getElementById("inspector")!);
   };
+  const toggle = (m: typeof menu): void => {
+    menu = menu === m ? "" : m;
+    renderInspector(document.getElementById("inspector")!);
+  };
+  const btn = (label: string, title: string, fn: () => void, cls = "tri", ic?: Parameters<typeof icon>[0]): HTMLElement =>
+    h("button", { type: "button", class: cls, title, onclick: fn }, ic ? icon(ic) : null, label);
+  const stage = stageOf(a.status);
+  const actions: HTMLElement[] = [];
+  if (a.status === "new") actions.push(btn(T.ack, "Take ownership: I am checking this (a)", () => void run("acknowledged"), "tri primary", "ack"));
+  if (stage === "action" || stage === "progress") {
+    actions.push(btn("Confirm real", "The checks show real activity: keep tracking it", () => void run("confirmed"), stage === "progress" ? "tri primary" : "tri", "confirm"));
+    actions.push(btn("False alarm", "Close as a false alarm (choose why)", () => toggle("false"), "tri", "dismiss"));
+    actions.push(btn("Shelve", "Hide it for a few hours, then it comes back", () => toggle("shelve"), "tri", "shelve"));
+  }
+  if (stage === "progress" || stage === "confirmed") {
+    actions.push(btn("Close: ended", "Real activity that has now stopped", () => void run("resolved"), stage === "confirmed" ? "tri primary" : "tri", "ack"));
+  }
+  if (a.status === "resolved" || a.status === "dismissed" || a.status === "confirmed") {
+    actions.push(btn("Reopen", "Back to In progress", () => void run("under_review"), "tri", "undo"));
+  }
+  const sub =
+    menu === "false"
+      ? h("div", { class: "row tri-menu", role: "group", "aria-label": "False alarm reason" }, h("span", { class: "note" }, "Why?"), ...FALSE_ALARM_REASONS.map((r) => btn(r, "Close as a false alarm with this reason", () => void run("dismissed", r))))
+      : menu === "shelve"
+        ? h(
+            "div",
+            { class: "row tri-menu", role: "group", "aria-label": "Shelve for" },
+            h("span", { class: "note" }, "Shelve for"),
+            ...SHELVE_HOURS.map((hrs) => btn(`${hrs} h`, `Hidden for ${hrs} hours, then back to In progress`, () => void run("shelved", `Shelved ${hrs} h by analyst`, new Date(Date.now() + hrs * 3600_000).toISOString()))),
+          )
+        : null;
   return h(
     "div",
     { class: "foot" },
-    h(
-      "div",
-      { class: "row tri-row" },
-      h("button", { class: "tri primary", title: "I have seen it (a)", disabled: a.status === "acknowledged", onclick: () => void run("acknowledged") }, icon("ack"), T.ack),
-      h("button", { class: "tri", title: "Close this alert; it is logged and returns if the activity escalates (d)", disabled: a.status === "dismissed", onclick: () => void run("dismissed", CLEAR_REASON) }, icon("dismiss"), "Clear"),
-    ),
+    actions.length ? h("div", { class: "row tri-row" }, ...actions) : h("p", { class: "note" }, "Ended on its own: nothing to do."),
+    sub,
     error && h("div", { class: "fail", role: "alert" }, error),
   );
 }

@@ -85,7 +85,8 @@ class AlertStatus(StrEnum):
     UNDER_REVIEW = "under_review"  # analyst actively assessing
     SHELVED = "shelved"  # temporarily suppressed with reason + expiry (see AnalystNote)
     CONFIRMED = "confirmed"
-    DISMISSED = "dismissed"
+    RESOLVED = "resolved"  # 042: confirmed real, activity over, closed by the analyst
+    DISMISSED = "dismissed"  # closed as a false alarm (reason required)
     EXPIRED = "expired"
 
 

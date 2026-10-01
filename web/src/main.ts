@@ -28,9 +28,8 @@ import { isCritical, PRIORITY, renderQueue, visibleAlerts } from "./panels";
 /** Alerts drawn on the map: not expired or dismissed, unless the queue filter asks for a closed status. */
 const OPEN_ON_MAP = ["new", "acknowledged", "under_review", "shelved", "confirmed"];
 function mapAlerts(): ReturnType<typeof visibleAlerts> {
-  const xs = visibleAlerts().filter((a) => !filters.hiddenKinds.includes(a.kind)); // Detections filter
-  const f = state.filters.status;
-  return f && f !== "open" ? xs : xs.filter((a) => OPEN_ON_MAP.includes(a.status));
+  const xs = visibleAlerts("all").filter((a) => !filters.hiddenKinds.includes(a.kind)); // Detections filter
+  return state.filters.status === "closed" ? xs.filter((a) => !OPEN_ON_MAP.includes(a.status)) : xs.filter((a) => OPEN_ON_MAP.includes(a.status));
 }
 import { patch, refreshAll, refreshHealth, selectAlert, state, subscribe, triage, upsertAlert } from "./store";
 import { renderTimeline } from "./timeline";
@@ -303,7 +302,7 @@ function renderStatus(): void {
           "aria-label": `${word} priority: ${n} open`,
           title: `${word} priority: ${n} open${flood ? ` (busy: ${lastH} new in the last hour)` : ""}`,
           onclick: () => {
-            patch({ filters: { ...state.filters, priority: state.filters.priority === p ? "" : p, status: state.filters.priority === p ? state.filters.status : "open" } });
+            patch({ filters: { ...state.filters, priority: state.filters.priority === p ? "" : p, status: state.filters.status } });
             openWindow("queue");
           },
         },
