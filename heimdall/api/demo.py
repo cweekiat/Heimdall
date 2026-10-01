@@ -25,7 +25,6 @@ from heimdall.backtest.replay_io import read_bundle, read_obs_parquet
 from heimdall.geo import BBox, Ident, h3_cell, h3_center, in_bbox
 from heimdall.ports import Store
 from heimdall.schemas import (
-    KEY_CONNECTORS,
     ActionRequest,
     Admiralty,
     AircraftObs,
@@ -46,6 +45,7 @@ from heimdall.schemas import (
     SourceReliability,
     SourceState,
     VesselObs,
+    keys_for,
 )
 
 # (aoi, lat, lon, kind, severity, ratio, baseline, confidence)
@@ -889,7 +889,7 @@ class DemoSources:
                 key=key,
                 label=str(reg.get(key, {}).get("label") or label),
                 about=reg.get(key, {}).get("about"),
-                keys=[n for n, c in KEY_CONNECTORS.items() if c == key],
+                keys=keys_for(key),
                 domain=dom,
                 enabled=status != "off",
                 status=status,  # type: ignore[arg-type]

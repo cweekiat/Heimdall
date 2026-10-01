@@ -17,6 +17,7 @@ from heimdall.config import AOI, Settings
 from heimdall.detect import (
     ais_gap,
     ais_spoofing,
+    cygnss,
     jamming,
     orbit,
     spectrum_state,
@@ -353,6 +354,29 @@ def spectrum_step(
     return _assign_tick_persistence(store, aoi.name, out, timedelta(minutes=step))
 
 
+# (store, hour, cell-days, space weather); the store reference keeps identity checks honest
+_CYG_CACHE: list[tuple[Store, datetime, list[GeoEvent], list[GeoEvent]]] = []
+
+
+def cygnss_windows(
+    store: Store, dets: Mapping[str, Mapping[str, Any]], now: datetime
+) -> tuple[list[GeoEvent], list[GeoEvent]]:
+    """CYGNSS cell-days + space weather for the CYGNSS detector. The data are daily (latency
+    2-3 days, ~10k cells/day in the bbox), so one read per hour is shared by every tick."""
+    days = max(
+        float(d.get("cygnss", {}).get("max_age_days", cygnss.DEFAULTS["max_age_days"]))
+        for d in dets.values()
+    ) if dets else float(cygnss.DEFAULTS["max_age_days"])  # fmt: skip
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    if _CYG_CACHE and _CYG_CACHE[0][0] is store and _CYG_CACHE[0][1] == hour:
+        return _CYG_CACHE[0][2], _CYG_CACHE[0][3]
+    lo, hi = now - timedelta(days=days + 1), now + timedelta(seconds=1)
+    evs = store.events_window(lo, hi, [cygnss.KIND])
+    sw = store.events_window(lo, hi, ["space_weather"])
+    _CYG_CACHE[:] = [(store, hour, evs, sw)]
+    return evs, sw
+
+
 def run_aoi(
     store: Store,
     aoi: AOI,
@@ -367,6 +391,7 @@ def run_aoi(
     gaps: Sequence[dict[str, Any]] | None = None,
     p3: P3Windows | None = None,
     spectrum_events: Sequence[GeoEvent] | None = None,
+    cygnss_events: tuple[Sequence[GeoEvent], Sequence[GeoEvent]] | None = None,
 ) -> TickResult:
     """One AOI step. `vessels`: AIS window for the AOI; `vessels_all`: the unfiltered AIS window
     for dark-gap detection (ships leaving the AOI keep reporting outside it; a gap belongs to the
@@ -414,6 +439,11 @@ def run_aoi(
         evs += _p3_evidence(store, aoi, p3, detectors, now, res)
     if spectrum_events is not None:
         evs += spectrum_step(store, aoi, obs, vessels, spectrum_events, detectors, now, res)
+    if cygnss_events is not None:  # persistence = flagged days, set by the detector itself
+        cy_ev, cy_sw = cygnss_events
+        evs += cygnss.detect(
+            cy_ev, dict(detectors.get("cygnss", {})), now, aoi=aoi, space_weather=cy_sw
+        )
 
     min_ac = int(jcfg.get("min_aircraft", 5))
     for cell, st in stats.items():
@@ -544,6 +574,7 @@ def tick(
     update_overpasses(store, settings.aois, sources_cfg.get("celestrak", {}), now)
     p3 = _p3_windows(store, dets, now)
     spec_events = spectrum_windows(store, now)
+    cyg = cygnss_windows(store, dets, now)
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
         obs = [o for o in obs_all if aoi.contains(o.lat, o.lon)]
@@ -562,6 +593,7 @@ def tick(
             gaps=gaps_by_aoi[aoi.name],
             p3=p3,
             spectrum_events=spec_events,
+            cygnss_events=cyg,
         )
         total.evidence += r.evidence
         total.alerts += r.alerts

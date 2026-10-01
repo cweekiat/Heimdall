@@ -374,6 +374,19 @@ KEY_CONNECTORS: dict[str, str] = dict(
         ("EARTHDATA_TOKEN", "smap_rfi"),  # NASA Earthdata bearer token (SMAP via NSIDC cloud)
     ]
 )
+#: Keys that feed more connectors than their KEY_CONNECTORS owner (restarted together).
+KEY_ALSO: dict[str, tuple[str, ...]] = {"EARTHDATA_TOKEN": ("cygnss",)}
+
+
+def key_connectors(name: str) -> list[str]:
+    """Every connector that reads key `name` (owner first)."""
+    own = KEY_CONNECTORS.get(name)
+    return ([own] if own else []) + list(KEY_ALSO.get(name, ()))
+
+
+def keys_for(connector: str) -> list[str]:
+    """Key names a connector reads."""
+    return [n for n in KEY_CONNECTORS if connector in key_connectors(n)]
 
 
 class KeyStatus(BaseModel):

@@ -18,7 +18,7 @@ from typing import Any
 
 from heimdall.logging import get_logger
 from heimdall.ports import Connector
-from heimdall.schemas import KEY_CONNECTORS, Domain, SourceReliability, SourceState
+from heimdall.schemas import Domain, SourceReliability, SourceState, keys_for
 
 log = get_logger("heimdall.sources_ctl")
 
@@ -183,7 +183,7 @@ class SourceManager:
         for k in self._cfg:
             st = self._state(k)
             st.about = str(self._cfg[k].get("about") or "") or None
-            st.keys = [n for n, c in KEY_CONNECTORS.items() if c == k]
+            st.keys = keys_for(k)
             out.append(st)
         return out
 

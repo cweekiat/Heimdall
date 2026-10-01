@@ -7,7 +7,7 @@ Rule: keep a source only if it senses RF effects, explains them away (confounder
 | Status | Sources |
 |---|---|
 | **Kept** | adsb_lol, adsb_fi, opensky, opensky_global, adsb_lol_history (backtest, GNSS day builds), gpsjam (validation reference only), aisstream, faa_nms_notam, nga_msi, swpc, open_meteo, firms, celestrak, stac (sentinel-1-grd only) |
-| **Planned, unverified** | P5: cygnss, smap_rfi · P6: wspr_live, pskreporter_mqtt, kiwisdr_dir · P7: gdelt |
+| **Planned, unverified** | P5: smap_rfi · P6: wspr_live, pskreporter_mqtt, kiwisdr_dir · P7: gdelt |
 | **Removed in 027** | airplanes_live, gfw, china_msa, ioda, cloudflare_radar, black_marble, STAC sentinel-2-l2a; placeholders taiwan_mnd, japan_jso, reliefweb, acled, telegram |
 | **Not adopted** | SatNOGS, KiwiSDR live receiver sessions, PSK Reporter REST, SMOS, GIRO ionosondes |
 
@@ -763,6 +763,7 @@ All connectors emit GeoEvents with `domain: spectrum`. HF spots are mapped at th
 | satnogs | `https://network.satnogs.org/api/observations/?start=&end=` (cursor `Link: rel=next`), `/api/stations/` daily | none | ~240 observations/h global (10 pages); 50 active stations in box; one poll (3 h) = 110 in-region passes | `sat_observation` |
 | sentinel1_rfi | Planetary Computer STAC `collections/sentinel-1-grd/items` + free SAS token `api/sas/v1/token/sentinel-1-grd`; asset `schema-product-<pol>` = `annotation/rfi/rfi-*.xml` (~12 KB) | none | 16 scenes / 3 days over the AOIs; one with RFI detected over northern Myanmar (29 Sep, 30 % noise reports flagged, burst power ratio 18.7) | `sar_rfi` |
 | smap_rfi | CMR `search/granules.json?short_name=SPL1BTB_NRT&bounding_box=` → NSIDC Earthdata Cloud `.h5` (~40 MB) | EARTHDATA_TOKEN | CMR search OK: 8 granules in 12 h, NRT ~3 h. Download **not verified**: token not set. Field names/RFI bit per L1B spec; check with `scripts/smap_inspect.py` | `l_band_rfi` |
+| cygnss | CMR `search/granules.json?short_name=CYGNSS_L1_V3.2` → OPeNDAP `opendap.earthdata.nasa.gov/collections/C2832195379-POCLOUD/granules/<title>.dap.nc4?dap4.ce=/ddm_timestamp_utc;/sp_lat;/sp_lon;/ddm_noise_floor;/quality_flags` | EARTHDATA_TOKEN | 7 satellites (no cyg06), one daily granule each, 2–3 days late; subset 7.9 MB in 2–4 s (full file 1.15 GB); 2026-09-12..29 backfilled (task 038) | `l1_noise` |
 | smos | ESA SMOS dissemination | ESA EO account | **Blocked**: CMR collection `SMOS_Open_V7` lists no files; data only behind ESA login. Registered disabled, no connector | – |
 
 Gotchas
@@ -771,4 +772,6 @@ Gotchas
 - PSK Reporter: callsigns are never stored; only counts and locator-derived positions. XML with DOCTYPE/ENTITY is rejected.
 - SatNOGS: status `unknown` becomes good/bad/failed after vetting; re-polling a 3 h window upserts the new status.
 - Sentinel-1: only the RFI XML assets on `*.blob.core.windows.net` are fetched (no imagery; user decision 2026-09-30).
+- CYGNSS: never download the full L1 file; the OPeNDAP subset is reduced to r3 cell JSON and deleted. Granule titles
+  are regex-checked before use in paths. `sp_lon` is 0–360. The rfi_detected bit is noisy over dry land.
 - SMAP: rasters are reduced to per-H3-r4 counts and deleted (ADR-007 s2); the token goes only in the Authorization header.

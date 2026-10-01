@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from heimdall.logging import get_logger
 from heimdall.ports import SecretStore, SourceControl
-from heimdall.schemas import KEY_CONNECTORS
+from heimdall.schemas import KEY_CONNECTORS, key_connectors
 
 log = get_logger("heimdall.api.keys")
 
@@ -62,7 +62,8 @@ def keys_router(secrets: SecretStore | None, sources: SourceControl | None) -> A
         except ValueError:
             return _bad(422, "invalid key value")
         secrets.set(name, body.value)
-        await _restart(sources, KEY_CONNECTORS[name])
+        for conn in key_connectors(name):
+            await _restart(sources, conn)
         return JSONResponse({"name": name, "saved": True})
 
     @r.delete("/api/keys/{name}")
@@ -72,7 +73,8 @@ def keys_router(secrets: SecretStore | None, sources: SourceControl | None) -> A
         if (denied := _guard(request)) is not None:
             return denied
         secrets.delete(name)
-        await _restart(sources, KEY_CONNECTORS[name])
+        for conn in key_connectors(name):
+            await _restart(sources, conn)
         return JSONResponse({"name": name, "deleted": True})
 
     return r

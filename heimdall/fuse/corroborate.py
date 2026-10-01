@@ -46,6 +46,8 @@ DEFAULT_CORROBORATION: dict[str, Any] = {
     "jam_orbit_km": 100,
     "time_slack_h": 2,
     "thermal_jam_km": 50,  # prior, not backtested
+    "jam_orbit_space_km": 300,  # task 038: ADS-B jamming <-> CYGNSS L1 noise. Prior
+    "jam_orbit_space_slack_h": 96,  # CYGNSS days lag 2-3 days behind live ADS-B. Prior
 }
 
 DEFAULT_SOURCE_FAMILY: dict[str, str] = {
@@ -58,6 +60,7 @@ DEFAULT_SOURCE_FAMILY: dict[str, str] = {
     "nga_msi": "notice",
     "faa_nms_notam": "notice",
     "firms": "thermal",  # ADR-007 s.6
+    "cygnss": "gnss_reflectometry",  # task 038: independent of aircraft/ship receivers
     "open_meteo": "context",
     "swpc": "context",
     "celestrak": "context",
@@ -219,6 +222,24 @@ def cross_source(
                             evidence_id=o.id,
                             relation="supports",
                             note=f"AIS spoofing evidence {d:.0f} km away",
+                        )
+                    )
+        if e.kind == AlertKind.GNSS_JAMMING:
+            # task 038: the same area jammed as seen by aircraft and from orbit (CYGNSS)
+            km = float(c["jam_orbit_space_km"])
+            lag = timedelta(hours=float(c["jam_orbit_space_slack_h"]))
+            for o in jams:
+                if (o.detector == "cygnss") == (e.detector == "cygnss"):
+                    continue
+                d = _dist(e, o)
+                if d is not None and d <= km and _near_in_time(e, o, lag):
+                    what = "CYGNSS L1 noise rise" if o.detector == "cygnss" else "ADS-B jamming"
+                    supports.append(
+                        Corroboration(
+                            domain=Domain.SPACE if o.detector == "cygnss" else Domain.AIR,
+                            evidence_id=o.id,
+                            relation="supports",
+                            note=f"{what} evidence {d:.0f} km away",
                         )
                     )
         if e.kind == AlertKind.AIS_SPOOFING:

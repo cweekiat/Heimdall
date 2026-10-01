@@ -100,7 +100,8 @@ def test_jwt_length_earthdata_token_saves(env: tuple[TestClient, FakeSources, Pa
     c, src, _ = env
     jwt_like = "hdr." + "a" * 900 + "." + "b" * 300
     r = c.put("/api/keys/EARTHDATA_TOKEN", json={"value": jwt_like}, headers=LOCAL)
-    assert r.status_code == 200 and jwt_like not in r.text and src.restarted == ["smap_rfi"]
+    assert r.status_code == 200 and jwt_like not in r.text
+    assert src.restarted == ["smap_rfi", "cygnss"]
     assert c.put("/api/keys/EARTHDATA_TOKEN", json={"value": "x" * 5000}, headers=LOCAL).json() == {
         "detail": "key too long (max 4096 characters)"
     }

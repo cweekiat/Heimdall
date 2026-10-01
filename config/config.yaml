@@ -175,6 +175,17 @@ detectors:
     refresh_min: 15         # rolling last-24 h recompute (~2 s per day of lake data, measured 2026-10-01)
     min_hours_complete: 22  # fewer hourly lake partitions -> day flagged incomplete
     backfill_days: 7
+  cygnss:                   # task 038: CYGNSS L1 noise floor per r3 cell-day. Priors from the 2026-09-12..29 backfill (docs/reports/2026-10-01-cygnss.md), not backtested against GPSJam
+    max_age_days: 5         # CYGNSS L1 latency 2-3 days
+    min_samples: 30         # reflections per cell-day (median cell has ~160)
+    level_db: 2.5           # open-ocean excess; global open-ocean 99th pct ~1.5 dB (2026-09-27)
+    ocean_frac_min: 0.9
+    land_level_db: 3.5      # land/coast: 99.5th pct of non-ocean cell-days 2026-09-20..27; >= 3.5 dB almost only S Iran/Gulf
+    change_db: 1.5          # rise over the cell's own 14-day median
+    z_min: 4.0
+    min_baseline_days: 7
+    persist_days: 3         # look-back of observed days; fusion needs >= 2 flagged (gnss_jamming: 2)
+    confidence_cap: 0.55    # ADR-008 s4: one experimental band stays <= medium
   spectrum_state:           # 033/034: per-AOI band indicators vs own history. Priors, not backtested (ADR-008)
     baseline_days: 14
     min_samples: 288        # 1 day of 5-min ticks before any state but "learning"
@@ -205,6 +216,7 @@ detectors:
       satnogs: satnogs
       sentinel1_rfi: sar
       smap_rfi: radiometer
+      cygnss: gnss_reflectometry  # task 038: satellites in orbit, independent of aircraft/ships
       open_meteo: context   # context sources never count as families
       swpc: context
       celestrak: context
