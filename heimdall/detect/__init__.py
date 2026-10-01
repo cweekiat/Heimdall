@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from heimdall.detect import (
     ais_gap,
     ais_spoofing,
+    cygnss,
     jamming,
     orbit,
     spoofing,
@@ -44,6 +45,8 @@ DETECTORS: dict[str, DetectorSpec] = {
     ),
     # P3 (ADR-007): detect(events, cfg, now, *, aoi); thermal also takes baseline_events
     "thermal": DetectorSpec("thermal", thermal.VERSION, AlertKind.THERMAL, thermal.detect),
+    # task 038: detect(events, cfg, now, *, aoi, space_weather) over CYGNSS `l1_noise` cell-days
+    "cygnss": DetectorSpec("cygnss", cygnss.VERSION, AlertKind.GNSS_JAMMING, cygnss.detect),
 }
 
 __all__ = [
@@ -51,6 +54,7 @@ __all__ = [
     "DetectorSpec",
     "ais_gap",
     "ais_spoofing",
+    "cygnss",
     "jamming",
     "orbit",
     "spoofing",

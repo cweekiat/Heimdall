@@ -231,6 +231,19 @@ def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: s
     cov = f"coverage {lead.coverage.confidence:.0%} ({prov})"
     pers = f"persistence {lead.persistence} (5-min steps spanned by anomalous reports)"
     ents = sorted({x for e in group for x in e.entities})
+    if kind == AlertKind.GNSS_JAMMING and lead.detector == "cygnss":
+        return (
+            f"GNSS L1 noise seen from orbit (CYGNSS) in H3 {cell}: "
+            f"{_f(lead, 'excess_db'):+.1f} dB above the open-ocean level"
+            + (
+                f", {_f(lead, 'delta_db'):+.1f} dB above its usual "
+                f"{_f(lead, 'baseline_db'):+.1f} dB"
+                if _f(lead, "delta_db")
+                else ""
+            )
+            + f"; {_f(lead, 'n'):.0f} reflections from {_f(lead, 'n_sats'):.0f} satellites; "
+            f"flagged on {lead.persistence} of the last observed days; {cov}."
+        )
     if kind == AlertKind.GNSS_JAMMING:
         rr = next((r for r in lead.rules if r.rule == "degraded_ratio"), None)
         base = "n/a" if rr is None or rr.baseline is None else f"{rr.baseline:.2f}"

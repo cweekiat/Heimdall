@@ -485,7 +485,13 @@ Math is added here when each ships. Thresholds start as priors in `config/config
   when < 22 hourly partitions. Demo/replay: from the Store. API `GET /api/gnss/day?date=|last24h&bbox=`,
   `GET /api/gnss/days`. Validation vs GPSJam CSV: `scripts/gnss_validate.py` (031c). First real day (2026-09-30,
   16 h): 1,616 cells; top red cells Kaliningrad/Baltic (23 of 24 aircraft) and Naypyidaw (7 of 7).
-- **CYGNSS L1 noise floor** (P5): per-cell robust z of noise floor vs baseline; space-weather explain-away.
+- **CYGNSS L1 noise floor** (task 038, `detect/cygnss.py`, `cygnss-1.0.0`): GNSS_JAMMING Evidence per r3 cell-day.
+  C1 level: open ocean (≥ 90 % open-water reflections) ≥ 2.5 dB, land/coast ≥ 3.5 dB above the satellites' open-ocean
+  median (persistent jammers are their own baseline); C2 change: ≥ 1.5 dB and z ≥ 4 above the cell's own 14-day
+  median (≥ 7 days); C3 rfi_detected share (supporting only). Persistence = flagged days among the last 3 observed;
+  fusion needs 2. Confidence ≤ 0.55 (one band → ≤ medium); halved on a day with a solar radio event (R ≥ 3);
+  Kp/scintillation confounders not applied. Corroborates ADS-B jamming within 300 km / 96 h as an independent
+  family. Coverage ±38°, 2–3 day latency, footprint-limited location. Validation: `docs/reports/2026-10-01-cygnss.md`.
 - **SMAP 1.4 GHz RFI** (P5): RFI-flag fraction per cell, persistent-emitter map and change detection.
 - **Sentinel-1 RFI** (P5): product interference annotations per scene footprint (pixel streaks need user approval).
 - **HF path anomaly** (P6, experimental): per-path SNR and spot-count baselines by hour and band, mapped at the

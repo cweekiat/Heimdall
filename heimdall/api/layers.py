@@ -27,8 +27,11 @@ LAYER_KINDS: dict[str, list[str]] = {
     "sar_rfi": ["sar_rfi"],
     "satnogs": ["sat_observation"],
     "smap": ["l_band_rfi"],
+    "cygnss": ["l1_noise"],  # task 038: CYGNSS L1 noise floor per r3 cell-day
 }
-REGIONAL = frozenset({"hf", "sar_rfi", "satnogs", "smap"})  # aoi=all returns every feature
+REGIONAL = frozenset(
+    {"hf", "sar_rfi", "satnogs", "smap", "cygnss"}
+)  # aoi=all returns every feature
 # explicit per-kind attr whitelist (ADR-007 table); anything else is dropped
 ATTRS: dict[str, tuple[str, ...]] = {
     "thermal": ("satellite", "instrument", "confidence", "daynight"),
@@ -60,6 +63,18 @@ ATTRS: dict[str, tuple[str, ...]] = {
         "max_altitude_deg",
         "station_id",
     ),
+    "l1_noise": (
+        "day",
+        "h3",
+        "n",
+        "n_sats",
+        "excess_db",
+        "ocean_frac",
+        "rfi_frac",
+        "base_db",
+        "base_mad_db",
+        "base_days",
+    ),  # fmt: skip
     "l_band_rfi": ("h3", "n_footprints", "n_rfi_h", "n_rfi_v", "rfi_frac", "tb_h_mean_k"),
 }
 _SCALAR = (str, int, float, bool, type(None))

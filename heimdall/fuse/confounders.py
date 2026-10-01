@@ -79,6 +79,8 @@ def assess(
     c = _cfg(cfg)
     if ev.kind not in (AlertKind.GNSS_JAMMING, AlertKind.AIS_GAP):
         return 1.0, [], []
+    if ev.detector == "cygnss":  # daily orbit product: Kp/scintillation affect tracking, not the
+        return 1.0, [], []  # noise floor; its own space-weather check is in detect/cygnss.py
     t0 = ev.window_start - timedelta(hours=float(c["max_age_h"]))
     t1 = ev.window_end
     fresh = [e for e in context if t0 <= e.ts <= t1]

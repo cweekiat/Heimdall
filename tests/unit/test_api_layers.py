@@ -130,3 +130,4 @@ def test_spectrum_layers_regional_and_whitelisted() -> None:
     assert f["properties"]["band_mhz"] == 14 and "secret_attr" not in f["properties"]
     assert "IGNORE" not in str(fc)
     assert c.get("/api/layers/smap", params={"aoi": "all"}).json()["features"] == []
+    assert c.get("/api/layers/cygnss", params={"aoi": "all"}).json()["features"] == []
