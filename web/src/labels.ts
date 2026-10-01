@@ -5,7 +5,7 @@ import type { IconName } from "./icons";
 
 export const KIND_LABEL: Record<string, string> = {
   gnss_jamming: "GPS jamming",
-  gnss_spoofing: "GPS spoofing (fake position)",
+  gnss_spoofing: "GPS spoofing",
   mil_orbit: "Military aircraft circling",
   ais_spoofing: "Ship position faked",
   ais_gap: "Ship went dark",

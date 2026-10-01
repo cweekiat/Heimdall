@@ -491,6 +491,30 @@ def run_aoi(
     return res
 
 
+def expire_unmonitored(
+    store: Store,
+    monitored: set[str],
+    mcfg: Mapping[str, Any],
+    fcfg: Mapping[str, Any],
+    now: datetime,
+) -> int:
+    """041: NEW alerts of an area that is no longer monitored (deleted or switched off, or a
+    config preset in live mode) never see another tick, so they would stay NEW for ever. Expire
+    them once stale, like any alert without fresh evidence. Analyst statuses are never touched."""
+    from heimdall.military_step import theatres
+
+    keep = monitored | {t.name for t in theatres(mcfg, [])}
+    horizon = now - timedelta(minutes=float(fcfg.get("expire_after_min", 60)))
+    n = 0
+    for a in store.list_alerts(status=[AlertStatus.NEW], limit=10_000):
+        if a.aoi is not None and a.aoi not in keep and a.last_seen < horizon:
+            store.upsert_alert(a.model_copy(update={"status": AlertStatus.EXPIRED}))
+            n += 1
+    if n:
+        log.info("expired_unmonitored_alerts", n=n)
+    return n
+
+
 def fuse_and_store(
     store: Store,
     aoi: str,
@@ -642,6 +666,7 @@ def tick(
         total.metrics += r.metrics
     mcfg = settings.detectors.get("military", {})
     fcfg = dict(settings.detectors.get("fusion", {}))
+    expire_unmonitored(store, {a.name for a in settings.aois}, mcfg, fcfg, now)
     total.evidence += military_step(
         store,
         mcfg,

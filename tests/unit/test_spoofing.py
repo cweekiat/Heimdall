@@ -53,8 +53,22 @@ def test_straight_flight_clean() -> None:
     assert _fired(straight_flight(minutes=30), "a00001") == set()
 
 
+def _neighbours(lon: float = 96.0) -> list:
+    """Three healthy aircraft in the same cell: the regional per-foot norm S2 needs (041)."""
+    return [
+        o
+        for k in range(3)
+        for o in alt_divergence(f"c2000{k}", offset_ft=0, lon=lon + 0.01 * (k + 1))
+    ]
+
+
+def test_alt_divergence_needs_a_regional_norm() -> None:
+    """041: alone in its cell an aircraft gets no altitude verdict (no norm, no S2)."""
+    assert _fired(alt_divergence(), "c00003") == set()
+
+
 def test_alt_divergence_alone_is_one_signal() -> None:
-    obs = alt_divergence()
+    obs = alt_divergence() + _neighbours()
     assert _fired(obs, "c00003") == {"S2"}
     assert spoofing.detect(obs, {}, NOW) == []
 
@@ -71,7 +85,8 @@ def test_alt_divergence_plus_teleport_alerts() -> None:
     obs = [
         o.model_copy(update={"alt_geom": (o.alt_baro or 0) + 2500}) for o in teleport_spoof(nic=3)
     ]
-    (ev,) = spoofing.detect(obs, {}, NOW)
+    obs += _neighbours(lon=obs[0].lon)
+    (ev,) = [e for e in spoofing.detect(obs, {}, NOW) if not e.entities[0].startswith("c2000")]
     assert ev.features["S1"] == 1 and ev.features["S2"] == 1
 
 
@@ -148,6 +163,11 @@ def test_speed_mismatch_with_healthy_nic_alone_does_not_alert() -> None:
         o.model_copy(update={"ts": o.ts + timedelta(seconds=jitter[i % 7])})
         for i, o in enumerate(clean)
     ]
-    old = {"timing_jitter_s": 0.0, "s5_counts_as_signal": True}
+    old = {
+        "timing_jitter_s": 0.0,
+        "s5_counts_as_signal": True,
+        "min_error_km": 0.0,
+        "min_displaced_s": 0,
+    }
     assert spoofing.detect(obs, old, NOW)  # the false positive we fixed
-    assert spoofing.detect(obs, {"timing_jitter_s": 0.0}, NOW) == []  # S5 rule alone suffices
+    assert spoofing.detect(obs, {**old, "s5_counts_as_signal": False}, NOW) == []  # S5 rule

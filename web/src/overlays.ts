@@ -37,7 +37,7 @@ export const SHORTCUTS: [string, string][] = [
 
 const DETECTORS: [string, string][] = [
   ["GPS jamming", "Many aircraft in one area report poor GPS accuracy, far above what is normal for that area. It only fires when enough aircraft are seen and the problem lasts more than one check."],
-  ["GPS spoofing (fake position)", "Aircraft whose reported position jumps or disagrees with other sources. Needs several aircraft to agree before it alerts."],
+  ["GPS spoofing", "An aircraft's reported position jumps away and stays wrong, or disagrees with radio timing or the local altitude pattern, while it still reports good GPS accuracy."],
   ["Military aircraft circling", "Military aircraft flying repeated loops or racetracks over a small area for a long time."],
   ["Several signs in one place", "Different kinds of data agree on the same place and time. Agreement raises how likely the alert is to be true."],
 ];

@@ -42,7 +42,7 @@ from heimdall.geo import EARTH_RADIUS_KM, h3_cell, h3_center, h3_disk
 from heimdall.schemas import AircraftObs, AlertKind, Band, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "jamming"
-VERSION = "jamming-1.2.0"
+VERSION = "jamming-1.3.0"
 METRIC = "jam_ratio"  # baseline metric key recorded per cell by the pipeline
 
 DEFAULTS: dict[str, Any] = {
@@ -53,6 +53,15 @@ DEFAULTS: dict[str, Any] = {
     "nacp_bad_below": 8,
     "bad_dwell_frac": 0.5,
     "min_aircraft": 5,
+    # 041: at least this many distinct degraded aircraft (after excluding chronic ones). Two
+    # degraded of nine passed the de-noised ratio (1/9 = 0.11) and made most Singapore alerts
+    "min_degraded": 3,
+    # 041: an aircraft degraded in >= chronic_min_cells cells where the *other* aircraft were
+    # mostly healthy (<= chronic_others_bad_max degraded, >= 2 others) is an equipment fault,
+    # not interference: excluded from the cell counts (25 A320s on 2026-10-01, all 100 % degraded)
+    "chronic_min_cells": 3,
+    "chronic_isolated_frac": 0.75,
+    "chronic_others_bad_max": 0.2,
     "ratio_alert": 0.10,
     "ratio_clear": 0.06,
     "robust_z": 3.0,
@@ -63,7 +72,7 @@ DEFAULTS: dict[str, Any] = {
     "confidence_cap": 1.0,  # < 1 for sparse-traffic profiles (lower min_aircraft)
     # --- emitter localisation (radio-horizon fit, 1.2.0); priors, not backtested
     "loc_enabled": True,
-    "loc_min_degraded": 3,  # bad aircraft (with altitude) needed, else centroid fallback
+    "loc_min_degraded": 5,  # 041: was 3 (3-4 aircraft gave ~130 km ellipses)
     "loc_min_healthy": 2,  # healthy aircraft (with altitude) needed for the outside test
     "loc_degraded_radius_km": 200.0,  # degraded fixes used: those within this of the centroid
     "loc_radius_km": 400.0,  # candidate r6 cells within this of the degraded-fix centroid
@@ -73,7 +82,7 @@ DEFAULTS: dict[str, Any] = {
     "loc_horizon_km": 4.12,  # km per sqrt(m)
     "loc_top_k": 25,  # minimum cells forming the uncertainty region
     "loc_agreement_tol": 0.03,  # cells within this of the best agreement form the region
-    "loc_min_agreement": 0.6,  # below this the fit is rejected -> centroid
+    "loc_min_agreement": 0.7,  # 041: was 0.6; below this the fit is rejected -> centroid
     "loc_alt_band_m": 3000.0,  # healthy fixes must be within this of a degraded fix altitude
     "loc_max_fixes_per_ac": 6,
     "loc_max_healthy_ac": 100,
@@ -100,6 +109,46 @@ class AircraftQuality:
         return self.n_known > 0 and self.n_bad / self.n_known >= frac
 
 
+def chronic_aircraft(obs: Sequence[AircraftObs], cfg: dict[str, Any]) -> set[str]:
+    """Hexes degraded wherever they fly while the aircraft around them are healthy (041).
+
+    Uses every observation passed in (the pipeline gives the full look-back, longer than the
+    detection window). Interference degrades *everyone* in an area; an equipment fault follows
+    one airframe from cell to cell."""
+    c = _cfg(cfg)
+    frac = c["bad_dwell_frac"]
+    per: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(lambda: [0, 0]))
+    for o in obs:
+        if o.on_ground or not o.is_true_adsb:
+            continue
+        d = degraded(o, c["nic_bad_below"], c["nacp_bad_below"])
+        if d is None:
+            continue
+        kb = per[cell_of(o, c["h3_res"])][o.hex]
+        kb[0] += 1
+        kb[1] += int(d)
+    bad_in: dict[str, dict[str, bool]] = defaultdict(dict)  # hex -> cell -> bad there
+    for cell, acs in per.items():
+        for h, (k, b) in acs.items():
+            bad_in[h][cell] = b / k >= frac
+    out: set[str] = set()
+    for h, cells in bad_in.items():
+        bad_cells = [cl for cl, is_bad in cells.items() if is_bad]
+        if len(bad_cells) < c["chronic_min_cells"]:
+            continue
+        isolated = 0
+        for cl in bad_cells:
+            others = [b / k >= frac for x, (k, b) in per[cl].items() if x != h]
+            if len(others) >= 2 and sum(others) / len(others) <= c["chronic_others_bad_max"]:
+                isolated += 1
+        if (
+            isolated >= c["chronic_min_cells"]
+            and isolated / len(bad_cells) >= c["chronic_isolated_frac"]
+        ):
+            out.add(h)
+    return out
+
+
 @dataclass
 class CellStats:
     cell: str
@@ -110,6 +159,7 @@ class CellStats:
     providers: list[str]
     agreement: float  # provider agreement on the bad aircraft (1.0 = all agree)
     bad_aircraft: list[AircraftQuality]
+    chronic: list[str] = field(default_factory=list)  # excluded equipment-fault aircraft (041)
 
 
 def _cfg(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -128,11 +178,17 @@ def degraded(o: AircraftObs, nic_below: int, nacp_below: int) -> bool | None:
 
 
 def cell_stats(
-    obs: Sequence[AircraftObs], cfg: dict[str, Any], now: datetime
+    obs: Sequence[AircraftObs],
+    cfg: dict[str, Any],
+    now: datetime,
+    chronic: Collection[str] | None = None,
 ) -> dict[str, CellStats]:
-    """Per-cell degraded ratio for the aligned window ending at floor(now). Pure."""
+    """Per-cell degraded ratio for the aligned window ending at floor(now). Pure.
+    `chronic`: equipment-fault hexes to leave out (computed from `obs` when not given)."""
     c = _cfg(cfg)
     start, end = align_window(now, c["window_min"], c["step_min"])
+    chronic = set(chronic_aircraft(obs, cfg) if chronic is None else chronic)
+    excluded: dict[str, set[str]] = defaultdict(set)
     seen: dict[str, set[str]] = defaultdict(set)
     quality: dict[str, dict[str, AircraftQuality]] = defaultdict(dict)
     providers: dict[str, set[str]] = defaultdict(set)
@@ -145,6 +201,9 @@ def cell_stats(
             continue
         d = degraded(o, c["nic_bad_below"], c["nacp_bad_below"])
         if d is None:
+            continue
+        if o.hex in chronic:
+            excluded[cell].add(o.hex)
             continue
         providers[cell].add(o.provider)
         aq = quality[cell].setdefault(o.hex, AircraftQuality(o.hex))
@@ -180,6 +239,7 @@ def cell_stats(
             providers=sorted(providers.get(cell, set())),
             agreement=sum(agr) / len(agr) if agr else 1.0,
             bad_aircraft=bad_list,
+            chronic=sorted(excluded.get(cell, set())),
         )
     return out
 
@@ -412,7 +472,8 @@ def detect(
     active_set = set(active or ())
     res: list[Evidence] = []
     pool: dict[str, list[_Fix]] | None = None  # built lazily, only if a cell fires
-    for cell, st in sorted(cell_stats(obs, cfg, now).items()):
+    chronic = chronic_aircraft(obs, cfg)
+    for cell, st in sorted(cell_stats(obs, cfg, now, chronic).items()):
         if st.total == 0:
             continue  # MLAT-only / no quality data: cannot judge
         held = cell in active_set
@@ -459,7 +520,14 @@ def detect(
             passed=z_ok,
             baseline=None if b_med is None else round(b_med, 4),
         )
-        rules = [r_min, r_ratio, r_z]
+        r_deg = RuleResult(
+            rule="min_degraded",
+            description="Enough different aircraft lost GPS accuracy (equipment faults excluded)",
+            value=float(st.bad),
+            threshold=float(c["min_degraded"]),
+            passed=held or st.bad >= c["min_degraded"],
+        )
+        rules = [r_min, r_deg, r_ratio, r_z]
         if held:
             rules.append(
                 RuleResult(
@@ -473,7 +541,7 @@ def detect(
                     passed=True,
                 )
             )
-        if not (r_min.passed and r_ratio.passed and r_z.passed):
+        if not (r_min.passed and r_deg.passed and r_ratio.passed and r_z.passed):
             continue
 
         pts = [(a.first_bad.lat, a.first_bad.lon) for a in st.bad_aircraft if a.first_bad]
@@ -482,7 +550,7 @@ def detect(
         loc_reason = "disabled"
         if c["loc_enabled"]:
             if pool is None:
-                pool = _loc_pool(obs, cfg, now)
+                pool = {h: f for h, f in _loc_pool(obs, cfg, now).items() if h not in chronic}
             loc, loc_reason = localise_emitter(
                 pool,
                 wide_bad(pool, c["bad_dwell_frac"]) | {a.hex for a in st.bad_aircraft},
@@ -502,6 +570,11 @@ def detect(
         n_prov = len(st.providers)
         conf = min(1.0, st.total / c["full_coverage_aircraft"]) * st.agreement
         gaps: list[str] = []
+        if st.chronic:
+            gaps.append(
+                f"{len(st.chronic)} aircraft left out: degraded everywhere they flew while "
+                "aircraft around them were fine (equipment, not interference)"
+            )
         if n_prov <= 1:
             conf *= c["single_provider_factor"]
             gaps.append("single provider: no cross-aggregator confirmation")
