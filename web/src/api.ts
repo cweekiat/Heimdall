@@ -132,6 +132,18 @@ export interface AlertDetail {
   playbook: PlaybookAction[];
   /** 043: alert from a demo pack (read-only, never in the live store). */
   demo?: boolean;
+  /** 054: callsign / type / role per affected aircraft (ICAO hex). */
+  entity_info?: Record<string, EntityInfo>;
+}
+export interface EntityInfo {
+  flight: string | null;
+  registration: string | null;
+  type: string | null;
+  type_name: string | null;
+  role: string | null;
+  operator: string | null;
+  country: string | null;
+  mil: boolean;
 }
 export interface Cell {
   h3: string;
@@ -408,7 +420,8 @@ export const api = {
   /** 049: latest headlines, untrusted text (display only). */
   news: (limit = 40) => req<{ items: NewsItem[]; total: number }>(`/api/news?limit=${limit}`),
   /** 047: one military aircraft investigated (identity, type reference, take-off, activity, track). */
-  investigate: (hex: string) => req<Investigation>(`/api/military/aircraft/${encodeURIComponent(hex)}`),
+  investigate: (hex: string, at?: string) =>
+    req<Investigation>(`/api/military/aircraft/${encodeURIComponent(hex)}${at ? `?at=${encodeURIComponent(at)}` : ""}`),
   /** Estimated jammer locations from open GNSS-jamming alerts (GeoJSON ellipses). */
   jammers: () => req<unknown>("/api/jammers"),
   spaceWeather: () =>

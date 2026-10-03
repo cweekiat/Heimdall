@@ -97,7 +97,12 @@ def h3_center(cell: str) -> tuple[float, float]:
 
 
 def within_radius_nm(lat: float, lon: float, clat: float, clon: float, radius_nm: float) -> bool:
-    return haversine_km(lat, lon, clat, clon) <= radius_nm * KM_PER_NM
+    r_km = radius_nm * KM_PER_NM
+    # exact shortcut (055): the great-circle distance is never less than the latitude difference
+    # (111.19 km per degree on the 6371 km sphere); most points of a worldwide window fail here
+    if abs(lat - clat) * 111.19 > r_km:
+        return False
+    return haversine_km(lat, lon, clat, clon) <= r_km
 
 
 def point_in_polygon(lat: float, lon: float, ring: Sequence[tuple[float, float]]) -> bool:

@@ -228,9 +228,19 @@ def create_app(
         if st.get_alert(alert_id) is None and (demo := demo_packs.lookup_alert(alert_id)):
             return demo  # 043: read-only alert from a demo pack (never in the live store)
         a = need_alert(alert_id)
+        evs = st.get_evidence(a.evidence_ids)
+        from heimdall.api.military import entity_info  # local: military imports this module
+
+        hexes = sorted({x for e in evs for x in e.entities if len(x) == 6 and not x.isdigit()})
         return {
             "alert": a.model_dump(mode="json"),
-            "evidence": [e.model_dump(mode="json") for e in st.get_evidence(a.evidence_ids)],
+            "evidence": [e.model_dump(mode="json") for e in evs],
+            "entity_info": entity_info(
+                st,
+                hexes,
+                a.first_seen - timedelta(hours=6),
+                min(_now(), a.last_seen + timedelta(minutes=30)),
+            ),
             "feedback": [f.model_dump(mode="json") for f in st.feedback_for(alert_id)],
             "notes": [n.model_dump(mode="json") for n in st.notes_for(alert_id)],
             "actions": [_action_json(x) for x in st.actions_for(alert_id)],

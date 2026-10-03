@@ -90,7 +90,18 @@ class DemoPacks:
                 continue
             ids = set(a.get("evidence_ids", []))
             ev = [e for e in d.get("evidence", []) if e.get("id") in ids]
+            ents = {str(x).lower() for e in ev for x in e.get("entities", [])}
+            info: dict[str, dict[str, Any]] = {}
+            for step in d["steps"]:  # 054: identities from the recorded snapshots
+                for ac in step.get("snapshot") or []:
+                    hx = str(ac.get("hex", "")).lower()
+                    if hx in ents and hx not in info:
+                        info[hx] = {
+                            k: ac.get(k)
+                            for k in ("flight", "type", "type_name", "role", "operator", "country")
+                        } | {"registration": None, "mil": True}
             return {
+                "entity_info": info,
                 "alert": a,
                 "evidence": ev,
                 "feedback": [],

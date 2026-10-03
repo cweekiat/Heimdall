@@ -23,6 +23,8 @@ export class Investigator {
   private data: Investigation | null = null;
   private segs: Segment[] = [];
   private hex: string | null = null;
+  /** 054: investigate as of this time (an older alert); null = live. */
+  private at: string | null = null;
   private timer = 0;
 
   constructor(private hooks: InvestigateHooks) {
@@ -45,23 +47,25 @@ export class Investigator {
     });
   }
 
-  /** Open for one aircraft (ICAO hex) and refresh every 30 s while open. */
-  open(hex: string): void {
+  /** Open for one aircraft (ICAO hex); live views refresh every 30 s while open. `at`: as of a past
+   *  moment (e.g. an alert's last-seen time, so an ended episode still has its track). */
+  open(hex: string, at?: string): void {
     this.hex = hex.toLowerCase();
+    this.at = at && Date.now() - new Date(at).getTime() > 3_600_000 ? at : null;
     this.data = null;
     this.segs = [];
     this.body.replaceChildren(h("div", { class: "empty" }, "Investigating…"));
     openWindow("investigate");
     void this.load(true);
     window.clearInterval(this.timer);
-    this.timer = window.setInterval(() => void this.load(false), 30_000);
+    if (!this.at) this.timer = window.setInterval(() => void this.load(false), 30_000);
   }
 
   private async load(fly: boolean): Promise<void> {
     const hex = this.hex;
     if (!hex) return;
     try {
-      const d = await api.investigate(hex);
+      const d = await api.investigate(hex, this.at ?? undefined);
       if (hex !== this.hex) return;
       this.data = d;
       this.segs = trackSegments(d);
@@ -78,7 +82,7 @@ export class Investigator {
     const d = this.data;
     if (!d) return;
     const id = d.flight || d.registration || d.hex.toUpperCase();
-    setTitle("investigate", `Investigate ${id}`);
+    setTitle("investigate", `Investigate ${id}${this.at ? ` (as of ${fmtHM(this.at)})` : ""}`);
     const role = ROLE_LABEL[d.role] ?? d.role;
     const ref = refLines(d.reference);
     const dep = d.departure;

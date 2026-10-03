@@ -257,7 +257,11 @@ def classify(hex_: str, type_code: str | None, entry: Mapping[str, str] | None =
         type_name=_clean((entry or {}).get("type"))
         if not type_code or (entry or {}).get("icao_type", "").upper() in ("", type_code.upper())
         else None,
-        registration=_clean((entry or {}).get("registration"), 16),
+        # placeholders such as "@@@@@@@@" (unknown registration) are dropped
+        registration=reg
+        if (reg := _clean((entry or {}).get("registration"), 16))
+        and any(ch.isalnum() for ch in reg)
+        else None,
         country=country_of(hex_),
         tags=tags,
     )

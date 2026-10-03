@@ -64,6 +64,7 @@ class FakeStore:
         ident: Ident | None = None,
         local_only: bool = False,
         mil_only: bool = False,
+        mil_types: Sequence[str] = (),
     ) -> list[AircraftObs]:
         return [
             o
@@ -72,7 +73,7 @@ class FakeStore:
             and (h3_r4 is None or o.h3_r4 in h3_r4)
             and obs_match(o, bbox, ident, "hex")
             and not (local_only and o.is_global)
-            and (o.mil or not mil_only)
+            and (o.mil or not mil_only or (o.type_code or "").upper() in mil_types)
         ]
 
     def vessels_window(

@@ -120,7 +120,9 @@ KIND_WORDS = {
 }
 
 
-def _track(store: Store, hex_: str, now: datetime) -> list[milactivity.Point]:
+def _track(
+    store: Store, hex_: str, now: datetime, lookback_h: float = 6.0
+) -> list[milactivity.Point]:
     """72 h decimated track (MilTracks, when the pipeline runs in this process) + recent fixes."""
     pts: dict[float, milactivity.Point] = {}
     st = _STATE[0] if _STATE else None
@@ -128,7 +130,7 @@ def _track(store: Store, hex_: str, now: datetime) -> list[milactivity.Point]:
         for pt in st.tracks.tracks[hex_].points:
             pts[pt[0]] = pt
     for o in store.aircraft_window(
-        now - timedelta(hours=6), now + timedelta(seconds=1), ident=hex_
+        now - timedelta(hours=lookback_h), now + timedelta(seconds=1), ident=hex_
     ):
         t = o.ts.timestamp()
         alt = -1.0 if o.on_ground or o.alt_baro is None else float(o.alt_baro)
@@ -139,6 +141,49 @@ def _track(store: Store, hex_: str, now: datetime) -> list[milactivity.Point]:
         if not thin or pt[0] - thin[-1][0] >= 30:
             thin.append(pt)
     return thin
+
+
+def entity_info(
+    store: Store, hexes: list[str], start: datetime, end: datetime
+) -> dict[str, dict[str, Any]]:
+    """Callsign / type / role / operator per ICAO hex for alert details (affected aircraft):
+    newest position in [start, end] (the alert's time span), the 72 h military tracks and
+    plane-alert-db (type and registration when nothing was heard)."""
+    hexes = [x.lower() for x in hexes if len(x) == 6][:300]
+    if not hexes:
+        return {}
+    latest: dict[str, AircraftObs] = {}
+    for o in store.aircraft_window(start, end, ident=frozenset(hexes)):
+        if o.hex not in latest or o.ts >= latest[o.hex].ts:
+            latest[o.hex] = o
+    st = _STATE[0] if _STATE and _STATE[0].store is store else None
+    db = plane_alert.index()
+    out: dict[str, dict[str, Any]] = {}
+    for x in hexes:
+        ob = latest.get(x)
+        tr = st.tracks.tracks.get(x) if st is not None else None
+        flight = ((ob.flight if ob else None) or (tr.flight if tr else None) or "").strip() or None
+        tc = (
+            (ob.type_code if ob else None)
+            or (tr.type_code if tr else None)
+            or ((db.get(x) or {}).get("icao_type") or None)
+        )
+        mil = bool(ob.mil) if ob else (tr is not None or x in db)
+        i = classify(x, tc, db.get(x))
+        reg = (
+            (ob.registration if ob else None) or (tr.registration if tr else None) or i.registration
+        )
+        out[x] = {
+            "flight": flight,
+            "registration": reg,
+            "type": tc,
+            "type_name": i.type_name,
+            "role": i.role if mil else None,
+            "operator": i.operator,
+            "country": i.country,
+            "mil": mil,
+        }
+    return out
 
 
 def _mark_base(dep: dict[str, Any]) -> dict[str, Any]:
@@ -188,8 +233,8 @@ def bases_geojson(bbox: str | None) -> dict[str, Any]:
     }
 
 
-def investigate(store: Store, hex_: str, now: datetime) -> dict[str, Any]:
-    pts = _track(store, hex_, now)
+def investigate(store: Store, hex_: str, now: datetime, lookback_h: float = 6.0) -> dict[str, Any]:
+    pts = [p for p in _track(store, hex_, now, lookback_h) if p[0] <= now.timestamp() + 1]
     if not pts:
         raise HTTPException(404, "no recent positions for this aircraft")
     summary = military_summary(store, now, 30)
@@ -368,7 +413,15 @@ def military_router(store: Store) -> APIRouter:
         return bases_geojson(bbox)
 
     @r.get("/api/military/aircraft/{hex_id}")
-    def aircraft(hex_id: str = Path(pattern=r"^[0-9a-fA-F]{6}$")) -> dict[str, Any]:
-        return investigate(store, hex_id.lower(), datetime.now(UTC))
+    def aircraft(
+        hex_id: str = Path(pattern=r"^[0-9a-fA-F]{6}$"), at: datetime | None = None
+    ) -> dict[str, Any]:
+        """`at` (054): investigate as of a past moment, e.g. an alert's last-seen time."""
+        now = datetime.now(UTC)
+        if at is not None:
+            at = at if at.tzinfo else at.replace(tzinfo=UTC)
+            now = min(now, at)
+        # a past moment has no live 72 h track state: read 72 h of stored positions instead
+        return investigate(store, hex_id.lower(), now, 6.0 if at is None else 72.0)
 
     return r

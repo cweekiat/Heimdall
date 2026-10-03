@@ -3,7 +3,8 @@
 // affected aircraft / vessels. 042: a "Next step" box with the checks for this alert type, and actions that
 // follow the workflow (Acknowledge -> Confirm real / False alarm (reason) / Shelve -> Close: ended / Reopen).
 // No grading adjectives.
-import type { AlertDetail, AlertStatus, Evidence, Rule } from "./api";
+import type { AlertDetail, AlertStatus, EntityInfo, Evidence, Rule } from "./api";
+import { ROLE_LABEL, roleCss } from "./milroles";
 import { fmtNum, fmtTime, h } from "./dom";
 import { fmtLatLon, toMgrs } from "./geoutil";
 import { icon, iconButton } from "./icons";
@@ -64,9 +65,17 @@ export function ruleLine(r: Rule): string {
   return `${r.description}: ${r.value === null ? "n/a" : f(r.value)}${ctx ? ` (${ctx})` : ""}`;
 }
 
-/** Entity id -> kind and label: 6 hex chars = aircraft (ICAO), 9 digits = vessel (MMSI). */
-export function entityLabel(e: string): { kind: "aircraft" | "vessel" | "other"; text: string } {
-  if (/^[0-9a-f]{6}$/i.test(e)) return { kind: "aircraft", text: `Aircraft ${e.toUpperCase()}` };
+/** 054: open the aircraft investigation (set by main.ts). */
+export const inspectorHooks: { investigate: (hex: string, at?: string) => void } = { investigate: () => undefined };
+
+/** Entity id -> kind and label: 6 hex chars = aircraft (ICAO), 9 digits = vessel (MMSI). With identity
+ *  (054) an aircraft reads "callsign · type", falling back to registration, then the hex. */
+export function entityLabel(e: string, info?: EntityInfo): { kind: "aircraft" | "vessel" | "other"; text: string } {
+  if (/^[0-9a-f]{6}$/i.test(e)) {
+    const id = info?.flight || info?.registration || e.toUpperCase();
+    const what = info?.type_name || info?.type;
+    return { kind: "aircraft", text: what ? `${id} · ${what}` : info ? id : `Aircraft ${e.toUpperCase()}` };
+  }
   if (/^\d{9}$/.test(e)) return { kind: "vessel", text: `Vessel MMSI ${e}` };
   return { kind: "other", text: e };
 }
@@ -94,7 +103,8 @@ function body(d: AlertDetail): Node[] {
     .sort((x, y) => (x.window_end < y.window_end ? 1 : -1))
     .flatMap((e) => e.rules.filter((r) => r.passed))
     .filter((r) => !seenRule.has(r.rule) && Boolean(seenRule.add(r.rule)));
-  const ents = [...new Set(evs.flatMap((e) => e.entities))].map((e) => ({ id: e, ...entityLabel(e) }));
+  const infos = d.entity_info ?? {};
+  const ents = [...new Set(evs.flatMap((e) => e.entities))].map((e) => ({ id: e, info: infos[e.toLowerCase()], ...entityLabel(e, infos[e.toLowerCase()]) }));
   const checks = CHECKS[a.kind] ?? [];
   const open = stageOf(a.status) !== "closed";
   return [
@@ -130,8 +140,21 @@ function body(d: AlertDetail): Node[] {
           ...ents.map((e) =>
             h(
               "button",
-              { type: "button", class: `chip ent-${e.kind}`, title: "Show its recent track", "aria-pressed": String(state.selectedEntity === e.id), onclick: () => patch({ selectedEntity: e.id }) },
+              {
+                type: "button",
+                class: `chip ent-${e.kind}`,
+                title:
+                  e.kind === "aircraft"
+                    ? [e.id.toUpperCase(), e.info?.role ? ROLE_LABEL[e.info.role] : null, e.info?.operator ?? e.info?.country, "Click: track and investigation"].filter(Boolean).join(" · ")
+                    : "Show its recent track",
+                "aria-pressed": String(state.selectedEntity === e.id),
+                onclick: () => {
+                  patch({ selectedEntity: e.id });
+                  if (e.kind === "aircraft") inspectorHooks.investigate(e.id, a.last_seen);
+                },
+              },
               icon(e.kind === "vessel" ? "ship" : "plane", 14),
+              e.info?.role ? h("i", { class: "role-dot", style: `background:${roleCss(e.info.role)}` }) : null,
               e.text,
             ),
           ),

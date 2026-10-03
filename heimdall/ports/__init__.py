@@ -74,6 +74,7 @@ class Store(Protocol):
         ident: Ident | None = None,
         local_only: bool = False,
         mil_only: bool = False,
+        mil_types: Sequence[str] = (),
     ) -> list[AircraftObs]: ...
     def vessels_window(
         self,

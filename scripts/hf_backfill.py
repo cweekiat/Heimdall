@@ -9,6 +9,9 @@ events inserted into the hot store (stop `heimdall.run` first: DuckDB locks the 
 
 Usage: uv run python scripts/hf_backfill.py --start 2026-09-15 --end 2026-10-02
        [--out data/replay/hf/wspr.jsonl] [--store data/heimdall.duckdb] [--chunk-h 6]
+       uv run python scripts/hf_backfill.py --from-file data/replay/hf/wspr.jsonl \
+         --store data/heimdall.duckdb
+       (insert an earlier download without fetching again)
 """
 
 from __future__ import annotations
@@ -22,9 +25,28 @@ import httpx
 
 from heimdall import config
 from heimdall.ingest.wspr import DEFAULT_BBOX, build_query, parse_wspr
+from heimdall.schemas import GeoEvent
+
+
+def insert(events: list[GeoEvent], store_path: str) -> None:
+    from heimdall.adapters.duckdb_store import DuckDBStore
+
+    st = config.settings().storage
+    store = DuckDBStore(store_path, memory_limit=st.duckdb_memory_limit, threads=st.duckdb_threads)
+    n = 0
+    for i in range(0, len(events), 20_000):  # chunks keep memory flat
+        n += store.insert_events(events[i : i + 20_000])
+    print(f"inserted {n} events into {store_path}")
 
 
 async def main(a: argparse.Namespace) -> None:
+    if a.from_file:
+        with open(a.from_file) as f:
+            evs = [GeoEvent.model_validate_json(line) for line in f if line.strip()]
+        if not a.store:
+            raise SystemExit("--from-file needs --store")
+        insert(evs, a.store)
+        return
     src = config.sources()["sources"]["wspr_live"]
     base = str(src["base"]).rstrip("/")
     bbox = tuple(float(v) for v in src.get("bbox", DEFAULT_BBOX))
@@ -58,16 +80,14 @@ async def main(a: argparse.Namespace) -> None:
             f.write(e.model_dump_json() + "\n")
     print(f"wrote {len(events)} events to {out}")
     if a.store:
-        from heimdall.adapters.duckdb_store import DuckDbStore
-
-        store = DuckDbStore(a.store)
-        print(f"inserted {store.insert_events(events)} events into {a.store}")
+        insert(events, a.store)
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--start", type=date.fromisoformat, required=True)
-    p.add_argument("--end", type=date.fromisoformat, required=True)
+    p.add_argument("--start", type=date.fromisoformat)
+    p.add_argument("--end", type=date.fromisoformat)
+    p.add_argument("--from-file", help="insert this earlier download instead of fetching")
     p.add_argument("--out", default="data/replay/hf/wspr.jsonl")
     p.add_argument("--store", help="also insert into this DuckDB store (live server stopped)")
     p.add_argument("--chunk-h", type=int, default=6)
