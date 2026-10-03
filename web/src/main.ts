@@ -5,7 +5,7 @@ import type { Alert } from "./api";
 import { renderBoard } from "./board";
 import { ago, h } from "./dom";
 import { icon, iconButton } from "./icons";
-import { renderEntity, renderInspector } from "./inspector";
+import { inspectorHooks, renderEntity, renderInspector } from "./inspector";
 import { fmtLatLon, toMgrs } from "./geoutil";
 import { explainBlock, sourceNames } from "./explain";
 import { installKeys } from "./keys";
@@ -88,6 +88,7 @@ const sourcesWin = new Sources();
 // 039: worldwide military air activity (contacts, roles, theatres, high-interest aircraft)
 // 047: click a military aircraft -> what it is, whose, capabilities, where from, what it may be doing now
 const investigator = new Investigator({ flyTo: (lon, lat) => ops?.flyTo(lon, lat), render: () => ops?.render() });
+inspectorHooks.investigate = (hex, at) => investigator.open(hex, at); // 054: affected aircraft in alert details
 const milWin = new MilitaryPanel({ flyTo: (lon, lat) => ops?.flyTo(lon, lat), investigate: (hex) => investigator.open(hex) });
 // 049: world news headlines (context only, display only)
 const newsWin = new NewsWindow();
