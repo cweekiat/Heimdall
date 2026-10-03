@@ -113,6 +113,45 @@ def required_persistence(kind: AlertKind | str, cfg: Mapping[str, Any] | None = 
     return int(c["persistence_windows"].get(str(kind), c["default_persistence"]))
 
 
+#: bands whose detectors are experimental (ADR-008 s4): alone they never exceed medium
+EXPERIMENTAL_BANDS = frozenset({Band.HF, Band.SAT_DOWNLINK, Band.L_1400, Band.C_SAR})
+
+
+def _cross_band(
+    kind: AlertKind,
+    sev: Severity,
+    group: Sequence[Evidence],
+    corr: Sequence[Corroboration],
+    families: set[str] | frozenset[str],
+    band_of: Mapping[str, Sequence[Band]],
+    notice_ids: set[str],
+    c: Mapping[str, Any],
+) -> tuple[Severity, str]:
+    """P7 (052) cross-band rule. An experimental band alone stays <= medium unless another band or
+    an official notice supports it; support on another band from an independent source family
+    raises low / medium one step (never above high). Returns (severity, summary note)."""
+    if kind == AlertKind.COMPOSITE:
+        return sev, ""
+    own = {b for e in group for b in e.bands if b != Band.NONE}
+    sup = {
+        b
+        for x in corr
+        if x.relation == "supports"
+        for b in band_of.get(x.evidence_id, ())
+        if b != Band.NONE
+    } - own
+    noticed = any(x.relation == "supports" and x.evidence_id in notice_ids for x in corr)
+    words = ", ".join(sorted(b.value for b in sup))
+    if own and own <= EXPERIMENTAL_BANDS and len(own) < 2 and not sup and not noticed:
+        return min(sev, Severity.MEDIUM, key=_SEV_ORDER.index), ""
+    if sup and len(families) >= 2 and c.get("cross_band_boost", True):
+        if sev in (Severity.LOW, Severity.MEDIUM):
+            up = _SEV_ORDER[_SEV_ORDER.index(sev) + 1]
+            return up, f"Also seen on another band ({words}) by an independent source: severity +1."
+        return sev, f"Also seen on another band ({words})."
+    return sev, ""
+
+
 def severity_for(score: float, confidence: float, cfg: Mapping[str, Any] | None = None) -> Severity:
     th = _cfg(cfg)["severity"]
     s = score * confidence
@@ -398,6 +437,8 @@ def fuse(
         and e.persistence >= required_persistence(e.kind, c)
     ]
     xs = cross_source(gated, gated, notices or [], c["corroboration"])
+    band_of = {e.id: e.bands for e in gated}
+    notice_ids = {n.id for n in notices or []}
     fam_idx = family_index(gated, notices or [], c["source_family"])
     conn_idx = _connector_index(gated, notices or [])
     groups: dict[tuple[AlertKind, str | None], list[Evidence]] = defaultdict(list)
@@ -428,12 +469,7 @@ def fuse(
             conf = min(e.coverage.confidence for e in group)
         else:
             sev = severity_for(lead.score, lead.coverage.confidence, c)
-            if kind == AlertKind.SPECTRUM_ANOMALY and len({b for e in group for b in e.bands}) < 2:
-                # ADR-008 s4: one experimental band alone is never more than medium
-                sev = min(sev, Severity.MEDIUM, key=_SEV_ORDER.index)
             conf = lead.coverage.confidence
-        if control:
-            sev = Severity.INFO
         prev = by_key.get((kind, cell))
         d = dismissed.get((kind, cell))
         if (
@@ -467,6 +503,9 @@ def fuse(
             if x.relation == "supports":
                 fam_sup |= fam_idx.get(x.evidence_id, set())
         families = independent_families(fam_own | fam_sup)
+        sev, band_note = _cross_band(kind, sev, group, corr, families, band_of, notice_ids, c)
+        if control:
+            sev = Severity.INFO
         status_c: CorrStatus = (
             "contradicted"
             if any(x.relation == "contradicts" for x in corr)
@@ -497,6 +536,8 @@ def fuse(
         summary = _summary(kind, group, lead, cell) + f" Admiralty {adm}."
         if len(families) > 1:
             summary += f" Independent source families: {', '.join(sorted(families))}."
+        if band_note:
+            summary += f" {band_note}"
         if cf < 1.0:
             summary += f" Confidence x{cf:.2f}: " + "; ".join(n.note for n in cnotes) + "."
         if control:
