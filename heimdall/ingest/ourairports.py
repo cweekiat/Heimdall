@@ -83,6 +83,7 @@ def parse_csv(text: str) -> list[Airfield]:
 class AirfieldIndex:
     def __init__(self, fields: Sequence[Airfield]) -> None:
         self.n = len(fields)
+        self.by_ident: dict[str, Airfield] = {f.ident.upper(): f for f in fields if f.ident}
         self.grid: dict[tuple[int, int], list[Airfield]] = {}
         for f in fields:
             self.grid.setdefault((math.floor(f.lat), math.floor(f.lon)), []).append(f)

@@ -235,13 +235,22 @@ def bases_geojson(bbox: str | None) -> dict[str, Any]:
 
 def investigate(store: Store, hex_: str, now: datetime, lookback_h: float = 6.0) -> dict[str, Any]:
     pts = [p for p in _track(store, hex_, now, lookback_h) if p[0] <= now.timestamp() + 1]
+    if not pts:  # 056: older than the hot store -> the Parquet lake (up to 72 h before `now`)
+        from heimdall.api.airforce import LakeFleetReader
+
+        reader = LakeFleetReader(config.settings().storage.lake_dir)
+        pts = reader.history(hex_, now - timedelta(hours=72), now + timedelta(seconds=1))
     if not pts:
         raise HTTPException(404, "no recent positions for this aircraft")
     summary = military_summary(store, now, 30)
     me = next((a for a in summary["aircraft"] if a["hex"] == hex_), None)
     rows = store.aircraft_window(now - timedelta(hours=6), now + timedelta(seconds=1), ident=hex_)
-    type_code = (me or {}).get("type") or next(
-        (o.type_code for o in reversed(rows) if o.type_code), None
+    type_code = (
+        (me or {}).get("type")
+        or next((o.type_code for o in reversed(rows) if o.type_code), None)
+        or (
+            (plane_alert.index().get(hex_) or {}).get("icao_type") or None
+        )  # 056: lake rows lack it
     )
     ident = classify(hex_, type_code, plane_alert.index().get(hex_))
     airfields = ourairports.index()

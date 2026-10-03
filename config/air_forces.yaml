@@ -1,0 +1,31 @@
+# Air force watch (task 056): fleets tracked as a whole - where each aircraft is, home or away, and movements.
+# A fleet = plane-alert-db entries whose operator matches `operators` (case-insensitive substring).
+# home_bases / detachments: ICAO airfield idents (positions from OurAirports). Detachments are long-standing overseas
+# training units from public RSAF / MINDEF information; aircraft there are "routine", not a deployment. Verify and
+# extend; a missing detachment only makes the tool call a routine stay "abroad".
+air_forces:
+  rsaf:
+    name: Republic of Singapore Air Force
+    short: RSAF
+    operators: ["republic of singapore air force"]
+    home_country: SG
+    home_bases:
+      WSAP: Paya Lebar Air Base
+      WSAT: Tengah Air Base
+      WSAC: Changi Air Base (East)
+      WSSL: Seletar
+      WSAG: Sembawang Air Base
+      WSSS: Singapore Changi
+    detachments:
+      YPEA: {name: "RAAF Pearce, Australia", unit: "Flying Training Institute / 130 Sqn (PC-21)"}
+      LFBC: {name: "Cazaux Air Base, France", unit: "150 Sqn advanced jet training (M-346)"}
+      KMUO: {name: "Mountain Home AFB, USA", unit: "Peace Carvin V (F-15SG)"}
+      KFSM: {name: "Ebbing ANGB / Fort Smith, USA", unit: "F-16 / F-35 training"}
+      KGPM: {name: "Grand Prairie, USA", unit: "Peace Prairie (CH-47F)"}
+      KMZJ: {name: "Marana / Pinal Airpark, USA", unit: "Peace Vanguard (AH-64D)"}
+      YBOK: {name: "Oakey, Australia", unit: "helicopter training (Super Puma / H225M)"}
+    # strategic support types whose moves abroad are worth a note (tankers, transports, AEW)
+    watch_types: [A332, K35R, KC46, C130, C30J, GLF5, G550, B762, H47, EC25, A400]
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen: RSAF F-15SG / F-16 fighters are not listed and
+      normally fly without public position reports, so this shows the support, transport and training fleets.
