@@ -1900,3 +1900,11 @@ button.mil-bar[aria-pressed="true"] { outline: 1px solid var(--accent, #58a6ff);
 .th-comps { list-style: none; margin: 0 0 6px; padding: 0 0 0 8px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .th-comps li { display: flex; flex-direction: column; opacity: 0.75; }
 .th-comps li.above { opacity: 1; border-left: 2px solid var(--military, #f0a020); padding-left: 6px; }
+
+/* 056: air force watch */
+.af { display: flex; flex-direction: column; gap: 8px; }
+.af-ac { display: grid; grid-template-columns: minmax(80px, auto) 1fr; gap: 2px 8px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line, #30363d); color: inherit; font: inherit; padding: 5px 2px; cursor: pointer; }
+.af-ac small { grid-column: 1 / -1; opacity: 0.75; font-size: 11px; }
+.af-note { margin: 3px 0; padding: 4px 6px; border-left: 3px solid var(--line, #30363d); }
+.af-note.watch { border-left-color: var(--military, #f0a020); background: color-mix(in srgb, var(--military, #f0a020) 8%, transparent); }
+.af-move { margin: 2px 0; font-size: 12px; }

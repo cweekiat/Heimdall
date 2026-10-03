@@ -48,6 +48,7 @@ import { Investigator } from "./investigate";
 import { GlobalLayers } from "./globallayers";
 import { findRegions } from "./regions";
 import { NewsWindow } from "./news";
+import { AirForceWindow } from "./airforces";
 import { ScenarioPanel } from "./scenario";
 import { demoLive, demoLiveLayers } from "./demolive";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
@@ -90,6 +91,8 @@ const sourcesWin = new Sources();
 const investigator = new Investigator({ flyTo: (lon, lat) => ops?.flyTo(lon, lat), render: () => ops?.render() });
 inspectorHooks.investigate = (hex, at) => investigator.open(hex, at); // 054: affected aircraft in alert details
 const milWin = new MilitaryPanel({ flyTo: (lon, lat) => ops?.flyTo(lon, lat), investigate: (hex) => investigator.open(hex) });
+// 056: air force watch (fleet locations, detachments, movements), RSAF first
+const afWin = new AirForceWindow({ investigate: (hex, at) => investigator.open(hex, at), flyTo: (lon, lat) => ops?.flyTo(lon, lat) });
 // 049: world news headlines (context only, display only)
 const newsWin = new NewsWindow();
 // 046: IntelSky-style military aircraft list (tabs, sort, filters, hide others, CSV/KML)
@@ -178,6 +181,10 @@ const winToggles: Record<string, () => void> = {
   m: () => toggleWindow("military"),
   y: () => toggleWindow("aclist"),
   n: () => toggleWindow("news"),
+  a: () => {
+    toggleWindow("airforces");
+    if (isOpen("airforces")) void afWin.refresh();
+  },
   p: () => void openLiveDemo(),
   ",": () => toggleWindow("settings"),
   g: () => ops?.toggleGlobe(),
@@ -192,6 +199,7 @@ const tools: Tool[] = [
   { id: "military", icon: "plane", label: "Military", key: "m", toggle: winToggles.m!, hint: "Military aircraft worldwide, roles, theatres" },
   { id: "aclist", icon: "filter", label: "Aircraft list", key: "y", toggle: winToggles.y!, hint: "Sort, filter, select and export military aircraft" },
   { id: "news", icon: "notice", label: "News", key: "n", toggle: winToggles.n!, hint: "World headlines for context (never used for alerts)" },
+  { id: "airforces", icon: "plane", label: "Air forces", key: "a", toggle: winToggles.a!, hint: "Where an air force's visible fleet is: home, detachments, abroad, movements" },
   { id: "scenario", icon: "timeline", label: "Demo", key: "p", toggle: () => void openLiveDemo(), hint: "Step through a real recorded case (e.g. Operation Midnight Hammer)" },
   { id: "sources", icon: "sources", label: T.sources, key: "u", toggle: winToggles.u!, hint: "Source health, on/off, API keys" },
   { id: "settings", icon: "settings", label: "Settings", key: ",", toggle: winToggles[","]!, hint: "Theme, map overlays, layout" },
@@ -682,6 +690,7 @@ async function boot(): Promise<void> {
       safe("aclist", () => acList.start());
       safe("context", () => globalLayers.start());
       safe("news", () => newsWin.start());
+      safe("airforces", () => afWin.start());
     });
     void refreshSpaceWeather();
     setInterval(() => void refreshSpaceWeather(), 300_000);

@@ -219,6 +219,12 @@ High North, …) to jump there. HF coverage now spans Eurasia east of 20°E and 
 more sources are drawn, and the hover says they can be wrong or old). **News** (rail or `n`): BBC World and Al
 Jazeera headlines for context. None of these raise alerts or feed the AI brief.
 
+**Air force watch** (rail button or `a`). Pick an air force (the Republic of Singapore Air Force is set up first) to
+see where its visible aircraft are: airborne, at home bases, at known overseas training detachments (for the RSAF,
+for example RAAF Pearce), elsewhere at home or abroad, with movements between countries, flights per day and notes
+such as "tanker abroad: possible deployment, exercise or transport mission". Click an aircraft to investigate it.
+Fighters usually do not broadcast, so this shows support, transport and training fleets.
+
 **Military roles on the map and the aircraft list** (rail button or `y`). Military planes are coloured by role. Pick
 roles (tanker, surveillance, transport, helicopter, …) in Filters → Quick filters, in the Military panel or in the
 list to show only those. The list has All / In view / Selected tabs, sortable columns, filters for callsign, type,

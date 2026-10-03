@@ -413,6 +413,9 @@ export const api = {
   spectrumStatus: () => req<unknown>("/api/spectrum/status"),
   /** 039: worldwide military aircraft with identity, roles, countries, theatres. */
   military: () => req<MilitarySummary>("/api/military"),
+  /** 056: air force watch (fleet picture per air force). */
+  airForces: () => req<{ key: string; name: string; short: string }[]>("/api/airforces"),
+  airForce: (key: string, days: number) => req<AirForcePicture>(`/api/airforces/${encodeURIComponent(key)}?days=${days}`),
   /** 051: theatre activity index (components vs each theatre's own normal). */
   theatreIndex: () => req<TheatreIndexResp>("/api/military/theatres/index"),
   /** 049: named military bases worldwide (OpenStreetMap, ODbL). */
@@ -609,4 +612,51 @@ export interface TheatreIndexResp {
   generated: string;
   theatres: TheatreIdx[];
   note: string;
+}
+
+/** 056 */
+export interface AfPlace {
+  ident: string | null;
+  name: string;
+  country: string | null;
+  kind: string;
+  unit: string | null;
+}
+export interface AfAircraft {
+  hex: string;
+  ident: string;
+  type: string | null;
+  type_name: string | null;
+  status: string;
+  place: AfPlace | null;
+  since: string | null;
+  last_seen: string;
+  lat: number;
+  lon: number;
+  flights: number;
+}
+export interface AfMove {
+  hex: string;
+  dep_t: string;
+  arr_t: string;
+  dep: AfPlace | null;
+  arr: AfPlace | null;
+  hours: number;
+}
+export interface AirForcePicture {
+  key: string;
+  name: string;
+  short: string;
+  days: number;
+  fleet_listed: number;
+  seen: number;
+  status: Record<string, number>;
+  types: Record<string, number>;
+  aircraft: AfAircraft[];
+  movements: AfMove[];
+  flights_per_day: { day: string; flights: number }[];
+  notes: { level: "info" | "watch"; text: string; hexes: string[] }[];
+  not_seen: { hex: string; registration: string | null; type: string | null; type_name: string | null }[];
+  limits: string;
+  attribution: string;
 }
