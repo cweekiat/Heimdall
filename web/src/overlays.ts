@@ -179,6 +179,23 @@ export function showShift(hours = 8): void {
     { "aria-label": "Hours covered", onchange: (e) => showShift(Number((e.target as HTMLSelectElement).value)) },
     ...[4, 8, 12, 24].map((n) => h("option", { value: String(n), selected: n === hours }, `Last ${n} h`)),
   );
+  const save = (text: string, name: string): void => {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+    const a = h("a", { href: url, download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+  const sitrep = (ev: Event): void => {
+    const b = ev.currentTarget as HTMLButtonElement;
+    b.disabled = true;
+    void api
+      .sitrep()
+      .then((r) => save(r.markdown, `heimdall-sitrep-${r.generated.slice(0, 10)}.md`))
+      .catch(() => (b.textContent = "SITREP unavailable"))
+      .finally(() => (b.disabled = false));
+  };
   const download = (): void => {
     const url = URL.createObjectURL(new Blob([md], { type: "text/markdown" }));
     const a = h("a", { href: url, download: `heimdall-shift-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.md` });
@@ -187,5 +204,5 @@ export function showShift(hours = 8): void {
     a.remove();
     URL.revokeObjectURL(url);
   };
-  open("shift", T.shift, "shift", h("h2", {}, T.shift), h("div", { class: "row" }, sel, h("button", { class: "primary", onclick: download }, "Download Markdown (local file)")), briefBox(hours, () => showShift(hours)), h("pre", {}, shiftMarkdown(hours)));
+  open("shift", T.shift, "shift", h("h2", {}, T.shift), h("div", { class: "row" }, sel, h("button", { class: "primary", onclick: download }, "Download Markdown (local file)"), h("button", { type: "button", onclick: sitrep, title: "Last 24 h: theatres, alerts, military, natural factors" }, "Daily SITREP (24 h)")), briefBox(hours, () => showShift(hours)), h("pre", {}, shiftMarkdown(hours)));
 }
