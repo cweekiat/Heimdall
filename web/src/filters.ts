@@ -151,7 +151,7 @@ export interface PanelCtx {
 /** Detectors whose alerts the Detections group can show or hide (order = list order). */
 export const DETECTIONS: { kind: string; label: string; icon: IconName }[] = [
   { kind: "gnss_jamming", label: "GPS jamming", icon: "radio" },
-  { kind: "gnss_spoofing", label: "GPS spoofing (fake position)", icon: "gps" },
+  { kind: "gnss_spoofing", label: "GPS spoofing", icon: "gps" },
   { kind: "mil_orbit", label: "Military aircraft circling", icon: "plane" },
   { kind: "ais_gap", label: "Ship went dark (AIS off)", icon: "ship" },
   { kind: "ais_spoofing", label: "Ship position faked", icon: "ship" },

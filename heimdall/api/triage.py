@@ -10,12 +10,15 @@ S = AlertStatus
 
 # Statuses an analyst may set; NEW and EXPIRED are pipeline-owned.
 _OPEN = {S.NEW, S.ACKNOWLEDGED, S.UNDER_REVIEW, S.SHELVED}
+# 042 workflow: new -> acknowledged (owned) -> confirmed (real) -> resolved (activity over);
+# any open state -> dismissed (false alarm, reason) or shelved (until a time, reason).
 ALLOWED: dict[AlertStatus, set[AlertStatus]] = {
     S.NEW: {S.ACKNOWLEDGED, S.UNDER_REVIEW, S.CONFIRMED, S.DISMISSED, S.SHELVED},
-    S.ACKNOWLEDGED: {S.UNDER_REVIEW, S.CONFIRMED, S.DISMISSED, S.SHELVED},
-    S.UNDER_REVIEW: {S.ACKNOWLEDGED, S.CONFIRMED, S.DISMISSED, S.SHELVED},
+    S.ACKNOWLEDGED: {S.UNDER_REVIEW, S.CONFIRMED, S.RESOLVED, S.DISMISSED, S.SHELVED},
+    S.UNDER_REVIEW: {S.ACKNOWLEDGED, S.CONFIRMED, S.RESOLVED, S.DISMISSED, S.SHELVED},
     S.SHELVED: {S.ACKNOWLEDGED, S.UNDER_REVIEW, S.CONFIRMED, S.DISMISSED},
-    S.CONFIRMED: {S.UNDER_REVIEW},  # reopen
+    S.CONFIRMED: {S.RESOLVED, S.UNDER_REVIEW},  # close when the activity ends, or reopen
+    S.RESOLVED: {S.UNDER_REVIEW},  # reopen
     S.DISMISSED: {S.UNDER_REVIEW},  # reopen
     S.EXPIRED: set(),
 }

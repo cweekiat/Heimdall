@@ -72,10 +72,24 @@ class UiCfg(BaseModel):
     overlays: list[str] = Field(default_factory=lambda: ["borders"])
 
 
+class LlmCfg(BaseModel):
+    """Local language model for shift briefs (task 044). Loopback URLs only (no egress)."""
+
+    enabled: bool = True
+    url: str = "http://127.0.0.1:11434"  # Ollama
+    model: str = "qwen2.5:7b-instruct"
+    timeout_s: float = 120.0
+
+
+class BriefCfg(BaseModel):
+    llm: LlmCfg = Field(default_factory=LlmCfg)
+
+
 class Settings(BaseModel):
     storage: StorageCfg = Field(default_factory=StorageCfg)
     api: ApiCfg = Field(default_factory=ApiCfg)
     ui: UiCfg = Field(default_factory=UiCfg)
+    brief: BriefCfg = Field(default_factory=BriefCfg)
     aois: list[AOI] = Field(default_factory=list)
     # live runtime: False = start with no areas; the analyst draws them (config list = presets
     # for demo, replay, backtests and tests)

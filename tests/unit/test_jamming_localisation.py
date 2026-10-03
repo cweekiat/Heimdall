@@ -31,7 +31,7 @@ def test_known_jammer_mixed_altitudes_within_25km(seed: int) -> None:
         assert e.features["emitter_method"] == 1.0
         assert _err(e) < 25.0, (e.h3_cell, _err(e))
         assert e.features["emitter_agreement"] >= 0.9
-        assert e.detector_version == "jamming-1.2.0"
+        assert e.detector_version == "jamming-1.3.0"
 
 
 def test_horizon_fit_evidence_is_explainable_and_backwards_compatible() -> None:
@@ -56,9 +56,11 @@ def test_horizon_fit_evidence_is_explainable_and_backwards_compatible() -> None:
     assert e.bands and e.bands[0].value == "l1_gnss"
 
 
-def test_fewer_than_3_degraded_aircraft_falls_back_to_centroid() -> None:
-    e = jamming.detect(jammed_cell(n_aircraft=8, n_jammed=2), CFG, NOW, None)[0]
-    assert e.features["bad"] == 2
+def test_fewer_than_5_degraded_aircraft_falls_back_to_centroid() -> None:
+    """041: a fit needs >= 5 degraded aircraft (3-4 gave ~130 km ellipses); 2 do not alert."""
+    assert jamming.detect(jammed_cell(n_aircraft=8, n_jammed=2), CFG, NOW, None) == []
+    e = jamming.detect(jammed_cell(n_aircraft=12, n_jammed=4), CFG, NOW, None)[0]
+    assert e.features["bad"] == 4
     assert e.features["emitter_method"] == 0.0
     assert "emitter_agreement" not in e.features
     assert e.features["ellipse_major_km"] > 0 and e.geometry
@@ -80,7 +82,7 @@ def test_disabled_by_config_uses_centroid() -> None:
 
 def test_colocated_healthy_and_degraded_same_altitude_is_not_trusted() -> None:
     """All aircraft cross one cell at one altitude: geometry cannot separate them -> centroid."""
-    e = jamming.detect(jammed_cell(n_aircraft=12, n_jammed=4), {}, NOW, None)[0]
+    e = jamming.detect(jammed_cell(n_aircraft=16, n_jammed=6), {}, NOW, None)[0]
     assert e.features["emitter_method"] == 0.0
     assert any("agreement" in g or "healthy" in g for g in e.gaps)
 

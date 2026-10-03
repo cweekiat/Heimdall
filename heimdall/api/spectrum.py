@@ -19,6 +19,7 @@ from fastapi import APIRouter
 from heimdall import config
 from heimdall.detect import spectrum_state as ss
 from heimdall.fuse.fusion import ACTIVE
+from heimdall.geo import haversine_km
 from heimdall.ports import Store
 from heimdall.schemas import AlertKind
 
@@ -101,8 +102,45 @@ def ellipse_ring(
     return out
 
 
+JAMMER_MERGE_KM = 150.0  # 041: estimates closer than this are one emitter seen from many cells
+JAMMER_MAX_MAJOR_KM = 300.0  # 041: wider ellipses say "somewhere in the region", not a location
+
+
+def merge_jammers(feats: list[dict[str, Any]], km: float = JAMMER_MERGE_KM) -> list[dict[str, Any]]:
+    """One feature per emitter: best fit (highest agreement, then smallest ellipse) first, and
+    every estimate within `km` of an already kept one folds into it (its alert refs are listed)."""
+    ranked = sorted(
+        feats,
+        key=lambda f: (-(f["properties"].get("agreement") or 0.0), f["properties"]["major_km"]),
+    )
+    kept: list[dict[str, Any]] = []
+    for f in ranked:
+        p = f["properties"]
+        home = next(
+            (
+                k
+                for k in kept
+                if haversine_km(p["lat"], p["lon"], k["properties"]["lat"], k["properties"]["lon"])
+                <= km
+            ),
+            None,
+        )
+        if home is None:
+            kept.append({**f, "properties": {**p, "alerts": [p["ref"]], "n_alerts": 1}})
+        else:
+            hp = home["properties"]
+            hp["alerts"].append(p["ref"])
+            hp["n_alerts"] += 1
+            hp["last_seen"] = max(hp["last_seen"], p["last_seen"])
+    return kept
+
+
 def jammers(store: Store) -> dict[str, Any]:
-    """Estimated jammer locations from open GNSS-jamming alerts (lead evidence per alert)."""
+    """Estimated jammer locations from open GNSS-jamming alerts (lead evidence per alert).
+
+    041: only radio-horizon fits are shown (a centroid of degraded aircraft is the affected area,
+    not an emitter), ellipses wider than JAMMER_MAX_MAJOR_KM are dropped, and nearby estimates of
+    the same emitter are merged."""
     feats = []
     for al in store.list_alerts(status=list(ACTIVE), limit=500):
         if al.kind != AlertKind.GNSS_JAMMING:
@@ -112,6 +150,8 @@ def jammers(store: Store) -> dict[str, Any]:
             continue
         e = max(evs, key=lambda x: x.window_end)
         f = e.features
+        if f.get("emitter_method") != 1.0 or f.get("ellipse_major_km", 0.0) > JAMMER_MAX_MAJOR_KM:
+            continue
         lat, lon = f["emitter_lat"], f["emitter_lon"]
         ring = ellipse_ring(
             lat, lon, f.get("ellipse_major_km", 5), f.get("ellipse_minor_km", 5),
@@ -137,7 +177,7 @@ def jammers(store: Store) -> dict[str, Any]:
                 },
             }
         )
-    return {"type": "FeatureCollection", "features": feats}
+    return {"type": "FeatureCollection", "features": merge_jammers(feats)}
 
 
 def space_weather(store: Store, now: datetime) -> dict[str, Any]:

@@ -28,9 +28,8 @@ import { isCritical, PRIORITY, renderQueue, visibleAlerts } from "./panels";
 /** Alerts drawn on the map: not expired or dismissed, unless the queue filter asks for a closed status. */
 const OPEN_ON_MAP = ["new", "acknowledged", "under_review", "shelved", "confirmed"];
 function mapAlerts(): ReturnType<typeof visibleAlerts> {
-  const xs = visibleAlerts().filter((a) => !filters.hiddenKinds.includes(a.kind)); // Detections filter
-  const f = state.filters.status;
-  return f && f !== "open" ? xs : xs.filter((a) => OPEN_ON_MAP.includes(a.status));
+  const xs = visibleAlerts("all").filter((a) => !filters.hiddenKinds.includes(a.kind)); // Detections filter
+  return state.filters.status === "closed" ? xs.filter((a) => !OPEN_ON_MAP.includes(a.status)) : xs.filter((a) => OPEN_ON_MAP.includes(a.status));
 }
 import { patch, refreshAll, refreshHealth, selectAlert, state, subscribe, triage, upsertAlert } from "./store";
 import { renderTimeline } from "./timeline";
@@ -45,6 +44,7 @@ import { SpectrumLayers } from "./spectrum";
 import { SpectrumWatch } from "./watch";
 import { MilitaryPanel } from "./military";
 import { ScenarioPanel } from "./scenario";
+import { demoLive, demoLiveLayers } from "./demolive";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
 import { ctxHooks } from "./context";
 import { closeWindow, createWindow, EDGE_LEFT, EDGE_TOP, getBody, hasSavedGeometry, isOpen, onWmChange, openWindow, placeWindow, toggleWindow, winRect } from "./wm";
@@ -82,6 +82,53 @@ createWindow({ id: "layers", title: T.layers, icon: "filter", body: layersBody, 
 const sourcesWin = new Sources();
 // 039: worldwide military air activity (contacts, roles, theatres, high-interest aircraft)
 const milWin = new MilitaryPanel({ flyTo: (lon, lat) => ops?.flyTo(lon, lat) });
+
+// 043: Demo page on the live server. Packs are precomputed files; while one is open the map shows its recorded
+// snapshot and hides live traffic and live alerts. Exit restores the live picture.
+let demoPanel: ScenarioPanel | null = null;
+let replayDemo = false; // the replay demo server has its own scenario window (task 040)
+function exitLiveDemo(): void {
+  demoLive.active = false;
+  demoLive.aircraft = [];
+  if (ops) {
+    ops.state.alerts = filters.alerts ? mapAlerts() : [];
+    ops.render();
+  }
+  closeWindow("scenario");
+}
+async function openLiveDemo(): Promise<void> {
+  if (replayDemo) return toggleWindow("scenario");
+  if (demoPanel && isOpen("scenario")) return exitLiveDemo();
+  let packs: Awaited<ReturnType<typeof api.demoPacks>> = [];
+  try {
+    packs = await api.demoPacks();
+  } catch {
+    packs = [];
+  }
+  const sc = packs.length
+    ? await api.demoPack(packs[0]!.name)
+    : {
+        title: "No demo installed",
+        summary: "Build one with scripts/midnight_hammer.py (see docs/demo-midnight-hammer.md).",
+        caveat: "",
+        sources: "",
+        steps: [],
+      };
+  const hooks = {
+    jumpTo: (lon: number, lat: number, zoom: number) => ops?.view(lon, lat, zoom),
+    openAlert: (id: string) => void selectAlert(id, false),
+    refresh: () => ops?.render(),
+    step: (st: { snapshot?: typeof demoLive.aircraft; at: string }) => {
+      demoLive.active = true;
+      demoLive.aircraft = st.snapshot ?? [];
+      demoLive.at = st.at;
+      if (ops) ops.state.alerts = [];
+    },
+    exit: exitLiveDemo,
+  };
+  if (demoPanel) demoPanel.setScenario(sc);
+  else demoPanel = new ScenarioPanel(sc, hooks);
+}
 const areasWin = new Areas(() => state.aois);
 areasWin.busyHook = (label, p) => loading.busy(label, p);
 areasWin.openWatch = () => openWindow("watch");
@@ -113,6 +160,7 @@ const winToggles: Record<string, () => void> = {
   t: () => toggleWindow("timeline"),
   w: () => toggleWindow("watch"),
   m: () => toggleWindow("military"),
+  p: () => void openLiveDemo(),
   ",": () => toggleWindow("settings"),
   g: () => ops?.toggleGlobe(),
   "0": () => ops?.home(),
@@ -124,6 +172,7 @@ const winToggles: Record<string, () => void> = {
 const tools: Tool[] = [
   { id: "draw", icon: "draw", label: T.drawAreas, key: "o", toggle: winToggles.o!, hint: "Draw, list and monitor areas" },
   { id: "military", icon: "plane", label: "Military", key: "m", toggle: winToggles.m!, hint: "Military aircraft worldwide, roles, theatres" },
+  { id: "scenario", icon: "timeline", label: "Demo", key: "p", toggle: () => void openLiveDemo(), hint: "Step through a real recorded case (e.g. Operation Midnight Hammer)" },
   { id: "sources", icon: "sources", label: T.sources, key: "u", toggle: winToggles.u!, hint: "Source health, on/off, API keys" },
   { id: "settings", icon: "settings", label: "Settings", key: ",", toggle: winToggles[","]!, hint: "Theme, map overlays, layout" },
 ];
@@ -303,7 +352,7 @@ function renderStatus(): void {
           "aria-label": `${word} priority: ${n} open`,
           title: `${word} priority: ${n} open${flood ? ` (busy: ${lastH} new in the last hour)` : ""}`,
           onclick: () => {
-            patch({ filters: { ...state.filters, priority: state.filters.priority === p ? "" : p, status: state.filters.priority === p ? state.filters.status : "open" } });
+            patch({ filters: { ...state.filters, priority: state.filters.priority === p ? "" : p, status: state.filters.status } });
             openWindow("queue");
           },
         },
@@ -442,7 +491,7 @@ function draw(changed: Set<string>): void {
   if (has("alerts", "window", "playing", "filters")) renderTimeline($("timeline"));
   if (ops && has("alerts", "cells", "aois", "selected", "detail", "tracks", "filters", "window")) {
     Object.assign(ops.state, {
-      alerts: filters.alerts ? mapAlerts() : [],
+      alerts: filters.alerts && !demoLive.active ? mapAlerts() : [],
       cells: state.cells,
       aois: state.aois,
       aoAreas: areasWin.display(),
@@ -498,7 +547,8 @@ async function boot(): Promise<void> {
     }
     if (ui.scenario) {
       // 040: real-data demo (e.g. Midnight Hammer): steps jump the replay clock, map and alert
-      new ScenarioPanel(ui.scenario, {
+      replayDemo = true;
+      demoPanel = new ScenarioPanel(ui.scenario, {
         jumpTo: (lon, lat, zoom) => ops?.view(lon, lat, zoom),
         openAlert: (id) => void selectAlert(id, false),
         refresh: () => void milWin.refresh(),
@@ -529,7 +579,10 @@ async function boot(): Promise<void> {
     ctxHooks.onFootprint = (id) => p3.focus(id, () => setFilter({ p3: [...filters.p3, "imagery"] }));
     const spec = new SpectrumLayers(ops, $("mapwrap")); // task 030: band ladder + spectrum layers
     const sats = new Satellites(ops, $("mapwrap"));
-    ops.extraLayers = (tool, zoom) => [...spec.layers(tool), ...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom), ...(sats.layers() as never[]), ...(demoLayers() as never[])];
+    ops.extraLayers = (tool, zoom) =>
+      demoLive.active
+        ? [...(demoLiveLayers() as never[])] // 043: a live-server demo shows only its recorded snapshot
+        : [...spec.layers(tool), ...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom), ...(sats.layers() as never[]), ...(demoLayers() as never[])];
     tourMap.view = (lon, lat, zoom) => ops?.view(lon, lat, zoom);
     tourMap.redraw = () => (ops?.render(), placePops());
     tourMap.home = () => ops?.home();
@@ -573,7 +626,7 @@ async function boot(): Promise<void> {
     let lastBand = filters.band;
     onFilters(() => {
       if (ops) {
-        ops.state.alerts = filters.alerts ? mapAlerts() : [];
+        ops.state.alerts = filters.alerts && !demoLive.active ? mapAlerts() : [];
         ops.state.showCoverage = filters.coverage;
       }
       ops?.render();

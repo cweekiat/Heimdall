@@ -525,3 +525,14 @@ persisted in `data/state/mil_tracks.json`). Roles from plane-alert-db category/t
 Confidence 0.6 (ADS-B coverage; aircraft flying dark are not seen). Alerts are fused per theatre by
 `military_step.py`; per-area fusion never expires them. All thresholds are priors (Midnight Hammer reporting:
 ~30 tankers to Europe/Azores in ~48 h), not backtested.
+
+## 041 false-alarm fixes (spoofing-1.2.0, jamming-1.3.0)
+- Spoofing: per-aircraft track from one provider only (merging aggregators' timing created jumps); a speed mismatch
+  needs >= 2 km position error (`min_error_km`); a displaced position must last >= 60 s (`min_displaced_s`); S2 only
+  with a regional norm, expressed per foot of altitude (learned from aircraft >= 10,000 ft in the cell).
+- Jamming: `min_degraded` 3 distinct degraded aircraft; equipment-fault aircraft (degraded in >= `chronic_min_cells` 3
+  cells where >= 80 % of others were healthy) are excluded and listed in the gaps; jammer fit needs
+  `loc_min_degraded` 5 and `loc_min_agreement` 0.7. `/api/jammers` draws only fits with ellipse <= 300 km and merges
+  estimates within 150 km (one emitter, all its alerts listed).
+- Pipeline: NEW alerts of areas no longer monitored expire like any stale alert.
+- Report: `docs/reports/2026-10-03-false-alarms.md`.

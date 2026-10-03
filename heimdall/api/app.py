@@ -25,6 +25,8 @@ from heimdall.aoi_ctl import AoiService
 from heimdall.api import triage
 from heimdall.api.aois import aois_router
 from heimdall.api.basemap import basemap_router
+from heimdall.api.brief import brief_router
+from heimdall.api.demo_packs import DemoPacks, demo_router
 from heimdall.api.gnss import gnss_router
 from heimdall.api.keys import keys_router
 from heimdall.api.layers import layers_router
@@ -152,6 +154,7 @@ def create_app(
         "actions", {}
     )
     app = FastAPI(title="Heimdall API", version="0.1")
+    demo_packs = DemoPacks()  # 043: precomputed demo files, read on first use
     app.state.store = st
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or LOCAL_HOSTS)
     app.add_middleware(GZipMiddleware, minimum_size=1000)  # 026a
@@ -222,6 +225,8 @@ def create_app(
 
     @app.get("/api/alerts/{alert_id}")
     def get_alert(alert_id: str) -> dict[str, Any]:
+        if st.get_alert(alert_id) is None and (demo := demo_packs.lookup_alert(alert_id)):
+            return demo  # 043: read-only alert from a demo pack (never in the live store)
         a = need_alert(alert_id)
         return {
             "alert": a.model_dump(mode="json"),
@@ -526,6 +531,8 @@ def create_app(
     app.include_router(satellites_router(st))
     app.include_router(spectrum_router(st))
     app.include_router(military_router(st))
+    app.include_router(demo_router(demo_packs))
+    app.include_router(brief_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(
         aois_router(

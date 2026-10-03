@@ -1,5 +1,6 @@
 // Modal overlays: help (?) and shift summary with local Markdown download.
 import { fmtDT } from "./tz";
+import { api } from "./api";
 import type { Alert } from "./api";
 import { fmtTime, h } from "./dom";
 import type { IconName } from "./icons";
@@ -37,7 +38,7 @@ export const SHORTCUTS: [string, string][] = [
 
 const DETECTORS: [string, string][] = [
   ["GPS jamming", "Many aircraft in one area report poor GPS accuracy, far above what is normal for that area. It only fires when enough aircraft are seen and the problem lasts more than one check."],
-  ["GPS spoofing (fake position)", "Aircraft whose reported position jumps or disagrees with other sources. Needs several aircraft to agree before it alerts."],
+  ["GPS spoofing", "An aircraft's reported position jumps away and stays wrong, or disagrees with radio timing or the local altitude pattern, while it still reports good GPS accuracy."],
   ["Military aircraft circling", "Military aircraft flying repeated loops or racetracks over a small area for a long time."],
   ["Several signs in one place", "Different kinds of data agree on the same place and time. Agreement raises how likely the alert is to be true."],
 ];
@@ -112,8 +113,67 @@ export function shiftMarkdown(hours: number, now = Date.now()): string {
   ].join("\n");
 }
 
+// 044: trends (rule-based, always) and an optional local-AI summary of the same facts
+let briefCache: { hours: number; trends: string[]; narrative?: string; model?: string; unsupported?: string[] } | null = null;
+
+function briefBox(hours: number, rerender: () => void): HTMLElement {
+  const box = h("div", { class: "brief" });
+  const trends = briefCache?.hours === hours ? briefCache.trends : null;
+  const ai = h("div", { class: "brief-ai" });
+  box.append(
+    h("h3", {}, "Trends"),
+    trends ? h("ul", {}, ...trends.map((t) => h("li", {}, t))) : h("p", { class: "note" }, "Loading trends…"),
+    h("h3", {}, "Summary by local AI"),
+    ai,
+  );
+  if (!trends) {
+    void api.briefTrends(hours).then(
+      (r) => {
+        briefCache = { hours, trends: r.trends };
+        rerender();
+      },
+      () => undefined,
+    );
+  }
+  if (briefCache?.hours === hours && briefCache.narrative) {
+    ai.append(
+      h("pre", { class: "brief-text" }, briefCache.narrative),
+      h("p", { class: "note" }, `Written by ${briefCache.model} on this machine from the facts above. It may be wrong: check the cited alerts.`),
+    );
+    if (briefCache.unsupported?.length) ai.append(h("p", { class: "note warn" }, `Refs not found in the facts (ignore them): ${briefCache.unsupported.join(", ")}`));
+    return box;
+  }
+  void api.briefStatus().then(
+    (st) => {
+      if (!st.available) {
+        ai.replaceChildren(h("p", { class: "note" }, `Not available: ${st.reason ?? "local model not running"}. To enable: install Ollama (ollama.com), run "ollama pull ${st.model}", keep it running. Nothing leaves this machine.`));
+        return;
+      }
+      const btn = h("button", { type: "button", class: "primary" }, `Summarise with ${st.model} (local)`);
+      btn.addEventListener("click", () => {
+        btn.disabled = true;
+        btn.textContent = "Writing… (local model, up to 2 min)";
+        void api.briefSummary(hours).then(
+          (r) => {
+            briefCache = { hours, trends: r.trends, narrative: r.narrative, model: r.model, unsupported: r.unsupported };
+            rerender();
+          },
+          (e) => {
+            btn.disabled = false;
+            btn.textContent = `Failed (${String(e).slice(0, 60)}). Try again`;
+          },
+        );
+      });
+      ai.replaceChildren(btn, h("p", { class: "note" }, "Uses only Heimdall's own alert facts; runs on this machine."));
+    },
+    () => ai.replaceChildren(h("p", { class: "note" }, "Local AI status unavailable.")),
+  );
+  return box;
+}
+
 export function showShift(hours = 8): void {
-  const md = shiftMarkdown(hours);
+  const trendsMd = briefCache?.hours === hours ? ["## Trends", ...briefCache.trends.map((t) => `- ${t}`), "", ...(briefCache.narrative ? ["## Summary by local AI (" + briefCache.model + ")", briefCache.narrative, ""] : [])] : [];
+  const md = [...trendsMd, shiftMarkdown(hours)].join("\n");
   const sel = h(
     "select",
     { "aria-label": "Hours covered", onchange: (e) => showShift(Number((e.target as HTMLSelectElement).value)) },
@@ -127,5 +187,5 @@ export function showShift(hours = 8): void {
     a.remove();
     URL.revokeObjectURL(url);
   };
-  open("shift", T.shift, "shift", h("h2", {}, T.shift), h("div", { class: "row" }, sel, h("button", { class: "primary", onclick: download }, "Download Markdown (local file)")), h("pre", {}, md));
+  open("shift", T.shift, "shift", h("h2", {}, T.shift), h("div", { class: "row" }, sel, h("button", { class: "primary", onclick: download }, "Download Markdown (local file)")), briefBox(hours, () => showShift(hours)), h("pre", {}, shiftMarkdown(hours)));
 }

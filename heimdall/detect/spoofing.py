@@ -38,7 +38,7 @@ from heimdall.geo import KM_PER_NM, circular_variance, haversine_km, implied_spe
 from heimdall.schemas import AircraftObs, AlertKind, Band, Coverage, Evidence, RecordRef, RuleResult
 
 NAME = "spoofing"
-VERSION = "spoofing-1.1.0"
+VERSION = "spoofing-1.2.0"
 
 DEFAULTS: dict[str, Any] = {
     "h3_res": 4,
@@ -56,11 +56,16 @@ DEFAULTS: dict[str, Any] = {
     # next to a true teleport (> teleport_kt) or an MLAT gap, not next to a speed mismatch alone.
     "s5_counts_as_signal": False,
     "persist_pairs": 2,
+    # 041: a speed mismatch counts only if the position is really off (|distance - gs*dt|), and a
+    # displaced position must last (a CPR/aggregator glitch snaps back within seconds)
+    "min_error_km": 2.0,
+    "min_displaced_s": 60,
     "s1_span_cap_s": 300,
     "alt_divergence_ft": 1000,
     "alt_min_fixes": 2,
     "alt_min_frac": 0.5,
     "alt_norm_min_aircraft": 3,
+    "alt_norm_min_ft": 10000,  # 041: the per-foot norm is learned from aircraft above this
     "mlat_gap_km": 5,
     "mlat_max_dt_s": 10,
     "mlat_min_pairs": 2,
@@ -113,9 +118,21 @@ def _cfg(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def _dedupe(fixes: Sequence[AircraftObs]) -> list[AircraftObs]:
+    """One provider's track per aircraft (the one with most fixes; ties by name).
+
+    041: interleaving adsb.lol and adsb.fi fixes mixes two timing bases (each stamps positions as
+    fetch time - seen_pos) and creates apparent jumps of a few km: 56 % of Singapore-area S1 hits on
+    2026-10-01 vanished when tracks were kept per provider."""
+    by: dict[str, int] = defaultdict(int)
+    for o in fixes:
+        by[o.provider] += 1
+    if not by:
+        return []
+    best = min(by, key=lambda p: (-by[p], p))
     out: dict[datetime, AircraftObs] = {}
-    for o in sorted(fixes, key=lambda o: (o.ts, o.provider)):
-        out.setdefault(o.ts, o)
+    for o in sorted(fixes, key=lambda o: o.ts):
+        if o.provider == best:
+            out.setdefault(o.ts, o)
     return list(out.values())
 
 
@@ -136,7 +153,8 @@ def _pair(a: AircraftObs, b: AircraftObs, c: dict[str, Any]) -> tuple[bool, floa
     if (t2 - t1) <= c["speed_pair_max_s"] and a.gs is not None and b.gs is not None:
         gs = (a.gs + b.gs) / 2
         tol = max(c["speed_diff_kt"], gs * c["timing_jitter_s"] / max(t2 - t1, 1e-6))
-        if abs(v - gs) > tol:
+        err_km = abs(v - gs) * KM_PER_NM * (t2 - t1) / 3600.0  # how far the position is off
+        if abs(v - gs) > tol and err_km >= c["min_error_km"]:
             return True, v
     return False, v
 
@@ -210,7 +228,13 @@ def _s1(fixes: list[AircraftObs], c: dict[str, Any], sig: AircraftSignals) -> No
     sig.features["s1_persisted_pairs"] = float(persisted)
     a, b = pairs[k0][0], pairs[k0][1]
     sig.features["jump_km"] = round(haversine_km(a.lat, a.lon, b.lat, b.lon), 2)
-    if persisted >= c["persist_pairs"]:
+    # 041: the displaced position must last: from the first jump to the last flagged fix (or the
+    # end of the window when the track never comes back) at least min_displaced_s
+    t_first = clean[k0 + 1].ts
+    t_last = clean[flagged[-1] + 1].ts if len(flagged) > 1 else clean[-1].ts
+    lasted = (t_last - t_first).total_seconds()
+    sig.features["displaced_s"] = round(lasted, 1)
+    if persisted >= c["persist_pairs"] and lasted >= c["min_displaced_s"]:
         sig.fired["S1"] = True
         sig.anchor, sig.displaced = a, b
         sig.records += [a, b]
@@ -338,18 +362,22 @@ def aircraft_signals(
     adsb_d = {h: _dedupe(fs) for h, fs in adsb.items()}
     mlat_d = {h: _dedupe(fs) for h, fs in mlat.items()}
 
-    # S2 regional norm: median over aircraft (per cell) of each aircraft's median geom-baro
-    per_ac_div: dict[str, list[float]] = {}
-    cell_divs: dict[str, list[float]] = defaultdict(list)
+    # S2 regional norm (041): geom - baro grows with altitude (temperature vs standard
+    # atmosphere: ~+2,000 ft at cruise in the tropics), so the norm is a per-foot rate k learned
+    # from aircraft above alt_norm_min_ft in the cell; expected divergence = k * alt_baro
+    per_ac_div: dict[str, list[tuple[float, float]]] = {}  # (geom - baro, baro)
+    cell_rates: dict[str, list[float]] = defaultdict(list)
     for h, fs in adsb_d.items():
         d = [
-            float(o.alt_geom - o.alt_baro)
+            (float(o.alt_geom - o.alt_baro), float(o.alt_baro))
             for o in fs
             if o.alt_geom is not None and o.alt_baro is not None
         ]
         if d:
             per_ac_div[h] = d
-            cell_divs[cell_of(fs[0], c["h3_res"])].append(median(d))
+            high = [div / alt for div, alt in d if alt >= c["alt_norm_min_ft"]]
+            if high:
+                cell_rates[cell_of(fs[0], c["h3_res"])].append(median(high))
     s4 = _s4_bins(adsb_d, c)
 
     out: dict[str, AircraftSignals] = {}
@@ -358,31 +386,28 @@ def aircraft_signals(
         sig.raw = [*adsb[h], *mlat.get(h, [])]
         _s1(fs, c, sig)
         if h in per_ac_div:
-            norms = cell_divs[cell_of(fs[0], c["h3_res"])]
-            has_norm = len(norms) >= c["alt_norm_min_aircraft"]
-            norm = median(norms) if has_norm else 0.0
-            dev = [abs(d - norm) for d in per_ac_div[h]]
+            rates = cell_rates[cell_of(fs[0], c["h3_res"])]
+            has_norm = len(rates) >= c["alt_norm_min_aircraft"]
+            k = median(rates) if has_norm else 0.0
+            dev = [abs(d - k * alt) for d, alt in per_ac_div[h]]
             n_over = sum(1 for x in dev if x > c["alt_divergence_ft"])
             sig.features["alt_div_ft_median"] = round(median(dev), 1)
-            sig.features["alt_norm_ft"] = round(norm, 1)
+            sig.features["alt_norm_ft"] = round(k * median([alt for _, alt in per_ac_div[h]]), 1)
             sig.features["alt_norm_available"] = 1.0 if has_norm else 0.0
-            if n_over >= c["alt_min_fixes"] and n_over / len(dev) >= c["alt_min_frac"]:
-                sig.fired["S2"] = True
-                sig.anomalous += [
-                    o
-                    for o in fs
-                    if o.alt_geom is not None
+
+            def off(o: AircraftObs, k: float = k) -> bool:
+                return (
+                    o.alt_geom is not None
                     and o.alt_baro is not None
-                    and abs(o.alt_geom - o.alt_baro - norm) > c["alt_divergence_ft"]
-                ]
+                    and abs(o.alt_geom - o.alt_baro - k * o.alt_baro) > c["alt_divergence_ft"]
+                )
+
+            # no norm, no verdict: comparing with 0 ft flagged every cruising airliner (041)
+            if has_norm and n_over >= c["alt_min_fixes"] and n_over / len(dev) >= c["alt_min_frac"]:
+                sig.fired["S2"] = True
+                sig.anomalous += [o for o in fs if off(o)]
                 if sig.anchor is None:
-                    first = next(
-                        o
-                        for o in fs
-                        if o.alt_geom is not None
-                        and o.alt_baro is not None
-                        and abs(o.alt_geom - o.alt_baro - norm) > c["alt_divergence_ft"]
-                    )
+                    first = next(o for o in fs if off(o))
                     sig.anchor = first
                     sig.records.append(first)
         _s3(fs, mlat_d.get(h, []), c, sig)

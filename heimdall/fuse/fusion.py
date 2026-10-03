@@ -77,7 +77,7 @@ DEFAULTS: dict[str, Any] = {
 }
 
 _SEV_ORDER = [Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
-CLOSED = (AlertStatus.DISMISSED, AlertStatus.EXPIRED)
+CLOSED = (AlertStatus.RESOLVED, AlertStatus.DISMISSED, AlertStatus.EXPIRED)
 #: ADR-003: an alert in any analyst status (new, acknowledged, under_review, shelved, confirmed)
 #: is still the live alert for its kind+cell; only dismissed/expired alerts are closed.
 ACTIVE = tuple(s for s in AlertStatus if s not in CLOSED)
