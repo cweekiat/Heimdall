@@ -354,6 +354,8 @@ export const api = {
   /** 044: shift brief: trends (rule-based) and a local-model summary (this machine only). */
   briefStatus: () => req<{ available: boolean; model: string; reason?: string }>("/api/brief/status"),
   briefTrends: (hours: number) => req<{ trends: string[] }>(`/api/brief/trends?hours=${hours}`),
+  /** 053: daily SITREP (24 h) as Markdown, built from Heimdall's own facts. */
+  sitrep: () => req<{ generated: string; markdown: string }>("/api/brief/sitrep"),
   briefSummary: (hours: number) =>
     post<{ trends: string[]; narrative: string; model: string; cited: string[]; unsupported: string[] }>("/api/brief/summary", { hours }),
   demoPacks: () => req<{ name: string; title: string; summary: string; n_steps: number }[]>("/api/demo/packs"),

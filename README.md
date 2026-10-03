@@ -185,7 +185,7 @@ the map shows the recorded military aircraft for each step and hides live data u
 demo is a precomputed file (`data/replay/midnight_hammer/midnight_hammer.demo.json`, built by
 `scripts/midnight_hammer.py`), so live monitoring is not affected.
 
-**Shift report** (`h`) includes rule-based Trends. For a written summary, install [Ollama](https://ollama.com) and
+**Shift report** (`h`) includes rule-based Trends and a **Daily SITREP (24 h)** download: theatres above normal, the alerts that matter, military air activity and natural factors, built only from Heimdall's own data. For a written summary, install [Ollama](https://ollama.com) and
 `ollama pull qwen2.5:7b-instruct`: the report then offers *Summarise with … (local)*. The model runs on this machine
 (non-local URLs are refused), sees only Heimdall's alert facts and must cite alert refs.
 

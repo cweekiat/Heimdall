@@ -3,13 +3,14 @@
 GET  /api/brief/status          -> {available, model, reason}       (no facts sent)
 GET  /api/brief/trends?hours=8  -> {facts, trends}                  (no model)
 POST /api/brief/summary {hours} -> {facts, trends, narrative, model, cited, unsupported}
+GET  /api/brief/sitrep          -> {generated, markdown}            (053: daily SITREP, 24 h)
 The model only ever sees the fact sheet (heimdall.brief.facts), and only on this machine.
 """
 
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -20,6 +21,7 @@ from heimdall import config
 from heimdall.api.spectrum import band_status
 from heimdall.brief.facts import build_facts, trend_lines
 from heimdall.brief.local_llm import LocalLLM
+from heimdall.brief.sitrep import build_sitrep
 from heimdall.ports import Store
 
 
@@ -41,6 +43,19 @@ def _facts(store: Store, hours: float) -> dict[str, Any]:
         states = []
     labels = {a.name: (a.label or a.name) for a in config.settings().aois}
     return build_facts(alerts, now, hours, states, area_labels=labels)
+
+
+def _space(store: Store, now: datetime) -> dict[str, Any]:
+    evs = store.events_window(now - timedelta(hours=24), now, ["space_weather", "solar_xray"])
+    kps = [float(e.attrs["kp"]) for e in evs if isinstance(e.attrs.get("kp"), int | float)]
+    xr = [e for e in evs if e.kind == "solar_xray" and isinstance(e.value, float)]
+    top = max(xr, key=lambda e: float(e.value or 0.0), default=None)
+    flare = (
+        f"{top.attrs.get('flare_class')} at {top.ts:%H:%M} UTC"
+        if top is not None and float(top.value or 0.0) >= 1e-5
+        else None
+    )
+    return {"kp_max": max(kps) if kps else None, "flare": flare}
 
 
 def brief_router(store: Store) -> APIRouter:
@@ -73,6 +88,24 @@ def brief_router(store: Store) -> APIRouter:
         out.update(
             narrative=res.text, model=res.model, cited=res.cited, unsupported=res.unsupported
         )
+        return out
+
+    @r.get("/api/brief/sitrep")
+    def sitrep() -> dict[str, Any]:
+        from heimdall.api.military import military_summary, theatres_index
+
+        now = datetime.now(UTC)
+        hit = cache.get("sitrep")
+        if hit and time.monotonic() - hit[0] < 60:
+            return hit[1]
+        try:
+            mil: dict[str, Any] | None = military_summary(store, now, 60)
+            ths = theatres_index(store, now)["theatres"]
+        except Exception:  # military context is optional in the report
+            mil, ths = None, []
+        md = build_sitrep(_facts(store, 24.0), ths, mil, _space(store, now), now)
+        out = {"generated": now.isoformat(), "markdown": md}
+        cache["sitrep"] = (time.monotonic(), out)
         return out
 
     return r
