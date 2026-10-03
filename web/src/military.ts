@@ -3,7 +3,7 @@
 // searchable list; clicking an aircraft or theatre flies the map there. Build-up alerts arrive in the alert queue.
 // All text via textContent (h helper): operator names and tags are community data, never markup.
 import { api } from "./api";
-import type { MilAircraft, MilitarySummary } from "./api";
+import type { MilAircraft, MilitarySummary, TheatreIndexResp } from "./api";
 import { h } from "./dom";
 import { fmtHM } from "./tz";
 import { createWindow, EDGE_LEFT, EDGE_TOP } from "./wm";
@@ -37,6 +37,8 @@ export interface MilitaryHooks {
 export class MilitaryPanel {
   readonly body: HTMLElement;
   data: MilitarySummary | null = null;
+  index: TheatreIndexResp | null = null;
+  private openTheatre: string | null = null;
   private error = "";
   private query = "";
 
@@ -55,6 +57,7 @@ export class MilitaryPanel {
     try {
       this.data = await api.military();
       this.error = "";
+      this.index = await api.theatreIndex().catch(() => this.index); // 051, optional
     } catch (e) {
       this.error = `Military data unavailable (${String(e).slice(0, 60)})`;
     }
@@ -88,6 +91,48 @@ export class MilitaryPanel {
       h("span", { class: `mil-role r-${a.role}` }, ROLE_LABEL[a.role] ?? a.role),
       h("span", { class: "mil-line" }, aircraftLine(a)),
       a.category ? h("span", { class: "mil-cat" }, a.category) : null,
+    );
+  }
+
+  /** 051: theatres by activity level; click to see each component vs that theatre's normal. */
+  private indexSection(): HTMLElement | null {
+    const idx = this.index;
+    if (!idx?.theatres.length) return null;
+    return h(
+      "section",
+      { class: "mil-sec" },
+      h("h4", {}, "Theatre activity", h("span", { class: "note" }, " · components above their own normal")),
+      ...idx.theatres.map((t) => {
+        const open = this.openTheatre === t.name;
+        return h(
+          "div",
+          { class: `th-idx lvl-${t.level}` },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "th-idx-head",
+              "aria-expanded": String(open),
+              onclick: () => {
+                this.openTheatre = open ? null : t.name;
+                this.hooks.flyTo(t.lon, t.lat);
+                this.render();
+              },
+            },
+            h("span", { class: "th-lvl" }, t.word),
+            h("span", {}, t.name),
+            h("span", { class: "note" }, `${t.components.filter((c) => c.above).length} of ${t.components.length}`),
+          ),
+          open
+            ? h(
+                "ul",
+                { class: "th-comps" },
+                ...t.components.map((c) => h("li", { class: c.above ? "above" : "" }, h("b", {}, c.label), h("span", {}, c.why))),
+              )
+            : null,
+        );
+      }),
+      h("p", { class: "note" }, idx.note),
     );
   }
 
@@ -125,6 +170,7 @@ export class MilitaryPanel {
         h("div", {}, h("b", {}, String(d.on_ground)), h("span", {}, "on ground")),
         h("div", {}, h("b", {}, String(d.identified)), h("span", {}, "identified")),
       ),
+      this.indexSection(),
       d.high_interest.length
         ? h("section", { class: "mil-sec" }, h("h4", {}, `High interest (${d.high_interest.length})`), ...d.high_interest.map((a) => this.row(a)))
         : null,

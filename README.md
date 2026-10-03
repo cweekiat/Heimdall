@@ -206,6 +206,11 @@ country, where it took off (or where it was first seen when the take-off was not
 (for example "likely air-refuelling track" or "transit towards the Europe staging theatre") with the measured reasons,
 and its 72-hour track coloured by altitude. These are estimates from public ADS-B: intent is never known.
 
+**Theatre activity** (top of the Military panel). Instead of a single threat score, each theatre lists what is
+above its own normal: strategic military aircraft, military indicator alerts, GPS interference, radio band anomalies,
+conflict events in the news and new notices. The level (Quiet, Watch, Elevated, High) is just how many are above
+normal, and every component shows its numbers. It describes activity; it does not predict anything.
+
 **Regions.** Type a region in the search box (Global, Gulf and Hormuz, Taiwan Strait, Ukraine and Black Sea, Baltic,
 High North, …) to jump there. HF coverage now spans Eurasia east of 20°E and Australia.
 

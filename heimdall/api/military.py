@@ -17,19 +17,23 @@ from __future__ import annotations
 
 import time
 from collections import Counter
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Path, Query
 
-from heimdall import config, milactivity, miltypes
+from heimdall import config, milactivity, miltypes, theatre_index
+from heimdall.detect import military as mil_detect
+from heimdall.detect.warning_area import NOTICE_KINDS
+from heimdall.fuse.corroborate import CORROBORATING_CATEGORIES
 from heimdall.fuse.fusion import ACTIVE
 from heimdall.geo import KM_PER_NM, haversine_km
 from heimdall.ingest import osm_bases, ourairports, plane_alert
 from heimdall.military_step import _STATE, theatres
-from heimdall.milroles import classify
+from heimdall.milroles import STRATEGIC, classify
 from heimdall.ports import Store
-from heimdall.schemas import AircraftObs
+from heimdall.schemas import AircraftObs, AlertKind
 
 CACHE_S = 15.0
 
@@ -259,6 +263,83 @@ def investigate(store: Store, hex_: str, now: datetime) -> dict[str, Any]:
     }
 
 
+MIL_ALERTS = {
+    AlertKind.MIL_DEPLOYMENT,
+    AlertKind.MIL_SURGE,
+    AlertKind.MIL_HIGH_INTEREST,
+    AlertKind.MIL_BUILDUP,
+}
+GNSS_ALERTS = {AlertKind.GNSS_JAMMING, AlertKind.GNSS_SPOOFING, AlertKind.AIS_SPOOFING}
+
+
+def theatres_index(store: Store, now: datetime) -> dict[str, Any]:
+    """051: per-theatre activity components vs that theatre's own normal (see theatre_index)."""
+    mcfg = config.settings().detectors.get("military", {})
+    ths = theatres(mcfg, config.settings().aois)
+    alerts = store.list_alerts(since=now - timedelta(hours=72), status=list(ACTIVE), limit=5000)
+    conflict = [
+        e
+        for e in store.events_window(now - timedelta(days=8), now, ["conflict_event"])
+        if int(e.attrs.get("sources") or 0) >= 2 and e.lat is not None and e.lon is not None
+    ]
+    gdelt_days = {e.ts.date() for e in conflict}
+    notices = [
+        e
+        for e in store.events_window(now - timedelta(days=30), now, list(NOTICE_KINDS))
+        if e.valid_from is not None
+        and e.valid_from >= now - timedelta(hours=24)
+        and str(e.attrs.get("category") or "") in (*CORROBORATING_CATEGORIES, "airspace")
+    ]
+    since = now - timedelta(days=float(mcfg.get("baseline_days", 14)))
+    out = []
+    for th in ths:
+
+        def inside(lat: float | None, lon: float | None, th: Any = th) -> bool:
+            return (
+                lat is not None
+                and lon is not None
+                and haversine_km(lat, lon, th.lat, th.lon) <= th.radius_km
+            )
+
+        by_hour: dict[datetime, float] = {}
+        for role in STRATEGIC:
+            for ts, v in store.metric_history(f"{th.name}|{role}", mil_detect.METRIC, since):
+                by_hour[ts] = by_hour.get(ts, 0.0) + v
+        hours = sorted(by_hour)
+        now_v = by_hour[hours[-1]] if hours and hours[-1] >= now - timedelta(hours=2) else 0.0
+        hist = [by_hour[h] for h in hours[:-1]]
+        mine = [e for e in conflict if inside(e.lat, e.lon)]
+        today = sum(1 for e in mine if e.ts >= now - timedelta(hours=24))
+        days = [
+            sum(1 for e in mine if now - timedelta(days=d + 1) <= e.ts < now - timedelta(days=d))
+            for d in range(1, 8)
+            if (now - timedelta(days=d)).date() in gdelt_days
+        ]
+        idx = theatre_index.build(
+            {"name": th.name, "lat": th.lat, "lon": th.lon, "radius_km": th.radius_km},
+            now_v,
+            hist,
+            [a.ref or a.id[:8] for a in alerts if a.kind in MIL_ALERTS and a.aoi == th.name],
+            [a.ref or a.id[:8] for a in alerts if a.kind in GNSS_ALERTS and inside(a.lat, a.lon)],
+            [
+                a.ref or a.id[:8]
+                for a in alerts
+                if a.kind == AlertKind.SPECTRUM_ANOMALY and inside(a.lat, a.lon)
+            ],
+            today,
+            days,
+            sum(1 for n in notices if inside(n.lat, n.lon)),
+        )
+        out.append(asdict(idx))
+    out.sort(key=lambda t: (-t["level"], t["name"]))
+    return {
+        "generated": now.isoformat(),
+        "theatres": out,
+        "note": "Counts of what Heimdall observed against each theatre's own normal. Not a threat "
+        "level; it predicts nothing and names no target.",
+    }
+
+
 def military_router(store: Store) -> APIRouter:
     r = APIRouter()
     cache: dict[int, tuple[float, dict[str, Any]]] = {}
@@ -270,6 +351,16 @@ def military_router(store: Store) -> APIRouter:
             return hit[1]
         out = military_summary(store, datetime.now(UTC), window_min)
         cache[window_min] = (time.monotonic(), out)
+        return out
+
+    idx_cache: list[tuple[float, dict[str, Any]]] = []
+
+    @r.get("/api/military/theatres/index")
+    def theatres_idx() -> dict[str, Any]:
+        if idx_cache and time.monotonic() - idx_cache[0][0] < 60:
+            return idx_cache[0][1]
+        out = theatres_index(store, datetime.now(UTC))
+        idx_cache[:] = [(time.monotonic(), out)]
         return out
 
     @r.get("/api/military/bases")

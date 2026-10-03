@@ -211,7 +211,7 @@ def test_tick_opens_deployment_alert_for_theatre() -> None:
 
 def test_config_theatres_load() -> None:
     th = theatres(settings().detectors["military"], [])
-    assert len(th) == 19 and all(t.radius_km <= 1300 for t in th if t.rules == mil.ALL_RULES)  # 050: +2
+    assert len(th) == 19 and all(t.radius_km <= 1300 for t in th if t.rules == mil.ALL_RULES)
     (us,) = [t for t in th if t.name == "Continental US"]
     assert us.rules == ("high_interest",)
 
