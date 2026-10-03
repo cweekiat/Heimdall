@@ -191,7 +191,7 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
   alert queue and the map's alert markers to that band; click again clears. Deep link `#band=l1_gnss`. Hover shows the
   feeding sources and, for L1 GNSS / L 1090 / VHF marine, receivers in view over the last hour (`/api/coverage`).
 - **Layers panel** is split by tempo: **Live** (aircraft, ships, alerts, notices, HF spots, SatNOGS passes) and
-  **Daily sweep** (GNSS interference map, Sentinel-1 C-band RFI, SMAP L-band RFI, heat spots, image footprints, passes).
+  **Daily sweep** (GNSS interference map, CYGNSS GPS noise, Sentinel-1 C-band RFI, SMAP L-band RFI, heat spots, image footprints, passes).
   Event layers show the time of their newest data, so day-old data never looks live.
 - **GNSS interference (daily, GPSJam method)**, on by default: H3 r4 hexes coloured with GPSJam's legend (green < 2 %,
   yellow 2–10 %, red > 10 % of aircraft degraded, after the −1 de-noise); cells without aircraft are not drawn. Date
@@ -200,7 +200,10 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
 - **HF propagation spots**: circles at path midpoints (WSPR + PSK Reporter, last hour), size by spot count.
   **Satellite passes**: SatNOGS ground stations, red when the pass was bad/failed. **C-band interference**:
   Sentinel-1 footprints, red outline when ESA's RFI annotation flags interference. **L-band interference**: SMAP
-  cells shaded by the share of flagged footprints.
+  cells shaded by the share of flagged footprints. **GPS noise from orbit (CYGNSS, task 059)**: H3 r3 cells for one
+  UTC day (newest by default, picker for earlier days), amber by closeness to the CYGNSS detector's thresholds, red
+  outline when a cell meets its alert rules (level or rise over the cell's own baseline). Quiet cells are not drawn
+  (open ocean < 1 dB, land / coast < 2 dB unless risen). 38° S – 38° N only, 2–3 days delay.
 
 ## Spectrum watch, the watch-floor entry point (task 033, key `w`, open on first run)
 - **Board**: areas (rows) × bands (columns: L1 GNSS, L 1090, VHF marine, HF, Sat downlinks, L 1.4 GHz, C SAR). Each

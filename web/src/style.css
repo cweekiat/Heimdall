@@ -1275,6 +1275,9 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
 .gnss-green { background: rgb(60 170 90); }
 .gnss-yellow { background: rgb(225 190 40); }
 .gnss-red { background: rgb(220 60 50); }
+.cy-low { background: rgb(225 190 40 / 0.3); }
+.cy-mid { background: rgb(225 190 40 / 0.8); }
+.cy-flag { background: rgb(220 60 50 / 0.7); outline: 1px solid rgb(220 60 50); }
 .spectrum-toggles { display: contents; }
 
 /* task 033: spectrum watch board (areas x bands) and investigate pane */

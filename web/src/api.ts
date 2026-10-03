@@ -409,6 +409,8 @@ export const api = {
   gnssDay: (date: string, signal?: AbortSignal) => req<unknown>(`/api/gnss/day?date=${encodeURIComponent(date)}`, { signal }),
   satellites: () => req<{ ts: string; satellites: SatPos[] }>("/api/satellites?past_min=30&next_min=100"),
   gnssDays: () => req<{ days: string[]; last24h: boolean }>("/api/gnss/days"),
+  cygnssDays: () => req<{ days: string[] }>("/api/cygnss/days"),
+  cygnssDay: (date: string) => req<unknown>(`/api/cygnss/day${date ? `?date=${encodeURIComponent(date)}` : ""}`),
   /** Spectrum status board (task 033). Parsed by spectrummodel.parseStatus. */
   spectrumStatus: () => req<unknown>("/api/spectrum/status"),
   /** 039: worldwide military aircraft with identity, roles, countries, theatres. */

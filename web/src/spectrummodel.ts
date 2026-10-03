@@ -18,7 +18,7 @@ export const BANDS: BandDef[] = [
   { band: "vhf_marine", name: "VHF marine", range: "156–162 MHz", sources: ["aisstream"] },
   { band: "sat_downlink", name: "Sat downlinks", range: "VHF/UHF/S", sources: ["satnogs"] },
   { band: "l_1090", name: "L 1090", range: "1090 MHz", sources: ["adsb_lol", "adsb_fi", "opensky_global"] },
-  { band: "l1_gnss", name: "L1 GNSS", range: "1559–1610 MHz", sources: ["adsb_lol", "adsb_fi", "aisstream", "faa_nms_notam", "nga_msi"] },
+  { band: "l1_gnss", name: "L1 GNSS", range: "1559–1610 MHz", sources: ["adsb_lol", "adsb_fi", "aisstream", "faa_nms_notam", "nga_msi", "cygnss"] },
   { band: "l_1400", name: "L 1.4 GHz", range: "1400–1427 MHz", sources: ["smap_rfi"] },
   { band: "c_sar", name: "C SAR", range: "~5.4 GHz", sources: ["sentinel1_rfi"] },
 ];
@@ -63,10 +63,10 @@ export function writeHash(hash: string, patch: { band?: string; gnss?: string })
 
 // ------------------------------------------------------------------ spectrum layers
 
-export type SpectrumLayer = "gnss" | "hf" | "satnogs" | "sar_rfi" | "smap" | "jammers" | "coverage";
-export const SPECTRUM_LAYERS: SpectrumLayer[] = ["jammers", "coverage", "hf", "satnogs", "gnss", "sar_rfi", "smap"];
+export type SpectrumLayer = "gnss" | "hf" | "satnogs" | "sar_rfi" | "smap" | "cygnss" | "jammers" | "coverage";
+export const SPECTRUM_LAYERS: SpectrumLayer[] = ["jammers", "coverage", "hf", "satnogs", "gnss", "cygnss", "sar_rfi", "smap"];
 export const LIVE_LAYERS: SpectrumLayer[] = ["jammers", "coverage", "hf", "satnogs"];
-export const DAILY_LAYERS: SpectrumLayer[] = ["gnss", "sar_rfi", "smap"];
+export const DAILY_LAYERS: SpectrumLayer[] = ["gnss", "cygnss", "sar_rfi", "smap"];
 export const SPECTRUM_LABEL: Record<SpectrumLayer, string> = {
   jammers: "Estimated jammer locations",
   coverage: "Receivers heard (band picked in the band panel)",
@@ -75,6 +75,7 @@ export const SPECTRUM_LABEL: Record<SpectrumLayer, string> = {
   gnss: "GNSS interference (daily, GPSJam method)",
   sar_rfi: "C-band interference (Sentinel-1)",
   smap: "L-band interference (SMAP)",
+  cygnss: "GPS noise seen from orbit (CYGNSS, daily)",
 };
 /** Hours of data requested per layer. */
 export type EventLayer = "hf" | "satnogs" | "sar_rfi" | "smap";
@@ -87,6 +88,7 @@ export const SPECTRUM_REFRESH_MS: Record<SpectrumLayer, number> = {
   gnss: 300_000,
   sar_rfi: 600_000,
   smap: 600_000,
+  cygnss: 1_800_000,
 };
 export const SPECTRUM_DEFAULT_ON: SpectrumLayer[] = ["gnss", "jammers"];
 /** Bands the coverage layer can show (receivers the live index knows about). */
@@ -152,6 +154,81 @@ export function stepDay(days: string[], cur: string, dir: -1 | 1): string {
   return all[Math.max(0, Math.min(all.length - 1, j))]!;
 }
 
+// ------------------------------------------------------------------ CYGNSS L1 noise day map (059)
+
+export interface CygnssCell {
+  h3: string;
+  excess: number;
+  delta: number | null;
+  z: number | null;
+  n: number;
+  sats: number;
+  ocean: number;
+  base: number | null;
+  baseDays: number;
+  flag: "level" | "change" | null;
+}
+export interface CygnssDay {
+  date: string;
+  total: number;
+  cells: CygnssCell[];
+  levelDb: number;
+  landLevelDb: number;
+  changeDb: number;
+  limits: string;
+}
+
+export function parseCygnssDay(raw: unknown): CygnssDay | null {
+  if (!isObj(raw) || !Array.isArray(raw.cells)) return null;
+  const th = isObj(raw.thresholds) ? raw.thresholds : {};
+  const cells: CygnssCell[] = [];
+  for (const c of raw.cells) {
+    if (!isObj(c) || typeof c.h3 !== "string" || !/^[0-9a-f]{15}$/.test(c.h3)) continue;
+    cells.push({
+      h3: c.h3,
+      excess: num(c.excess_db) ?? 0,
+      delta: num(c.delta_db),
+      z: num(c.z),
+      n: num(c.n) ?? 0,
+      sats: num(c.n_sats) ?? 0,
+      ocean: num(c.ocean_frac) ?? 0,
+      base: num(c.base_db),
+      baseDays: num(c.base_days) ?? 0,
+      flag: c.flag === "level" || c.flag === "change" ? c.flag : null,
+    });
+  }
+  return {
+    date: str(raw.date),
+    total: num(raw.total_cells) ?? cells.length,
+    cells,
+    levelDb: num(th.level_db) ?? 2.5,
+    landLevelDb: num(th.land_level_db) ?? 3.5,
+    changeDb: num(th.change_db) ?? 1.5,
+    limits: str(raw.limits),
+  };
+}
+
+/** 0..1 how close a cell is to the detector's thresholds (level for its surface, or rise). */
+export function cygnssStrength(c: CygnssCell, d: Pick<CygnssDay, "levelDb" | "landLevelDb" | "changeDb">): number {
+  const level = c.ocean >= 0.9 ? d.levelDb : d.landLevelDb;
+  const a = c.excess / level;
+  const b = c.delta !== null ? c.delta / d.changeDb : 0;
+  return Math.max(0, Math.min(1, Math.max(a, b)));
+}
+
+export function cygnssHover(c: CygnssCell): string {
+  const rise = c.delta !== null ? ` · ${c.delta >= 0 ? "+" : ""}${c.delta.toFixed(1)} dB vs its usual ${c.base?.toFixed(1) ?? "?"} dB (${c.baseDays} days)` : " · no baseline yet";
+  const flag = c.flag === "level" ? " · above the alert level" : c.flag === "change" ? " · unusual rise for this cell" : "";
+  const where = c.ocean >= 0.9 ? "open ocean" : c.ocean > 0.1 ? "coast" : "land";
+  return `CYGNSS GPS noise ${c.excess.toFixed(1)} dB above open-ocean normal${rise}${flag} · ${where}, ${c.n} reflections, ${c.sats} satellite${c.sats === 1 ? "" : "s"}`;
+}
+
+export const CYGNSS_LEGEND: [string, string][] = [
+  ["cy-low", "slightly raised"],
+  ["cy-mid", "near alert level"],
+  ["cy-flag", "meets alert rules"],
+];
+
 // ------------------------------------------------------------------ hover text for event layers
 
 export function spectrumHover(layer: SpectrumLayer, f: LayerFeature): string {
@@ -173,6 +250,7 @@ export function spectrumHover(layer: SpectrumLayer, f: LayerFeature): string {
       return [`SMAP L-band: ${num(p.n_rfi_h) ?? 0}H/${num(p.n_rfi_v) ?? 0}V of ${num(p.n_footprints) ?? 0} footprints flagged`, fr !== null ? `${Math.round(fr * 100)}%` : "", t].filter(Boolean).join(" · ");
     }
     case "gnss":
+    case "cygnss":
     case "jammers":
     case "coverage":
       return "";

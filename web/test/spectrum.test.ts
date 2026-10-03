@@ -99,3 +99,25 @@ test("sparkline breaks at gaps; HF brightness and jammer hover", () => {
   assert.ok(hfAlpha(-28) < hfAlpha(0) && hfAlpha(null) === 0.4 && hfAlpha(99) <= 0.95);
   assert.match(jammerHover({ ref: "HMD-1", method: "horizon_fit", agreement: 0.86, major_km: 38 }), /HMD-1 · fit from aircraft altitudes · 86% of aircraft consistent · about 38 km/);
 });
+
+test("059 CYGNSS day: parse, strength vs thresholds, hover", async () => {
+  const { parseCygnssDay, cygnssStrength, cygnssHover } = await import("../src/spectrummodel.ts");
+  const d = parseCygnssDay({
+    date: "2026-10-01",
+    total_cells: 10,
+    thresholds: { level_db: 2.5, land_level_db: 3.5, change_db: 1.5 },
+    cells: [
+      { h3: "833db0fffffffff", excess_db: 2.42, delta_db: 2.51, z: 7.7, n: 60, n_sats: 1, ocean_frac: 0, base_db: -0.09, base_days: 14, flag: "change" },
+      { h3: "8366c1fffffffff", excess_db: 1.25, delta_db: null, n: 80, n_sats: 3, ocean_frac: 1, flag: null },
+      { h3: "bad", excess_db: 9 },
+      { h3: "8366c2fffffffff", excess_db: 0.8, flag: "evil<script>" },
+    ],
+  })!;
+  assert.equal(d.cells.length, 3);
+  assert.equal(d.cells[2]!.flag, null);
+  assert.equal(cygnssStrength(d.cells[0]!, d), 1);
+  assert.equal(cygnssStrength(d.cells[1]!, d), 0.5);
+  assert.match(cygnssHover(d.cells[0]!), /\+2\.5 dB vs its usual -0\.1 dB \(14 days\) · unusual rise for this cell · land, 60 reflections, 1 satellite$/);
+  assert.match(cygnssHover(d.cells[1]!), /no baseline yet · open ocean, 80 reflections, 3 satellites/);
+  assert.equal(parseCygnssDay({ nope: 1 }), null);
+});
