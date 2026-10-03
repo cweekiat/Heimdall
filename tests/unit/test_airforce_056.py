@@ -103,3 +103,20 @@ def test_endpoints() -> None:
     d = c.get("/api/airforces/rsaf?days=1").json()
     assert d["short"] == "RSAF" and "limits" in d and d["seen"] == 0
     assert c.get("/api/airforces/nope").status_code == 404
+
+
+def test_058_asia_pacific_forces_configured_and_exclude(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from heimdall.api import airforce as api_af
+
+    fs = api_af.forces()
+    for k in ("rsaf", "rmaf", "tni_au", "paf", "rtaf", "rocaf", "jasdf", "rokaf", "raaf", "rnzaf"):
+        f = fs[k]
+        assert f["operators"] and len(f["home_country"]) == 2 and f["home_bases"] and f["limits"]
+        assert isinstance(f["detachments"], dict) and "A400" in f["watch_types"]
+    idx = {
+        "7c0001": {"operator": "Royal Australian Air Force", "icao_type": "C17"},
+        "7c0002": {"operator": "Royal Australian Air Force Museum", "icao_type": "F86"},
+        "7c0003": {"operator": "Australian Air Force", "icao_type": "P8"},
+    }
+    monkeypatch.setattr(api_af.plane_alert, "index", lambda: idx)
+    assert sorted(api_af.fleet_of(fs["raaf"])) == ["7c0001", "7c0003"]

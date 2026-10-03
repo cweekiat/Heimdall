@@ -3,6 +3,10 @@
 # home_bases / detachments: ICAO airfield idents (positions from OurAirports). Detachments are long-standing overseas
 # training units from public RSAF / MINDEF information; aircraft there are "routine", not a deployment. Verify and
 # extend; a missing detachment only makes the tool call a routine stay "abroad".
+# Any airfield in `home_country` counts as "elsewhere at home", so home_bases need not be complete. Idents checked
+# against OurAirports 2026-10-03. `exclude` drops operator strings containing these words (museums, heritage flights).
+x-watch: &watch [A332, A333, K35R, KC46, KC2, C130, C30J, C17, A400, C295, CN35, C27J, E737, E3TF, P8, P3, B762,
+  B752, GLF5, G550, H47, EC25]
 air_forces:
   rsaf:
     name: Republic of Singapore Air Force
@@ -29,3 +33,167 @@ air_forces:
     limits: >-
       Only airframes in plane-alert-db that broadcast ADS-B are seen: RSAF F-15SG / F-16 fighters are not listed and
       normally fly without public position reports, so this shows the support, transport and training fleets.
+
+  rmaf:
+    name: Royal Malaysian Air Force
+    short: RMAF
+    operators: ["royal malaysian air force"]
+    home_country: MY
+    home_bases:
+      WMSA: RMAF Subang
+      WMKD: RMAF Kuantan
+      WMKB: RMAF Butterworth
+      WMGK: RMAF Gong Kedak
+      WBGG: RMAF Kuching
+      WBKL: RMAF Labuan
+    detachments: {}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (7 listed: A400M transports and VIP jets). Su-30MKM,
+      F/A-18D and Hawk fighters are not listed and normally fly without public position reports.
+  tni_au:
+    name: Indonesian Air Force (TNI-AU)
+    short: TNI-AU
+    operators: ["indonesian air force"]
+    home_country: ID
+    home_bases:
+      WIHH: Halim Perdanakusuma Air Base
+      WAHH: Adisutjipto Air Base
+      WIMK: Soewondo Air Base
+      WIBB: Roesmin Nurjadin Air Base
+      WAQQ: Suharnoko Harbani Air Base
+    detachments: {}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (mostly G 120TP / KT-1 trainers, C295 and A400M
+      transports, 737 surveillance). Fighters are not listed.
+  paf:
+    name: Philippine Air Force
+    short: PAF
+    operators: ["philippine air force"]
+    home_country: PH
+    home_bases:
+      RPLS: Villamor / Danilo Atienza Air Base
+      RPLC: Clark Air Base
+      RPVM: Benito Ebuen Air Base (Mactan)
+      RPVP: Antonio Bautista Air Base
+      RPMB: Rajah Buayan Air Base
+    detachments: {}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (8 listed: helicopters, transports, VIP jet).
+      FA-50 fighters are not listed.
+  rtaf:
+    name: Royal Thai Air Force
+    short: RTAF
+    operators: ["royal thai air force"]
+    home_country: TH
+    home_bases:
+      VTBD: Don Mueang (Wing 6)
+      VTPI: Takhli (Wing 4)
+      VTUN: Korat (Wing 1)
+      VTUD: Udon Thani (Wing 23)
+      VTBU: U-Tapao
+      VTSS: Hat Yai (Wing 56)
+    detachments: {}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (5 listed: VIP / transport airliners). Gripen,
+      F-16 and transport fleets are mostly not listed.
+  rocaf:
+    name: Republic of China (Taiwan) Air Force
+    short: RoCAF
+    operators: ["republic of china air force"]
+    home_country: TW
+    home_bases:
+      RCSS: Songshan Air Base
+      RCNN: Tainan Air Base
+      RCMQ: Ching Chuang Kang Air Base
+      RCAY: Gangshan Air Base
+      RCDC: Pingtung Air Base
+      RCKU: Chiayi Air Base
+      RCYU: Hualien Air Base
+      RCFN: Chihhang / Taitung
+    detachments:
+      KLUF: {name: "Luke AFB, USA", unit: "21st Fighter Squadron (F-16 training)"}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (8 listed: P-3C patrol and Fokker 50 transports).
+      Fighters normally fly without public position reports.
+  jasdf:
+    name: Japan Air Self-Defense Force
+    short: JASDF
+    operators: ["japan air self-defense force", "japan air self defence force"]
+    home_country: JP
+    home_bases:
+      RJTJ: Iruma Air Base
+      RJNA: Komaki Air Base
+      RJOH: Miho Air Base
+      RJCJ: Chitose Air Base
+      RJNH: Hamamatsu Air Base
+      RJSM: Misawa Air Base
+      ROAH: Naha Air Base
+      RJFZ: Tsuiki Air Base
+      RJFN: Nyutabaru Air Base
+      RJNK: Komatsu Air Base
+      RJST: Matsushima Air Base
+    detachments:
+      HDAM: {name: "Djibouti, JSDF base", unit: "anti-piracy support"}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (KC-767 / KC-46 tankers, C-2 and C-130
+      transports, VIP 777, Global Hawk). Fighters and AEW aircraft normally fly without public position reports.
+  rokaf:
+    name: Republic of Korea Air Force
+    short: ROKAF
+    operators: ["republic of korea air force"]
+    home_country: KR
+    home_bases:
+      RKSM: Seoul Air Base (K-16)
+      RKTU: Cheongju Air Base
+      RKJK: Gunsan Air Base
+      RKPS: Sacheon Air Base
+      RKTN: Daegu Air Base (K-2)
+      RKSW: Suwon Air Base
+      RKNW: Wonju Air Base
+    detachments: {}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (E-737 AEW, C-130J, KC-330, CN-235).
+      Fighters are not listed.
+  raaf:
+    name: Royal Australian Air Force
+    short: RAAF
+    operators: ["australian air force"]
+    exclude: ["museum", "heritage"]
+    home_country: AU
+    home_bases:
+      YAMB: RAAF Base Amberley
+      YSRI: RAAF Base Richmond
+      YPEA: RAAF Base Pearce
+      YPED: RAAF Base Edinburgh
+      YWLM: RAAF Base Williamtown
+      YBTL: RAAF Base Townsville
+      YPTN: RAAF Base Tindal
+      YPDN: RAAF Base Darwin
+      YSWG: RAAF Base Wagga
+      YMES: RAAF Base East Sale
+    detachments:
+      WMKB: {name: "RMAF Butterworth, Malaysia", unit: "Operation Gateway (P-8A maritime patrol)"}
+      OMDM: {name: "Al Minhad Air Base, UAE", unit: "Middle East main operating base"}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (trainers, P-8A, C-17, C-130J, C-27J, KC-30A,
+      E-7A). F-35A and F/A-18F fighters normally fly without public position reports.
+  rnzaf:
+    name: Royal New Zealand Air Force
+    short: RNZAF
+    operators: ["royal new zealand air force"]
+    home_country: NZ
+    home_bases:
+      NZOH: RNZAF Base Ohakea
+      NZWP: RNZAF Base Auckland (Whenuapai)
+    detachments: {}
+    watch_types: *watch
+    limits: >-
+      Only airframes in plane-alert-db that broadcast ADS-B are seen (NH90, P-8A, 757, C-130J).

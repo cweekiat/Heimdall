@@ -7,8 +7,8 @@ GET /api/airforces/{key}?days -> fleet picture (heimdall.airforce.analyse): airc
 Positions: the Parquet lake (worldwide military rows `global/aircraft` and area rows `aircraft`, up
     to 7 days),
 one point per aircraft per minute, plus the last 6 h of the hot store. Finished hour partitions are
-    read once and
-kept per fleet (they never change); only the current hour is re-read.
+read once for all configured fleets together and kept (they never change); only the current hour
+is re-read.
 """
 
 from __future__ import annotations
@@ -47,10 +47,11 @@ def forces() -> dict[str, dict[str, Any]]:
 
 def fleet_of(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
     pats = [str(p).lower() for p in cfg.get("operators") or []]
+    skip = [str(p).lower() for p in cfg.get("exclude") or []]
     out: dict[str, dict[str, Any]] = {}
     for h, e in plane_alert.index().items():
         op = (e.get("operator") or "").lower()
-        if any(p in op for p in pats):
+        if any(p in op for p in pats) and not any(x in op for x in skip):
             i = classify(h, e.get("icao_type") or None, e)
             out[h] = {
                 "registration": i.registration,
@@ -60,6 +61,16 @@ def fleet_of(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 "operator": i.operator,
             }
     return out
+
+
+@lru_cache(maxsize=1)
+def _all_hexes(_n: int) -> list[str]:
+    return sorted({h for v in forces().values() for h in fleet_of(v)})
+
+
+def all_hexes() -> list[str]:
+    """Union of every configured fleet; recomputed when plane-alert-db changes size."""
+    return _all_hexes(len(plane_alert.index()))
 
 
 class LakeFleetReader:
@@ -142,7 +153,10 @@ def picture(
     tracks: dict[str, dict[float, Point]] = {h: {} for h in hexes}
     callsign: dict[str, tuple[float, str]] = {}
     start = now - timedelta(days=days)
-    for h, p, flight in reader.positions(key, hexes, start, now):
+    # one shared cache for every configured fleet: switching air force needs no new lake scan
+    for h, p, flight in reader.positions("all", all_hexes(), start, now):
+        if h not in tracks:
+            continue
         tracks[h][p[0]] = p
         if flight and flight.strip() and p[0] >= callsign.get(h, (0.0, ""))[0]:
             callsign[h] = (p[0], flight.strip())
