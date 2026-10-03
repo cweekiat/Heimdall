@@ -30,6 +30,8 @@ export function matches(a: MilAircraft, q: string): boolean {
 
 export interface MilitaryHooks {
   flyTo: (lon: number, lat: number) => void;
+  /** 047: open the investigation window for one aircraft. */
+  investigate?: (hex: string) => void;
 }
 
 export class MilitaryPanel {
@@ -82,7 +84,7 @@ export class MilitaryPanel {
   private row(a: MilAircraft): HTMLElement {
     return h(
       "button",
-      { type: "button", class: `mil-ac${a.high_interest ? " hi" : ""}`, title: a.tags.join(", "), onclick: () => this.hooks.flyTo(a.lon, a.lat) },
+      { type: "button", class: `mil-ac${a.high_interest ? " hi" : ""}`, title: a.tags.join(", "), onclick: () => (this.hooks.investigate ? this.hooks.investigate(a.hex) : this.hooks.flyTo(a.lon, a.lat)) },
       h("span", { class: `mil-role r-${a.role}` }, ROLE_LABEL[a.role] ?? a.role),
       h("span", { class: "mil-line" }, aircraftLine(a)),
       a.category ? h("span", { class: "mil-cat" }, a.category) : null,

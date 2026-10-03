@@ -1,0 +1,177 @@
+# Military aircraft type reference (task 047). Static background shown when an aircraft is investigated:
+# what the type is built for and roughly what it can do. Figures are rounded public figures (manufacturer /
+# Wikipedia, linked per type), not live data and not this airframe's configuration.
+# Keys: ICAO type designator. n name · m mission · range_km typical range (ferry if noted) · end_h endurance ·
+# crew · aar air-to-air refuelling: gives | receives | both | none · cap capabilities in plain words · w Wikipedia.
+# Airliner and business-jet codes (A332, B762, GLF5, ...) cover several military versions; the text says so.
+types:
+  # ---- tankers
+  K35R: {n: "Boeing KC-135R Stratotanker", m: "Air-to-air refuelling tanker", range_km: 2400, crew: 3, aar: both, cap: "Boom refuelling (drogue kit possible); carries about 90 t of fuel; also cargo and passengers", w: "Boeing_KC-135_Stratotanker"}
+  KC46: {n: "Boeing KC-46A Pegasus", m: "Air-to-air refuelling tanker and transport", range_km: 11800, crew: 3, aar: both, cap: "Boom and drogue refuelling, about 96 t of fuel; cargo, passengers, medical evacuation", w: "Boeing_KC-46_Pegasus"}
+  KC10: {n: "McDonnell Douglas KC-10 Extender", m: "Tanker and transport (retired by the US in 2024)", range_km: 7000, crew: 4, aar: both, cap: "Boom and drogue, about 160 t of fuel", w: "McDonnell_Douglas_KC-10_Extender"}
+  A332: {n: "Airbus A330-200 (military: A330 MRTT tanker-transport, or VIP)", m: "Tanker-transport or government transport", range_km: 14800, crew: 3, aar: both, cap: "MRTT: boom and/or drogue pods, about 110 t of fuel, ~260 passengers", w: "Airbus_A330_MRTT"}
+  KC2: {n: "Airbus Voyager KC2/KC3 (RAF A330 MRTT)", m: "Tanker-transport", range_km: 14000, crew: 3, aar: gives, cap: "Drogue refuelling, about 110 t of fuel, troop transport", w: "Airbus_A330_MRTT"}
+  B762: {n: "Boeing 767-200 (military: KC-46A tanker, KC-767, E-767 AWACS)", m: "Tanker, transport or airborne early warning", range_km: 11800, crew: 3, aar: both, cap: "Depends on version: refuelling boom / drogue, or a rotating radar (E-767)", w: "Boeing_KC-46_Pegasus"}
+  IL78: {n: "Ilyushin Il-78 Midas", m: "Air-to-air refuelling tanker", range_km: 7300, crew: 6, aar: gives, cap: "Three drogue pods", w: "Ilyushin_Il-78"}
+  # ---- bombers
+  B52: {n: "Boeing B-52H Stratofortress", m: "Long-range strategic bomber", range_km: 14000, crew: 5, aar: receives, cap: "Conventional and nuclear weapons, cruise missiles; flies global missions with refuelling", w: "Boeing_B-52_Stratofortress"}
+  B1: {n: "Rockwell B-1B Lancer", m: "Long-range bomber", range_km: 9400, crew: 4, aar: receives, cap: "Large conventional payload, supersonic dash", w: "Rockwell_B-1_Lancer"}
+  B2: {n: "Northrop B-2 Spirit", m: "Stealth strategic bomber", range_km: 11000, crew: 2, aar: receives, cap: "Low-observable; penetrates defended airspace; flies without transponder on missions", w: "Northrop_B-2_Spirit"}
+  TU95: {n: "Tupolev Tu-95MS Bear", m: "Strategic bomber / missile carrier", range_km: 15000, crew: 7, aar: receives, cap: "Long-range cruise missiles", w: "Tupolev_Tu-95"}
+  T160: {n: "Tupolev Tu-160 Blackjack", m: "Strategic bomber", range_km: 12300, crew: 4, aar: receives, cap: "Supersonic, cruise missiles", w: "Tupolev_Tu-160"}
+  TU22: {n: "Tupolev Tu-22M3 Backfire", m: "Long-range bomber / maritime strike", range_km: 6800, crew: 4, aar: none, cap: "Supersonic, anti-ship and land-attack missiles", w: "Tupolev_Tu-22M"}
+  # ---- command posts
+  E4: {n: "Boeing E-4B Nightwatch", m: "National airborne operations centre (US 'doomsday plane')", end_h: 12, crew: 48, aar: receives, cap: "Survivable command post for national leadership; can stay up for days with refuelling", w: "Boeing_E-4"}
+  E6: {n: "Boeing E-6B Mercury (TACAMO)", m: "Airborne command post and submarine communications relay", end_h: 15, crew: 22, aar: receives, cap: "Very-low-frequency radio to ballistic-missile submarines; nuclear command and control", w: "Boeing_E-6_Mercury"}
+  # ---- surveillance / ISR / early warning / maritime patrol
+  R135: {n: "Boeing RC-135 (Rivet Joint, Cobra Ball, Combat Sent)", m: "Signals intelligence / reconnaissance", end_h: 12, crew: 27, aar: receives, cap: "Listens to and locates radar and radio emitters at long range", w: "Boeing_RC-135"}
+  E3TF: {n: "Boeing E-3 Sentry AWACS", m: "Airborne early warning and control", end_h: 8, crew: 18, aar: receives, cap: "Rotating radar sees aircraft out to about 400 km; directs fighters", w: "Boeing_E-3_Sentry"}
+  E3CF: {n: "Boeing E-3 Sentry AWACS", m: "Airborne early warning and control", end_h: 8, crew: 18, aar: receives, cap: "Rotating radar sees aircraft out to about 400 km; directs fighters", w: "Boeing_E-3_Sentry"}
+  E737: {n: "Boeing E-7 Wedgetail", m: "Airborne early warning and control", end_h: 10, crew: 10, aar: receives, cap: "Fixed electronically scanned radar (MESA), air and sea surveillance", w: "Boeing_E-7_Wedgetail"}
+  E7: {n: "Boeing E-7 Wedgetail", m: "Airborne early warning and control", end_h: 10, crew: 10, aar: receives, cap: "Fixed electronically scanned radar (MESA)", w: "Boeing_E-7_Wedgetail"}
+  E2: {n: "Northrop Grumman E-2 Hawkeye", m: "Carrier / land-based airborne early warning", end_h: 6, crew: 5, aar: none, cap: "Rotating radar; E-2D can be refuelled", w: "Northrop_Grumman_E-2_Hawkeye"}
+  E8: {n: "Northrop Grumman E-8 JSTARS", m: "Ground surveillance (retired by the US in 2023)", end_h: 9, crew: 20, aar: receives, cap: "Radar tracks vehicles on the ground", w: "Northrop_Grumman_E-8_Joint_STARS"}
+  A50: {n: "Beriev A-50 Mainstay", m: "Airborne early warning and control", end_h: 7, crew: 15, aar: receives, cap: "Rotating radar", w: "Beriev_A-50"}
+  IL20: {n: "Ilyushin Il-20 Coot", m: "Electronic and signals intelligence", end_h: 12, crew: 13, aar: none, cap: "Side-looking radar and signals collection", w: "Ilyushin_Il-18"}
+  IL38: {n: "Ilyushin Il-38 May", m: "Maritime patrol / anti-submarine", range_km: 7200, crew: 7, aar: none, cap: "Search radar, sonobuoys, torpedoes", w: "Ilyushin_Il-38"}
+  P8: {n: "Boeing P-8 Poseidon", m: "Maritime patrol and anti-submarine warfare", range_km: 7500, crew: 9, aar: receives, cap: "Search radar, sonobuoys, torpedoes and anti-ship missiles; ~4 h on station 2,000 km out", w: "Boeing_P-8_Poseidon"}
+  P3: {n: "Lockheed P-3 Orion", m: "Maritime patrol and anti-submarine warfare", range_km: 4400, crew: 11, aar: none, cap: "Search radar, sonobuoys, torpedoes", w: "Lockheed_P-3_Orion"}
+  P1: {n: "Kawasaki P-1", m: "Maritime patrol and anti-submarine warfare", range_km: 8000, crew: 13, aar: none, cap: "Search radar, sonobuoys, anti-ship missiles", w: "Kawasaki_P-1"}
+  U2: {n: "Lockheed U-2", m: "High-altitude reconnaissance", end_h: 12, crew: 1, aar: none, cap: "Flies above 70,000 ft with imaging radar, cameras and signals sensors", w: "Lockheed_U-2"}
+  Q4: {n: "Northrop Grumman RQ-4 Global Hawk / MQ-4C Triton", m: "High-altitude long-endurance surveillance drone", end_h: 30, crew: 0, aar: none, cap: "Radar and imaging over very large areas for more than a day", w: "Northrop_Grumman_RQ-4_Global_Hawk"}
+  Q9: {n: "General Atomics MQ-9 Reaper", m: "Armed surveillance drone", end_h: 24, crew: 0, aar: none, cap: "Cameras, radar, can carry missiles and bombs", w: "General_Atomics_MQ-9_Reaper"}
+  Q1: {n: "General Atomics MQ-1 Predator", m: "Surveillance drone (largely retired)", end_h: 24, crew: 0, aar: none, cap: "Cameras", w: "General_Atomics_MQ-1_Predator"}
+  BTB2: {n: "Baykar Bayraktar TB2", m: "Armed tactical drone", end_h: 24, crew: 0, aar: none, cap: "Cameras, small guided bombs", w: "Baykar_Bayraktar_TB2"}
+  GLF5: {n: "Gulfstream V / G550 (military: C-37 VIP, EC-37B Compass Call, G550 CAEW, Shavit SIGINT)", m: "VIP transport or special mission", range_km: 12500, crew: 4, aar: none, cap: "Depends on version: VIP, airborne early warning, electronic attack or signals intelligence", w: "Gulfstream_G550"}
+  GLF4: {n: "Gulfstream IV (military: C-20, SRA-4)", m: "VIP transport or special mission", range_km: 7800, crew: 4, aar: none, cap: "VIP transport; some versions carry surveillance radar", w: "Gulfstream_IV"}
+  GLEX: {n: "Bombardier Global Express (military: E-11A BACN, Sentinel R1, GlobalEye)", m: "Communications relay, ground surveillance or early warning", range_km: 11000, crew: 4, aar: none, cap: "E-11A relays battlefield datalinks; GlobalEye carries Erieye radar", w: "Bombardier_E-11A"}
+  BE20: {n: "Beechcraft King Air 200 (military: C-12 Huron, RC-12, MC-12)", m: "Utility transport or signals / imagery intelligence", range_km: 3300, crew: 2, aar: none, cap: "Transport; RC-12 / MC-12 versions carry intelligence sensors", w: "Beechcraft_C-12_Huron"}
+  B350: {n: "Beechcraft King Air 350 (military: MC-12W, Shadow R1)", m: "Transport or intelligence, surveillance and reconnaissance", range_km: 3300, crew: 2, aar: none, cap: "ISR versions carry cameras and signals sensors", w: "Beechcraft_King_Air#Model_350"}
+  PC12: {n: "Pilatus PC-12 (military: U-28A Draco)", m: "Utility transport or special-operations ISR", range_km: 3300, crew: 2, aar: none, cap: "U-28A carries cameras and radios for special forces", w: "Pilatus_PC-12"}
+  DH8C: {n: "De Havilland Canada Dash 8-300 (military: maritime surveillance)", m: "Transport or maritime surveillance", range_km: 1700, crew: 2, aar: none, cap: "Coastguard / border versions carry search radar", w: "De_Havilland_Canada_Dash_8"}
+  DH8D: {n: "De Havilland Canada Dash 8-400", m: "Transport or maritime surveillance", range_km: 2000, crew: 2, aar: none, cap: "Some versions carry search radar", w: "De_Havilland_Canada_Dash_8"}
+  AT76: {n: "ATR 72 (military: ATR 72MP maritime patrol, transport)", m: "Transport or maritime patrol", range_km: 1500, crew: 2, aar: none, cap: "MP version: search radar and sensors", w: "ATR_72"}
+  AT45: {n: "ATR 42 (military: maritime surveillance)", m: "Transport or maritime surveillance", range_km: 1500, crew: 2, aar: none, cap: "Surveillance versions carry search radar", w: "ATR_42"}
+  D228: {n: "Dornier 228", m: "Utility transport or maritime patrol", range_km: 2300, crew: 2, aar: none, cap: "Maritime versions carry search radar", w: "Dornier_228"}
+  F2TH: {n: "Dassault Falcon 2000 (military: VIP, Falcon 2000 MSA)", m: "VIP transport or maritime surveillance", range_km: 6000, crew: 3, aar: none, cap: "MSA version: search radar", w: "Dassault_Falcon_2000"}
+  FA50: {n: "Dassault Falcon 50 (military: VIP, Falcon 50M)", m: "VIP transport or maritime surveillance", range_km: 5800, crew: 3, aar: none, cap: "50M: search radar", w: "Dassault_Falcon_50"}
+  SW4: {n: "Fairchild Metro / C-26 Metroliner", m: "Utility transport or surveillance", range_km: 2000, crew: 2, aar: none, cap: "RC-26 carries cameras for counter-drug and disaster work", w: "Fairchild_Swearingen_Metroliner"}
+  # ---- airlift
+  C17: {n: "Boeing C-17 Globemaster III", m: "Strategic and tactical airlift", range_km: 4500, crew: 3, aar: receives, cap: "About 77 t of cargo (tanks, helicopters, troops) to short runways; ~10,000 km ferry", w: "Boeing_C-17_Globemaster_III"}
+  C5M: {n: "Lockheed C-5M Super Galaxy", m: "Strategic airlift", range_km: 4400, crew: 7, aar: receives, cap: "About 127 t of outsize cargo", w: "Lockheed_C-5_Galaxy"}
+  C5: {n: "Lockheed C-5 Galaxy", m: "Strategic airlift", range_km: 4400, crew: 7, aar: receives, cap: "Outsize cargo", w: "Lockheed_C-5_Galaxy"}
+  C130: {n: "Lockheed C-130 Hercules", m: "Tactical airlift", range_km: 3800, crew: 5, aar: none, cap: "About 19 t of cargo or ~90 troops to rough strips; tanker (KC-130) and gunship versions", w: "Lockheed_C-130_Hercules"}
+  C30J: {n: "Lockheed Martin C-130J Super Hercules", m: "Tactical airlift", range_km: 3300, crew: 3, aar: none, cap: "About 20 t of cargo; KC-130J refuels, MC-130J supports special forces", w: "Lockheed_Martin_C-130J_Super_Hercules"}
+  A400: {n: "Airbus A400M Atlas", m: "Strategic and tactical airlift, tanker", range_km: 3300, crew: 3, aar: both, cap: "About 37 t of cargo; can refuel fighters and helicopters", w: "Airbus_A400M_Atlas"}
+  C295: {n: "Airbus C295", m: "Tactical transport or maritime patrol", range_km: 1300, crew: 2, aar: none, cap: "About 9 t of cargo; MPA version: radar, sonobuoys", w: "Airbus_C-295"}
+  CN35: {n: "CASA/IPTN CN-235", m: "Tactical transport or maritime patrol", range_km: 1500, crew: 2, aar: none, cap: "About 6 t of cargo; patrol versions carry radar", w: "CASA/IPTN_CN-235"}
+  C27J: {n: "Leonardo C-27J Spartan", m: "Tactical transport", range_km: 1850, crew: 2, aar: none, cap: "About 11 t of cargo to short strips", w: "Alenia_C-27J_Spartan"}
+  E390: {n: "Embraer C-390 Millennium", m: "Tactical transport and tanker", range_km: 2000, crew: 2, aar: both, cap: "About 26 t of cargo; KC-390 refuels with wing pods", w: "Embraer_C-390_Millennium"}
+  KC39: {n: "Embraer KC-390", m: "Tactical transport and tanker", range_km: 2000, crew: 2, aar: both, cap: "About 26 t of cargo; drogue pods", w: "Embraer_C-390_Millennium"}
+  IL76: {n: "Ilyushin Il-76", m: "Strategic airlift", range_km: 4000, crew: 5, aar: none, cap: "About 45 t of cargo", w: "Ilyushin_Il-76"}
+  Y20: {n: "Xian Y-20", m: "Strategic airlift (tanker version Y-20U)", range_km: 4500, crew: 3, aar: both, cap: "About 66 t of cargo", w: "Xian_Y-20"}
+  A124: {n: "Antonov An-124 Ruslan", m: "Strategic heavy airlift", range_km: 4800, crew: 6, aar: none, cap: "About 150 t of outsize cargo", w: "Antonov_An-124_Ruslan"}
+  AN12: {n: "Antonov An-12", m: "Tactical transport", range_km: 3600, crew: 5, aar: none, cap: "About 20 t of cargo", w: "Antonov_An-12"}
+  AN32: {n: "Antonov An-32", m: "Tactical transport", range_km: 2500, crew: 3, aar: none, cap: "About 7 t of cargo, hot and high airfields", w: "Antonov_An-32"}
+  AN28: {n: "Antonov An-28", m: "Light transport", range_km: 1300, crew: 2, aar: none, cap: "About 2 t", w: "Antonov_An-28"}
+  M28: {n: "PZL M28 Skytruck (C-145)", m: "Light STOL transport", range_km: 1500, crew: 2, aar: none, cap: "Special-operations and short-strip transport", w: "PZL_M28_Skytruck"}
+  DHC6: {n: "De Havilland Canada DHC-6 Twin Otter", m: "Utility STOL transport", range_km: 1400, crew: 2, aar: none, cap: "Short and rough strips, skis or floats", w: "De_Havilland_Canada_DHC-6_Twin_Otter"}
+  PC6T: {n: "Pilatus PC-6 Porter", m: "Utility STOL transport", range_km: 900, crew: 1, aar: none, cap: "Very short strips, parachuting", w: "Pilatus_PC-6_Porter"}
+  # ---- government / VIP and liaison
+  A319: {n: "Airbus A319 (military: VIP / government transport)", m: "Government transport", range_km: 6900, crew: 2, aar: none, cap: "Passenger transport", w: "Airbus_A319"}
+  A320: {n: "Airbus A320 (military: VIP / government transport)", m: "Government transport", range_km: 6100, crew: 2, aar: none, cap: "Passenger transport", w: "Airbus_A320_family"}
+  A321: {n: "Airbus A321 (military: government transport)", m: "Government transport", range_km: 6000, crew: 2, aar: none, cap: "Passenger transport", w: "Airbus_A321"}
+  A359: {n: "Airbus A350-900 (military: government VIP)", m: "Government long-range transport", range_km: 15000, crew: 2, aar: none, cap: "Head-of-state / government transport", w: "Airbus_A350"}
+  B737: {n: "Boeing 737-700 (military: C-40 Clipper, VIP)", m: "Transport", range_km: 5500, crew: 2, aar: none, cap: "Passengers and cargo", w: "Boeing_C-40_Clipper"}
+  B738: {n: "Boeing 737-800 (military: transport / VIP)", m: "Transport", range_km: 5400, crew: 2, aar: none, cap: "Passengers", w: "Boeing_737_Next_Generation"}
+  B736: {n: "Boeing 737-600 (military: transport)", m: "Transport", range_km: 5600, crew: 2, aar: none, cap: "Passengers", w: "Boeing_737_Next_Generation"}
+  B748: {n: "Boeing 747-8 (government: head-of-state transport)", m: "Head-of-state transport", range_km: 14000, crew: 3, aar: none, cap: "Long-range VIP", w: "Boeing_747-8"}
+  B788: {n: "Boeing 787-8 (government VIP)", m: "Government transport", range_km: 13600, crew: 2, aar: none, cap: "Long-range VIP", w: "Boeing_787_Dreamliner"}
+  B77W: {n: "Boeing 777-300ER (government VIP)", m: "Government transport", range_km: 13600, crew: 2, aar: none, cap: "Long-range VIP", w: "Boeing_777"}
+  A345: {n: "Airbus A340-500 (government VIP)", m: "Government transport", range_km: 16600, crew: 2, aar: none, cap: "Long-range VIP", w: "Airbus_A340"}
+  A310: {n: "Airbus A310 (military: transport, MRTT)", m: "Transport or tanker", range_km: 9500, crew: 3, aar: none, cap: "Passengers; MRTT version refuels", w: "Airbus_A310_MRTT"}
+  T204: {n: "Tupolev Tu-204/214 (government, Tu-214R reconnaissance)", m: "Government transport or reconnaissance", range_km: 6500, crew: 3, aar: none, cap: "Tu-214R: radar and signals intelligence", w: "Tupolev_Tu-204"}
+  A148: {n: "Antonov An-148 (government transport)", m: "Government transport", range_km: 4400, crew: 2, aar: none, cap: "Passengers", w: "Antonov_An-148"}
+  F900: {n: "Dassault Falcon 900 (VIP)", m: "VIP transport", range_km: 7400, crew: 3, aar: none, cap: "Passengers; some maritime versions", w: "Dassault_Falcon_900"}
+  FA7X: {n: "Dassault Falcon 7X (VIP)", m: "VIP transport", range_km: 11000, crew: 3, aar: none, cap: "Passengers", w: "Dassault_Falcon_7X"}
+  FA10: {n: "Dassault Falcon 10 (military: liaison, training)", m: "Liaison", range_km: 3500, crew: 2, aar: none, cap: "Passengers; navy radar training", w: "Dassault_Falcon_10"}
+  GLF6: {n: "Gulfstream G650 (VIP)", m: "VIP transport", range_km: 13000, crew: 4, aar: none, cap: "Passengers", w: "Gulfstream_G650"}
+  GL5T: {n: "Bombardier Global 5000 (VIP / special mission)", m: "VIP transport or special mission", range_km: 9600, crew: 3, aar: none, cap: "Passengers or sensors", w: "Bombardier_Global_5000"}
+  CL60: {n: "Bombardier Challenger 600 series (military: VIP, ISR e.g. Artemis)", m: "VIP transport or surveillance", range_km: 6200, crew: 2, aar: none, cap: "Some versions carry signals sensors", w: "Bombardier_Challenger_600_series"}
+  C560: {n: "Cessna Citation V (UC-35)", m: "Liaison transport", range_km: 3600, crew: 2, aar: none, cap: "Passengers", w: "Cessna_Citation_V"}
+  LJ35: {n: "Learjet 35 (C-21A)", m: "Liaison transport, target towing", range_km: 4000, crew: 2, aar: none, cap: "Passengers; some fly electronic-warfare training", w: "Learjet_35"}
+  E35L: {n: "Embraer Legacy 600 (VIP)", m: "VIP transport", range_km: 6000, crew: 2, aar: none, cap: "Passengers", w: "Embraer_Legacy_600"}
+  E50P: {n: "Embraer Phenom 100", m: "Liaison / multi-engine training", range_km: 2100, crew: 2, aar: none, cap: "Passengers", w: "Embraer_Phenom_100"}
+  PC24: {n: "Pilatus PC-24", m: "Liaison transport", range_km: 3600, crew: 2, aar: none, cap: "Short and unpaved strips", w: "Pilatus_PC-24"}
+  P180: {n: "Piaggio P.180 Avanti", m: "Liaison transport", range_km: 2800, crew: 2, aar: none, cap: "Passengers", w: "Piaggio_P.180_Avanti"}
+  TBM7: {n: "Daher TBM 700", m: "Liaison / training", range_km: 2800, crew: 1, aar: none, cap: "Passengers", w: "Socata_TBM"}
+  TBM9: {n: "Daher TBM 900", m: "Liaison / training", range_km: 3000, crew: 1, aar: none, cap: "Passengers", w: "Socata_TBM"}
+  B190: {n: "Beechcraft 1900", m: "Utility transport", range_km: 2200, crew: 2, aar: none, cap: "Passengers; some surveillance versions", w: "Beechcraft_1900"}
+  L410: {n: "Let L-410 Turbolet", m: "Light transport, parachuting", range_km: 1400, crew: 2, aar: none, cap: "Rough strips", w: "Let_L-410_Turbolet"}
+  C208: {n: "Cessna 208 Caravan (military: AC-208 armed ISR)", m: "Utility transport or light ISR", range_km: 1700, crew: 1, aar: none, cap: "Some carry cameras or missiles", w: "Cessna_208_Caravan"}
+  # ---- fighters and attack
+  F16: {n: "General Dynamics F-16 Fighting Falcon", m: "Multirole fighter", range_km: 1500, crew: 1, aar: receives, cap: "Air-to-air and ground attack; also suppression of air defences", w: "General_Dynamics_F-16_Fighting_Falcon"}
+  F15: {n: "McDonnell Douglas F-15 Eagle / Strike Eagle", m: "Air superiority / strike fighter", range_km: 1800, crew: 2, aar: receives, cap: "Air-to-air; F-15E long-range strike", w: "McDonnell_Douglas_F-15_Eagle"}
+  F18H: {n: "Boeing F/A-18E/F Super Hornet", m: "Carrier multirole fighter", range_km: 1300, crew: 2, aar: both, cap: "Air-to-air, strike; can refuel other jets with a pod", w: "Boeing_F/A-18E/F_Super_Hornet"}
+  F18S: {n: "Boeing F/A-18E/F Super Hornet / EA-18G Growler", m: "Carrier multirole fighter / electronic attack", range_km: 1300, crew: 2, aar: both, cap: "Growler jams radars and radios", w: "Boeing_EA-18G_Growler"}
+  F22: {n: "Lockheed Martin F-22 Raptor", m: "Stealth air superiority fighter", range_km: 1300, crew: 1, aar: receives, cap: "Low-observable, supercruise", w: "Lockheed_Martin_F-22_Raptor"}
+  F35: {n: "Lockheed Martin F-35 Lightning II", m: "Stealth multirole fighter", range_km: 1100, crew: 1, aar: receives, cap: "Low-observable, sensor fusion, strike", w: "Lockheed_Martin_F-35_Lightning_II"}
+  EUFI: {n: "Eurofighter Typhoon", m: "Multirole fighter", range_km: 1400, crew: 1, aar: receives, cap: "Air-to-air (quick reaction alert), ground attack", w: "Eurofighter_Typhoon"}
+  RFAL: {n: "Dassault Rafale", m: "Multirole fighter", range_km: 1800, crew: 1, aar: both, cap: "Air-to-air, strike, nuclear deterrent (France); buddy refuelling", w: "Dassault_Rafale"}
+  TOR: {n: "Panavia Tornado", m: "Strike / electronic combat", range_km: 1400, crew: 2, aar: receives, cap: "ECR version attacks air-defence radars", w: "Panavia_Tornado"}
+  SU27: {n: "Sukhoi Su-27 Flanker", m: "Air superiority fighter", range_km: 1300, crew: 1, aar: none, cap: "Air-to-air", w: "Sukhoi_Su-27"}
+  SU30: {n: "Sukhoi Su-30", m: "Multirole fighter", range_km: 1500, crew: 2, aar: receives, cap: "Air-to-air and strike", w: "Sukhoi_Su-30"}
+  SU34: {n: "Sukhoi Su-34", m: "Strike fighter-bomber", range_km: 1100, crew: 2, aar: receives, cap: "Strike", w: "Sukhoi_Su-34"}
+  SU35: {n: "Sukhoi Su-35", m: "Air superiority fighter", range_km: 1600, crew: 1, aar: receives, cap: "Air-to-air", w: "Sukhoi_Su-35"}
+  J10: {n: "Chengdu J-10", m: "Multirole fighter", range_km: 1200, crew: 1, aar: receives, cap: "Air-to-air and strike", w: "Chengdu_J-10"}
+  A10: {n: "Fairchild Republic A-10 Thunderbolt II", m: "Close air support", range_km: 900, crew: 1, aar: receives, cap: "Gun and guided weapons against ground targets", w: "Fairchild_Republic_A-10_Thunderbolt_II"}
+  M2000: {n: "Dassault Mirage 2000", m: "Multirole fighter", range_km: 1500, crew: 1, aar: receives, cap: "Air-to-air and strike", w: "Dassault_Mirage_2000"}
+  # ---- helicopters and tiltrotors
+  H60: {n: "Sikorsky H-60 family (UH-60 Black Hawk, SH/MH-60 Seahawk, HH-60)", m: "Utility, rescue or naval helicopter", range_km: 590, crew: 4, aar: none, cap: "Troops and cargo; Seahawk hunts submarines; HH-60 rescue can be refuelled", w: "Sikorsky_UH-60_Black_Hawk"}
+  H47: {n: "Boeing CH-47 Chinook", m: "Heavy-lift helicopter", range_km: 740, crew: 3, aar: none, cap: "About 10 t or ~33 troops; MH-47 special-operations version takes fuel in flight", w: "Boeing_CH-47_Chinook"}
+  H64: {n: "Boeing AH-64 Apache", m: "Attack helicopter", range_km: 480, crew: 2, aar: none, cap: "Missiles, rockets, gun; night sensors", w: "Boeing_AH-64_Apache"}
+  V22: {n: "Bell Boeing V-22 Osprey", m: "Tiltrotor transport", range_km: 1600, crew: 4, aar: both, cap: "~24 troops at aircraft speed; special operations; MV-22 can refuel others", w: "Bell_Boeing_V-22_Osprey"}
+  EH10: {n: "AgustaWestland AW101 Merlin", m: "Transport, anti-submarine or rescue helicopter", range_km: 1300, crew: 4, aar: none, cap: "Sonar and torpedoes (naval), troops, search and rescue", w: "AgustaWestland_AW101"}
+  NH90: {n: "NHIndustries NH90", m: "Transport or naval helicopter", range_km: 800, crew: 2, aar: none, cap: "Troops; NFH version hunts submarines", w: "NHIndustries_NH90"}
+  LYNX: {n: "Westland Lynx / AW159 Wildcat", m: "Naval or army helicopter", range_km: 630, crew: 2, aar: none, cap: "Surface search radar, light missiles, torpedoes", w: "AgustaWestland_AW159_Wildcat"}
+  AS32: {n: "Airbus H215/AS332 Super Puma / AS532 Cougar", m: "Medium transport / rescue helicopter", range_km: 850, crew: 2, aar: none, cap: "Troops, search and rescue", w: "Eurocopter_AS332_Super_Puma"}
+  PUMA: {n: "Aérospatiale SA 330 Puma", m: "Medium transport helicopter", range_km: 580, crew: 2, aar: none, cap: "Troops and cargo", w: "Aérospatiale_SA_330_Puma"}
+  MI8: {n: "Mil Mi-8/Mi-17", m: "Medium transport helicopter", range_km: 600, crew: 3, aar: none, cap: "Troops, cargo, rockets", w: "Mil_Mi-8"}
+  MI24: {n: "Mil Mi-24 Hind", m: "Attack / assault helicopter", range_km: 450, crew: 2, aar: none, cap: "Rockets, missiles, troops", w: "Mil_Mi-24"}
+  A139: {n: "Leonardo AW139", m: "Utility / rescue helicopter", range_km: 1000, crew: 2, aar: none, cap: "Search and rescue, transport", w: "AgustaWestland_AW139"}
+  A169: {n: "Leonardo AW169", m: "Light utility helicopter", range_km: 820, crew: 2, aar: none, cap: "Transport, medical, training", w: "AgustaWestland_AW169"}
+  A119: {n: "Leonardo AW119 Koala (TH-73)", m: "Training helicopter", range_km: 950, crew: 2, aar: none, cap: "Pilot training", w: "AgustaWestland_AW119_Koala"}
+  EC35: {n: "Airbus H135 (EC135)", m: "Light twin helicopter: training, liaison, police", range_km: 630, crew: 2, aar: none, cap: "Training and utility", w: "Eurocopter_EC135"}
+  EC45: {n: "Airbus H145 (EC145, UH-72 Lakota)", m: "Light utility helicopter", range_km: 650, crew: 2, aar: none, cap: "Utility, medical, special forces", w: "Eurocopter_EC145"}
+  EC25: {n: "Airbus H225 / EC725 Caracal", m: "Medium-heavy transport / combat rescue helicopter", range_km: 850, crew: 2, aar: receives, cap: "Combat search and rescue; can take fuel in flight", w: "Eurocopter_EC725"}
+  AS50: {n: "Airbus AS350 / H125 Écureuil", m: "Light helicopter", range_km: 640, crew: 1, aar: none, cap: "Training and liaison", w: "Eurocopter_AS350_Écureuil"}
+  AS55: {n: "Airbus AS355 / AS555 Fennec", m: "Light twin helicopter", range_km: 700, crew: 1, aar: none, cap: "Training, liaison", w: "Eurocopter_AS355_Écureuil_2"}
+  B505: {n: "Bell 505 Jet Ranger X", m: "Training helicopter", range_km: 560, crew: 1, aar: none, cap: "Pilot training", w: "Bell_505_Jet_Ranger_X"}
+  B412: {n: "Bell 412 / Griffin", m: "Utility helicopter", range_km: 750, crew: 2, aar: none, cap: "Transport, rescue", w: "Bell_412"}
+  W3: {n: "PZL W-3 Sokół", m: "Utility helicopter", range_km: 740, crew: 2, aar: none, cap: "Transport, rescue", w: "PZL-Świdnik_W-3_Sokół"}
+  # ---- trainers
+  PC21: {n: "Pilatus PC-21", m: "Turboprop pilot trainer", range_km: 1300, crew: 2, aar: none, cap: "Fast-jet lead-in training", w: "Pilatus_PC-21"}
+  PC7: {n: "Pilatus PC-7", m: "Turboprop pilot trainer", range_km: 1200, crew: 2, aar: none, cap: "Basic training", w: "Pilatus_PC-7"}
+  PC9: {n: "Pilatus PC-9", m: "Turboprop pilot trainer", range_km: 1600, crew: 2, aar: none, cap: "Training", w: "Pilatus_PC-9"}
+  TEX2: {n: "Beechcraft T-6 Texan II", m: "Turboprop pilot trainer", range_km: 1500, crew: 2, aar: none, cap: "Primary training", w: "Beechcraft_T-6_Texan_II"}
+  G115: {n: "Grob G 115", m: "Piston elementary trainer", range_km: 1000, crew: 2, aar: none, cap: "First flying training", w: "Grob_G_115"}
+  G12T: {n: "Grob G 120TP", m: "Turboprop basic trainer", range_km: 1400, crew: 2, aar: none, cap: "Training", w: "Grob_G_120TP"}
+  G120: {n: "Grob G 120A", m: "Piston trainer", range_km: 1300, crew: 2, aar: none, cap: "Training", w: "Grob_G_120"}
+  MF17: {n: "Saab MFI-17 Supporter / PAC Mushshak", m: "Piston basic trainer", range_km: 800, crew: 2, aar: none, cap: "Training", w: "Saab_MFI-17_Supporter"}
+  HAWK: {n: "BAE Systems Hawk", m: "Jet trainer / light attack", range_km: 2500, crew: 2, aar: none, cap: "Advanced training, aerobatic teams", w: "BAE_Systems_Hawk"}
+  M346: {n: "Leonardo M-346 Master", m: "Advanced jet trainer", range_km: 1900, crew: 2, aar: receives, cap: "Fighter lead-in training", w: "Alenia_Aermacchi_M-346_Master"}
+  M345: {n: "Leonardo M-345", m: "Jet basic trainer", range_km: 1700, crew: 2, aar: none, cap: "Training, aerobatic team", w: "Aermacchi_M-345"}
+  L39: {n: "Aero L-39 Albatros", m: "Jet trainer", range_km: 1100, crew: 2, aar: none, cap: "Training, light attack", w: "Aero_L-39_Albatros"}
+  T38: {n: "Northrop T-38 Talon", m: "Supersonic jet trainer", range_km: 1800, crew: 2, aar: none, cap: "Advanced training", w: "Northrop_T-38_Talon"}
+  KT1: {n: "KAI KT-1 Woongbi", m: "Turboprop basic trainer", range_km: 1330, crew: 2, aar: none, cap: "Training", w: "KAI_KT-1_Woongbi"}
+  TUCA: {n: "Embraer EMB 312 Tucano", m: "Turboprop trainer", range_km: 1800, crew: 2, aar: none, cap: "Training", w: "Embraer_EMB_312_Tucano"}
+  PZ3T: {n: "PZL-130 Orlik", m: "Turboprop trainer", range_km: 970, crew: 2, aar: none, cap: "Training", w: "PZL-130_Orlik"}
+  Z42: {n: "Zlin Z-42", m: "Piston trainer", range_km: 500, crew: 2, aar: none, cap: "Training", w: "Zlin_Z-42"}
+  F260: {n: "SIAI-Marchetti SF.260", m: "Piston trainer", range_km: 1500, crew: 2, aar: none, cap: "Training, light attack", w: "SIAI-Marchetti_SF.260"}
+  SIRA: {n: "Tecnam P2002 Sierra", m: "Light trainer", range_km: 1000, crew: 2, aar: none, cap: "Flight screening", w: "Tecnam_P2002_Sierra"}
+  DA40: {n: "Diamond DA40", m: "Piston trainer", range_km: 1300, crew: 2, aar: none, cap: "Training", w: "Diamond_DA40_Diamond_Star"}
+  DA42: {n: "Diamond DA42", m: "Twin trainer / light surveillance", range_km: 1700, crew: 2, aar: none, cap: "Training; some carry cameras", w: "Diamond_DA42_Twin_Star"}
+  C172: {n: "Cessna 172 (T-41)", m: "Piston trainer / liaison", range_km: 1200, crew: 1, aar: none, cap: "Training", w: "Cessna_172"}
+  C182: {n: "Cessna 182", m: "Liaison / light utility", range_km: 1700, crew: 1, aar: none, cap: "Liaison", w: "Cessna_182_Skylane"}
+  CT4: {n: "PAC CT-4 Airtrainer", m: "Piston trainer", range_km: 1200, crew: 2, aar: none, cap: "Training", w: "PAC_CT/4_Airtrainer"}
+  E121: {n: "Embraer EMB 121 Xingu", m: "Liaison / multi-engine trainer", range_km: 2300, crew: 2, aar: none, cap: "Training", w: "Embraer_EMB_121_Xingu"}

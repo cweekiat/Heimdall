@@ -153,6 +153,8 @@ export class Traffic {
   // deck accepts an image source at runtime; its typings only list string | Texture.
   private readonly icons = atlas() as unknown as string;
   onCounts: () => void = () => undefined;
+  /** 047: open the investigation window for a military aircraft. */
+  onInvestigate: ((hex: string) => void) | null = null;
 
   constructor(
     private ops: OpsMap,
@@ -599,7 +601,14 @@ export class Traffic {
               [T.lastHeard, ageWord(sea!.age_s)],
             ]),
         h("div", { class: "note" }, s.kind === "air" ? T.trailAir : T.trailSea, this.trail.length > 1 ? "" : ` (${T.noTrail})`),
-        h("div", { class: "row" }, follow, rel, iconButton("close", T.closeCard, () => closeWindow("entity"))),
+        h(
+          "div",
+          { class: "row" },
+          follow,
+          rel,
+          air?.mil && this.onInvestigate ? h("button", { type: "button", class: "primary", onclick: () => this.onInvestigate?.(air.hex) }, icon("plane", 14), "Investigate") : null,
+          iconButton("close", T.closeCard, () => closeWindow("entity")),
+        ),
       ),
     );
   }

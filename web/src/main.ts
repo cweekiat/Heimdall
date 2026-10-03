@@ -44,6 +44,7 @@ import { SpectrumLayers } from "./spectrum";
 import { SpectrumWatch } from "./watch";
 import { MilitaryPanel } from "./military";
 import { AircraftList } from "./aclistwin";
+import { Investigator } from "./investigate";
 import { ScenarioPanel } from "./scenario";
 import { demoLive, demoLiveLayers } from "./demolive";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
@@ -82,13 +83,14 @@ createWindow({ id: "board", title: T.areas, icon: "areas", body: $("board"), x: 
 createWindow({ id: "layers", title: T.layers, icon: "filter", body: layersBody, x: EDGE_LEFT + 8, y: EDGE_TOP + 8, w: 360, h: 700 });
 const sourcesWin = new Sources();
 // 039: worldwide military air activity (contacts, roles, theatres, high-interest aircraft)
-const milWin = new MilitaryPanel({ flyTo: (lon, lat) => ops?.flyTo(lon, lat) });
+// 047: click a military aircraft -> what it is, whose, capabilities, where from, what it may be doing now
+const investigator = new Investigator({ flyTo: (lon, lat) => ops?.flyTo(lon, lat), render: () => ops?.render() });
+const milWin = new MilitaryPanel({ flyTo: (lon, lat) => ops?.flyTo(lon, lat), investigate: (hex) => investigator.open(hex) });
 // 046: IntelSky-style military aircraft list (tabs, sort, filters, hide others, CSV/KML)
-let pickAircraft: (hex: string) => void = () => undefined;
 const acList = new AircraftList({
   bbox: () => ops?.bbox() ?? "-180,-90,180,90",
   flyTo: (lon, lat) => ops?.flyTo(lon, lat),
-  pick: (hex) => window.setTimeout(() => pickAircraft(hex), 900), // after the fly-to loads its position
+  pick: (hex) => investigator.open(hex),
 });
 
 // 043: Demo page on the live server. Packs are precomputed files; while one is open the map shows its recorded
@@ -582,7 +584,7 @@ async function boot(): Promise<void> {
     void areasWin.reload();
     wireMapExtras(ops);
     const traffic = new Traffic(ops, $("mapwrap"));
-    pickAircraft = (hex) => traffic.select({ kind: "air", id: hex });
+    traffic.onInvestigate = (hex) => investigator.open(hex);
     const trafficMove = ops.onMove;
     ops.onMove = () => (trafficMove(), isOpen("aclist") && acList.draw());
     trafficSearch = (q) => traffic.search(q).map((t) => ({ group: "Aircraft and ships in view", label: t.label, detail: t.detail, pick: () => (ops?.flyTo(t.lon, t.lat), t.pick()) }));
@@ -595,7 +597,7 @@ async function boot(): Promise<void> {
     ops.extraLayers = (tool, zoom) =>
       demoLive.active
         ? [...(demoLiveLayers() as never[])] // 043: a live-server demo shows only its recorded snapshot
-        : [...spec.layers(tool), ...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom), ...(sats.layers() as never[]), ...(demoLayers() as never[])];
+        : [...spec.layers(tool), ...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom), ...(investigator.layers() as never[]), ...(sats.layers() as never[]), ...(demoLayers() as never[])];
     tourMap.view = (lon, lat, zoom) => ops?.view(lon, lat, zoom);
     tourMap.redraw = () => (ops?.render(), placePops());
     tourMap.home = () => ops?.home();

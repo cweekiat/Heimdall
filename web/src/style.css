@@ -1865,3 +1865,20 @@ button.mil-bar[aria-pressed="true"] { outline: 1px solid var(--accent, #58a6ff);
   .acl-row { grid-template-columns: 22px 1.2fr 1fr 80px 52px; }
   .acl-row > :nth-child(4), .acl-row > :nth-child(7) { display: none; }
 }
+
+/* 047: aircraft investigation */
+.inv { display: flex; flex-direction: column; gap: 10px; }
+.inv h4 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
+.inv section p { margin: 2px 0; }
+.inv-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.inv-head h2 { margin: 0; }
+.inv-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.inv-tiles > div { border: 1px solid var(--line, #30363d); border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; }
+.inv-tiles span { font-size: 11px; opacity: 0.7; text-transform: uppercase; }
+.inv-tiles b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.inv-now { border-left: 3px solid var(--military, #f0a020); padding: 6px 8px; background: color-mix(in srgb, var(--military, #f0a020) 8%, transparent); border-radius: 0 4px 4px 0; }
+.inv-now.possible { border-left-style: dashed; }
+.inv-label { font-weight: 600; }
+.inv-ctx { font-size: 12px; }
+.inv-key { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.inv-ramp { display: inline-block; width: 120px; height: 8px; border-radius: 4px; }

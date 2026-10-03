@@ -399,6 +399,8 @@ export const api = {
   spectrumStatus: () => req<unknown>("/api/spectrum/status"),
   /** 039: worldwide military aircraft with identity, roles, countries, theatres. */
   military: () => req<MilitarySummary>("/api/military"),
+  /** 047: one military aircraft investigated (identity, type reference, take-off, activity, track). */
+  investigate: (hex: string) => req<Investigation>(`/api/military/aircraft/${encodeURIComponent(hex)}`),
   /** Estimated jammer locations from open GNSS-jamming alerts (GeoJSON ellipses). */
   jammers: () => req<unknown>("/api/jammers"),
   spaceWeather: () =>
@@ -492,4 +494,51 @@ export interface Scenario {
   caveat: string;
   sources: string;
   steps: ScenarioStep[];
+}
+
+/** 047: GET /api/military/aircraft/{hex}. */
+export interface AirfieldRef {
+  ident: string;
+  name: string;
+  country: string;
+  military: boolean;
+  kind: string;
+  lat: number;
+  lon: number;
+  distance_km: number;
+}
+export interface TypeReference {
+  type: string;
+  name: string | null;
+  mission: string | null;
+  range_km: number | null;
+  endurance_h: number | null;
+  crew: number | null;
+  refuelling: string | null;
+  capabilities: string | null;
+  source: string | null;
+}
+export interface Investigation {
+  hex: string;
+  flight: string | null;
+  registration: string | null;
+  type: string | null;
+  type_name: string | null;
+  role: string;
+  country: string | null;
+  operator: string | null;
+  category: string | null;
+  tags: string[];
+  known: boolean;
+  high_interest: boolean;
+  reference: TypeReference | null;
+  departure: { kind: "took_off" | "first_seen" | "on_ground" | "unknown"; at?: string; lat?: number; lon?: number; airfield?: AirfieldRef | null; text: string };
+  activity: { label: string; confidence: "likely" | "possible"; reasons: string[]; context: string[] };
+  last: { ts: string; lat: number; lon: number; alt: number | null; gs: number | null };
+  /** [lon, lat, alt ft or -1, epoch s] */
+  track: [number, number, number, number][];
+  flight_from: number;
+  airfields_loaded: boolean;
+  limits: string;
+  attribution: string;
 }
