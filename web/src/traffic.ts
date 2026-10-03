@@ -10,6 +10,7 @@ import type { FeedReq } from "./trafficfeed";
 import { COVERAGE_NOTE, densityCells, densityOpacity, iconOpacity, parseBox, truncationNote, wanted, zoomParam } from "./trafficdata";
 import type { DensityRow, Wanted } from "./trafficdata";
 import { rgba } from "./theme/palette";
+import { ROLE_LABEL, roleRgba } from "./milroles";
 import { altitudeMeters, dropLines, view } from "./map3d";
 import { h } from "./dom";
 import { icon, iconButton } from "./icons";
@@ -312,10 +313,11 @@ export class Traffic {
   }
 
   /** Zoomed out: H3 density cells (opacity by log count); cells holding military get an amber outline.
-   *  "Military only" keeps just the cells with military and counts only those (amber fill). */
+   *  "Military only" (or any military role picked) keeps just the cells with military and counts only those (amber
+   *  fill); density cells carry no role, so a role filter shows all military there until zoomed in. */
   private densityLayers(zoom: number): unknown[] {
     const fade = densityOpacity(zoom);
-    const mil = filters.milOnly;
+    const mil = filters.milOnly || filters.milRoles.length > 0;
     const mk = (id: string, all: DensityRow[], alpha: number): unknown[] => {
       const cells = densityCells(all, mil);
       if (!cells.length || fade <= 0.01) return [];
@@ -390,17 +392,17 @@ export class Traffic {
         visible: fade > 0.01,
         iconAtlas: this.icons,
         iconMapping: MAPPING,
-        getIcon: () => "plane", // military = the same plane in amber (shape no longer differs)
+        getIcon: () => "plane", // military = the same plane in its role colour (046), amber family
         getPosition: (d) => [d.row.lon, d.row.lat, this.z(d.row)],
         getAngle: (d) => -(d.row.track ?? 0),
         updateTriggers: { getPosition: [view.mode, view.exaggeration] },
         getSize: (d) => (d.row.mil ? 28 : 26),
-        getColor: (d) => (isMil(d.row) ? rgba("military", 1) : rgba("neutral", 0.95)),
+        getColor: (d) => (isMil(d.row) ? roleRgba(d.row.role, 1) : rgba("neutral", 0.95)),
         sizeUnits: "pixels",
         pickable: pick,
         onHover: (i) => {
           const r = (i.object as { row: Air } | undefined)?.row;
-          this.hover(r ? `${r.flight ?? r.hex} · ${fmtAlt(r)}` : null, i.x, i.y);
+          this.hover(r ? [r.flight ?? r.hex, r.mil ? (r.type_name ?? r.type_code) : null, r.mil ? ROLE_LABEL[r.role ?? "other"] : null, fmtAlt(r)].filter(Boolean).join(" · ") : null, i.x, i.y);
         },
         onClick: (i) => i.object && this.select({ kind: "air", id: (i.object as { row: Air }).row.hex }),
       }),
@@ -576,7 +578,14 @@ export class Traffic {
               [T.gps, gps!],
               [T.reportedBy, (air.providers ?? [air.provider]).join(", ")],
               [T.lastHeard, ageWord(air.age_s)],
-              ...(air.mil ? ([[T.military, T.yes]] as [string, string][]) : []),
+              ...(air.mil
+                ? ([
+                    [T.military, ROLE_LABEL[air.role ?? "other"] ?? T.yes],
+                    ["Type", air.type_name ?? air.type_code ?? T.unknown],
+                    ["Operator", air.operator ?? T.unknown],
+                    ["Country", air.country ?? T.unknown],
+                  ] as [string, string][])
+                : []),
             ])
           : kv([
               [T.shipName, sea!.name ?? T.unknown],

@@ -1839,3 +1839,29 @@ button.mil-bar[aria-pressed="true"] { outline: 1px solid var(--accent, #58a6ff);
 .brief h3 { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; }
 .brief ul { margin: 0; padding-left: 18px; }
 .brief-text { white-space: pre-wrap; font-family: inherit; font-size: 13px; margin: 4px 0; padding: 8px; border-left: 3px solid var(--accent, #58a6ff); background: color-mix(in srgb, var(--accent, #58a6ff) 8%, transparent); }
+
+/* 046: military role chips and the aircraft list */
+.role-chip { display: inline-flex; align-items: center; gap: 5px; }
+.role-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.acl { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }
+.acl-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.acl-field { display: flex; flex-direction: column; gap: 2px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.85; }
+.acl-field input { font: inherit; text-transform: none; letter-spacing: 0; font-size: 13px; padding: 4px 6px; }
+.acl-tabs { display: flex; gap: 4px; }
+.acl-tab { flex: 1; padding: 5px; cursor: pointer; background: transparent; color: inherit; border: 1px solid var(--line, #30363d); border-radius: 4px; font: inherit; }
+.acl-tab[aria-selected="true"] { border-color: #58a6ff; color: #58a6ff; }
+.acl-table { flex: 1; min-height: 0; overflow: auto; font-size: 12px; }
+.acl-row { display: grid; grid-template-columns: 22px minmax(90px, 1.2fr) minmax(80px, 1fr) minmax(90px, 1.3fr) 92px 52px 40px; gap: 6px; align-items: center; padding: 4px 2px; border-bottom: 1px solid var(--line, #30363d); }
+.acl-row.hi { box-shadow: inset 3px 0 0 var(--military, #f0a020); }
+.acl-head { position: sticky; top: 0; background: var(--panel, #0d1117); z-index: 1; font-size: 11px; }
+.acl-sort { background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 0; opacity: 0.85; }
+.acl-sort[aria-sort="ascending"], .acl-sort[aria-sort="descending"] { opacity: 1; font-weight: 600; }
+.acl-id { background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 0; }
+.acl-row b, .acl-row small, .acl-row span > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acl-row small { opacity: 0.7; font-size: 11px; }
+.acl-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+.acl-foot { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+@media (max-width: 520px) {
+  .acl-row { grid-template-columns: 22px 1.2fr 1fr 80px 52px; }
+  .acl-row > :nth-child(4), .acl-row > :nth-child(7) { display: none; }
+}

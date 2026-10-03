@@ -5,6 +5,7 @@ import { icon } from "./icons";
 import type { IconName } from "./icons";
 import { COVERAGE_NOTE } from "./trafficdata";
 import { T } from "./labels";
+import { ROLE_LABEL, ROLE_ORDER, roleCss } from "./milroles";
 import { P3_DEFAULT_ON } from "./p3model";
 import type { P3Layer } from "./p3model";
 import { SPECTRUM_DEFAULT_ON } from "./spectrummodel";
@@ -19,6 +20,10 @@ export interface Filters {
   alerts: boolean;
   notices: boolean;
   milOnly: boolean;
+  /** 046: military roles shown (tanker, isr, ...). Empty = no role filter. Any role picked shows military only. */
+  milRoles: string[];
+  /** 046: "Hide others" from the aircraft list: only these ICAO hexes. Empty = off. */
+  onlyHexes: string[];
   altMin: number;
   altMax: number;
   /** Ship types shown. Empty = all. */
@@ -58,6 +63,8 @@ const DEFAULTS: Filters = {
   alerts: true,
   notices: true,
   milOnly: false,
+  milRoles: [],
+  onlyHexes: [],
   altMin: 0,
   altMax: ALT_MAX,
   shipClasses: [],
@@ -106,6 +113,8 @@ const altFilterOn = (): boolean => filters.altMin > 0 || filters.altMax < ALT_MA
 
 export function matchAir(p: AirProps): boolean {
   if (filters.milOnly && !p.mil) return false;
+  if (filters.milRoles.length > 0 && !(p.mil && filters.milRoles.includes(p.role ?? "other"))) return false;
+  if (filters.onlyHexes.length > 0 && !filters.onlyHexes.includes(p.hex.toLowerCase())) return false;
   if (filters.onlyAlerts && !p.in_alert) return false;
   if (filters.gpsBadOnly && !p.gps_bad) return false;
   if (altFilterOn()) {
@@ -118,6 +127,7 @@ export function matchAir(p: AirProps): boolean {
 }
 
 export function matchSea(p: SeaProps): boolean {
+  if (filters.onlyHexes.length > 0) return false; // "Hide others" keeps only the picked aircraft
   if (filters.milOnly && p.ship_class !== "military") return false;
   if (filters.onlyAlerts && !p.in_alert) return false;
   if (filters.shipClasses.length > 0 && !filters.shipClasses.includes(p.ship_class)) return false;
@@ -332,6 +342,20 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx, lookBack: HTMLEle
       }),
     );
   drawChips();
+  const roleChips = h("div", { class: "chips" });
+  const drawRoleChips = (): void =>
+    roleChips.replaceChildren(
+      ...ROLE_ORDER.map((r) => {
+        const on = filters.milRoles.includes(r);
+        return h(
+          "button",
+          { type: "button", class: "chip role-chip", "aria-pressed": String(on), onclick: () => setFilter({ milRoles: toggleIn(filters.milRoles, r, !on) }) },
+          h("i", { class: "role-dot", style: `background:${roleCss(r)}` }),
+          ROLE_LABEL[r] ?? r,
+        );
+      }),
+    );
+  drawRoleChips();
   const search = h("input", { type: "search", placeholder: T.searchTraffic, "aria-label": T.searchTraffic, id: "traffic-q" });
   search.value = filters.search;
   search.addEventListener("input", () => setFilter({ search: search.value }));
@@ -343,6 +367,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx, lookBack: HTMLEle
     chk(T.onlyInAlerts, "onlyAlerts"),
     chk("Only aircraft with GPS problems", "gpsBadOnly"),
     h("div", { class: "alt" }, h("span", {}, T.altitudeBand), altLo, altHi, altTxt),
+    h("div", {}, h("span", {}, "Military aircraft types (none picked = all aircraft)"), roleChips),
     h("div", {}, h("span", {}, T.shipTypes), chips),
     lookBack,
     h(
@@ -350,7 +375,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx, lookBack: HTMLEle
       {
         type: "button",
         onclick: () => {
-          setFilter({ milOnly: false, altMin: 0, altMax: ALT_MAX, shipClasses: [], onlyAlerts: false, gpsBadOnly: false, search: "" });
+          setFilter({ milOnly: false, milRoles: [], onlyHexes: [], altMin: 0, altMax: ALT_MAX, shipClasses: [], onlyAlerts: false, gpsBadOnly: false, search: "" });
           altLo.value = "0";
           altHi.value = String(ALT_MAX);
           search.value = "";
@@ -435,6 +460,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx, lookBack: HTMLEle
   draw();
   onFilters(() => {
     if (document.activeElement !== search && search.value !== filters.search) search.value = filters.search;
+    drawRoleChips();
     draw();
   });
   return draw;

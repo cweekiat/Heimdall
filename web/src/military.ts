@@ -8,22 +8,10 @@ import { h } from "./dom";
 import { fmtHM } from "./tz";
 import { createWindow, EDGE_LEFT, EDGE_TOP } from "./wm";
 
-export const ROLE_LABEL: Record<string, string> = {
-  tanker: "Tankers",
-  bomber: "Bombers",
-  isr: "Surveillance",
-  c2: "Command posts",
-  airlift: "Transport",
-  fighter: "Fighters",
-  special: "Special forces",
-  uav: "Drones",
-  rotary: "Helicopters",
-  gov_vip: "Government / VIP",
-  trainer: "Trainers",
-  other: "Other",
-};
-/** Roles that matter most for build-ups first. */
-export const ROLE_ORDER = ["tanker", "bomber", "isr", "c2", "airlift", "special", "fighter", "uav", "gov_vip", "rotary", "trainer", "other"];
+import { ROLE_LABEL, ROLE_ORDER } from "./milroles";
+import { filters, onFilters, setFilter } from "./filters";
+
+export { ROLE_LABEL, ROLE_ORDER };
 
 export function aircraftLine(a: MilAircraft): string {
   const id = a.flight || a.registration || a.hex.toUpperCase();
@@ -49,11 +37,11 @@ export class MilitaryPanel {
   data: MilitarySummary | null = null;
   private error = "";
   private query = "";
-  private role: string | null = null;
 
   constructor(private hooks: MilitaryHooks) {
     this.body = createWindow({ id: "military", title: "Military air activity", icon: "plane", x: EDGE_LEFT + 8, y: EDGE_TOP + 8, w: 380, h: 640, minW: 300 });
     this.render();
+    onFilters(() => this.render());
   }
 
   start(): void {
@@ -81,7 +69,7 @@ export class MilitaryPanel {
           onPick ? "button" : "div",
           {
             class: "mil-bar",
-            ...(onPick ? { type: "button", "aria-pressed": String(this.role === key), onclick: () => onPick(key) } : {}),
+            ...(onPick ? { type: "button", "aria-pressed": String(filters.milRoles.includes(key)), onclick: () => onPick(key) } : {}),
           },
           h("span", { class: "mil-bar-fill", style: `width:${Math.round((100 * n) / max)}%` }),
           h("span", { class: "mil-bar-label" }, label),
@@ -108,7 +96,8 @@ export class MilitaryPanel {
       return;
     }
     const roles = ROLE_ORDER.filter((r) => d.roles[r]).map((r): [string, string, number] => [r, ROLE_LABEL[r] ?? r, d.roles[r]!]);
-    const list = d.aircraft.filter((a) => (this.role === null || a.role === this.role) && matches(a, this.query));
+    const picked = filters.milRoles;
+    const list = d.aircraft.filter((a) => (picked.length === 0 || picked.includes(a.role)) && matches(a, this.query));
     const search = h("input", {
       type: "search",
       class: "mil-search",
@@ -137,10 +126,12 @@ export class MilitaryPanel {
       d.high_interest.length
         ? h("section", { class: "mil-sec" }, h("h4", {}, `High interest (${d.high_interest.length})`), ...d.high_interest.map((a) => this.row(a)))
         : null,
-      h("section", { class: "mil-sec" }, h("h4", {}, "Roles"), this.bars(roles, (r) => {
-        this.role = this.role === r ? null : r;
-        this.render();
-      })),
+      h(
+        "section",
+        { class: "mil-sec" },
+        h("h4", {}, "Roles", h("span", { class: "note" }, " · click to filter the map and list")),
+        this.bars(roles, (r) => setFilter({ milRoles: picked.includes(r) ? picked.filter((x) => x !== r) : [...picked, r] })),
+      ),
       h(
         "section",
         { class: "mil-sec" },
@@ -163,7 +154,7 @@ export class MilitaryPanel {
       h(
         "section",
         { class: "mil-sec" },
-        h("h4", {}, `Aircraft (${list.length}${this.role ? ` · ${ROLE_LABEL[this.role]}` : ""})`),
+        h("h4", {}, `Aircraft (${list.length}${picked.length ? ` · ${picked.map((r) => ROLE_LABEL[r] ?? r).join(", ")}` : ""})`),
         search,
         ...list.slice(0, 200).map((a) => this.row(a)),
       ),
