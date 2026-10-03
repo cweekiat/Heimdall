@@ -55,10 +55,15 @@ async def test_poll_fetches_both_products() -> None:
     respx.get(f"{BASE}/products/noaa-scales.json").mock(
         return_value=httpx.Response(200, json=_load("scales.json"))
     )
+    respx.get(f"{BASE}/json/goes/primary/xrays-6-hour.json").mock(
+        return_value=httpx.Response(200, json=_load("xrays-6-hour.json"))
+    )
     c = SwpcConnector("swpc", BASE, client=RateLimitedClient("swpc", rps=1000, max_retries=0))
     events = await c.poll_once()
-    assert len(events) == 3 and c.health().status == "ok"
-    assert max(events, key=lambda e: e.ts).attrs["g_scale"] == 3
+    kp = [e for e in events if e.kind == "space_weather"]
+    assert len(kp) == 3 and c.health().status == "ok"
+    assert max(kp, key=lambda e: e.ts).attrs["g_scale"] == 3
+    assert any(e.kind == "solar_xray" for e in events)  # P6 flare confounder
 
 
 @respx.mock
@@ -67,5 +72,6 @@ async def test_scales_failure_keeps_kp() -> None:
         return_value=httpx.Response(200, json=_load("kp.json"))
     )
     respx.get(f"{BASE}/products/noaa-scales.json").mock(return_value=httpx.Response(404))
+    respx.get(f"{BASE}/json/goes/primary/xrays-6-hour.json").mock(return_value=httpx.Response(404))
     c = SwpcConnector("swpc", BASE, client=RateLimitedClient("swpc", rps=1000, max_retries=0))
-    assert len(await c.poll_once()) == 3
+    assert len(await c.poll_once()) == 3  # Kp survives a failed scales and X-ray fetch

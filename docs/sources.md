@@ -7,7 +7,8 @@ Rule: keep a source only if it senses RF effects, explains them away (confounder
 | Status | Sources |
 |---|---|
 | **Kept** | adsb_lol, adsb_fi, opensky, opensky_global, adsb_lol_history (backtest, GNSS day builds), gpsjam (validation reference only), aisstream, faa_nms_notam, nga_msi, swpc, open_meteo, firms, celestrak, stac (sentinel-1-grd only) |
-| **Planned, unverified** | P5: smap_rfi · P6: wspr_live, pskreporter_mqtt, kiwisdr_dir · P7: gdelt |
+| **Planned, unverified** | P5: smap_rfi · P7: gdelt (wspr_live, pskreporter live since 032; HF detector 045) |
+| **Blocked** | kiwisdr_dir: rx.kiwisdr.com → kiwisdr.com/public/ lists receivers only after a scripted click with a fixed auth header (bot gate, checked 2026-10-03); not worked around. Mirror rx.linkfanel.net = new host (needs approval) |
 | **Removed in 027** | airplanes_live, gfw, china_msa, ioda, cloudflare_radar, black_marble, STAC sentinel-2-l2a; placeholders taiwan_mnd, japan_jso, reliefweb, acled, telegram |
 | **Not adopted** | SatNOGS, KiwiSDR live receiver sessions, PSK Reporter REST, SMOS, GIRO ionosondes |
 
@@ -764,6 +765,7 @@ All connectors emit GeoEvents with `domain: spectrum`. HF spots are mapped at th
 | sentinel1_rfi | Planetary Computer STAC `collections/sentinel-1-grd/items` + free SAS token `api/sas/v1/token/sentinel-1-grd`; asset `schema-product-<pol>` = `annotation/rfi/rfi-*.xml` (~12 KB) | none | 16 scenes / 3 days over the AOIs; one with RFI detected over northern Myanmar (29 Sep, 30 % noise reports flagged, burst power ratio 18.7) | `sar_rfi` |
 | smap_rfi | CMR `search/granules.json?short_name=SPL1BTB_NRT&bounding_box=` → NSIDC Earthdata Cloud `.h5` (~40 MB) | EARTHDATA_TOKEN | CMR search OK: 8 granules in 12 h, NRT ~3 h. Download **not verified**: token not set. Field names/RFI bit per L1B spec; check with `scripts/smap_inspect.py` | `l_band_rfi` |
 | cygnss | CMR `search/granules.json?short_name=CYGNSS_L1_V3.2` → OPeNDAP `opendap.earthdata.nasa.gov/collections/C2832195379-POCLOUD/granules/<title>.dap.nc4?dap4.ce=/ddm_timestamp_utc;/sp_lat;/sp_lon;/ddm_noise_floor;/quality_flags` | EARTHDATA_TOKEN | 7 satellites (no cyg06), one daily granule each, 2–3 days late; subset 7.9 MB in 2–4 s (full file 1.15 GB); 2026-09-12..29 backfilled (task 038) | `l1_noise` |
+| swpc (X-ray, P6) | `https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json` (same host as Kp) | none | 716 rows / 6 h (1-min, two energy bands); 0.1–0.8 nm kept, peak per 5 min (2026-10-03) | `solar_xray` |
 | smos | ESA SMOS dissemination | ESA EO account | **Blocked**: CMR collection `SMOS_Open_V7` lists no files; data only behind ESA login. Registered disabled, no connector | – |
 
 Gotchas

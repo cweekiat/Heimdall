@@ -16,10 +16,11 @@ floor)) in the direction that means trouble:
 
 States: no_coverage (too few receivers to judge), learning (baseline too short), normal,
 elevated (z >= 2), anomalous (z >= 3). Natural explanations are attached, never hidden: a
-geomagnetic storm (Kp) or solar radio blackout (R scale) for HF/GNSS. For hf, sat_downlink,
+geomagnetic storm (Kp) or solar radio blackout (R scale) for HF/GNSS. For sat_downlink,
 l_1400 and c_sar an anomalous state also yields SPECTRUM_ANOMALY Evidence (034), experimental:
 confidence capped, and it never names an emitter type. GNSS L1 and AIS already have dedicated
-detectors, and low 1090/VHF counts are receiver health, so those bands only feed the board.
+detectors (HF since P6: `detect/hf.py`, per path-midpoint cell), and low 1090/VHF counts are
+receiver health, so those bands only feed the board.
 """
 
 from __future__ import annotations
@@ -112,7 +113,8 @@ INDICATORS: dict[Band, dict[str, Any]] = {
         "reach_km": 150,
     },
 }
-EVIDENCE_BANDS = (Band.HF, Band.SAT_DOWNLINK, Band.L_1400, Band.C_SAR)
+# HF evidence comes from detect/hf.py (P6, per path-midpoint cell); the board keeps the HF state
+EVIDENCE_BANDS = (Band.SAT_DOWNLINK, Band.L_1400, Band.C_SAR)
 # event kinds and look-back per band (the pipeline reads exactly these)
 EVENT_WINDOWS: dict[str, timedelta] = {
     "hf_spots": timedelta(hours=1),

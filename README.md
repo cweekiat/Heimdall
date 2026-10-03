@@ -13,7 +13,7 @@ stations and satellites. It infers interference and emitters from how those rece
 | GNSS L1, daily | A GPSJam-style daily interference map rebuilt from Heimdall's own ingest, plus a rolling last-24 h view | live |
 | L-band from orbit | SMAP 1.4 GHz interference flags (needs EARTHDATA_TOKEN); CYGNSS L1 noise floor | SMAP connector live; CYGNSS planned |
 | C-band 5.4 GHz | Sentinel-1 radar interference annotations (Planetary Computer) | connector live; detector planned |
-| HF 3–30 MHz | WSPR and PSK Reporter spots at path midpoints; SatNOGS satellite passes | connectors live; detectors planned (experimental) |
+| HF 3–30 MHz | WSPR and PSK Reporter spots at path midpoints: **HF fade** far below the usual for that time of day (flares, storms and feed drops ruled out); SatNOGS satellite passes | experimental |
 
 Official notices (FAA NOTAMs, NGA navigational warnings) corroborate alerts. Space weather and weather are checked as
 natural explanations. NASA FIRMS fire data verifies physical events.
@@ -70,6 +70,13 @@ Global Fishing Watch, Cloudflare Radar and China MSA are being removed in task 0
 Phase 1 needs **no keys**: adsb.lol and adsb.fi are free and keyless. airplanes.live now grants access by approval only, so it is off (`enabled: false` in `config/sources.yaml`) until you have it.
 
 ## 2. Run
+
+### HF baseline (one-off, optional)
+The HF detector compares each hour with the same time on the previous 14 days. On a new install, fill that history
+from the WSPR archive (stop `heimdall.run` first; DuckDB allows one writer):
+```bash
+uv run python scripts/hf_backfill.py --start 2026-09-19 --end 2026-10-02 --store data/heimdall.duckdb
+```
 
 ### Demo (synthetic data, no network)
 The quickest way to see the UI. It uses in-memory synthetic alerts: jamming, spoofing and a tanker orbit.
@@ -252,7 +259,7 @@ your permission. See [docs/guardrails.md](docs/guardrails.md).
 | P4 | Spectrum core: remove non-RF sources, band on every alert, jammer localisation, AIS circle spoofing, ship-to-ship transfers, interference notices, band ladder UI, GPSJam-style daily map |
 | P5 (done) | Space RF: CYGNSS GNSS interference from orbit, SMAP, Sentinel-1 interference annotations |
 | Military (039) | Worldwide military aircraft (readsb `/v2/mil`), plane-alert-db identities, deployment / surge / high-interest / build-up indicators per theatre |
-| P6 | HF: WSPR, PSK Reporter, KiwiSDR directory |
+| P6 (done) | HF: WSPR and PSK Reporter path-midpoint detector with flare/storm explain-away (KiwiSDR directory blocked) |
 | P7 | Cross-band fusion, GDELT, cited Claude briefs, daily SITREP, feedback-driven tuning |
 
 Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
@@ -261,7 +268,7 @@ Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
 - ADS-B and AIS coverage over open SE Asian seas is sparse (for example, Myanmar sees about 3–10 aircraft within 250 NM). Confidence is lowered to match, and sparse-region defaults are being calibrated in task 006.
 - Thresholds are priors until the Baltic backtest (task 006) calibrates them.
 - Every sensor is a volunteer or satellite receiver: where there are no receivers there is no data, and that is
-  never read as "no interference". The planned HF detectors will be experimental and never name an emitter type.
+  never read as "no interference". The HF detector is experimental, needs 5+ days of history (backfill: `scripts/hf_backfill.py`, see below) and never names an emitter type.
 - Internet-outage, night-light, Sentinel-2 and Global Fishing Watch sources are being removed in task 027 (ADR-008).
 - Military tracking only sees aircraft that broadcast ADS-B and are flagged military; strike packages often fly
   dark and use decoys. Theatre thresholds are priors and the surge baseline needs 3 days of data.

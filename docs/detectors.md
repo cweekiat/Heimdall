@@ -540,3 +540,17 @@ Confidence 0.6 (ADS-B coverage; aircraft flying dark are not seen). Alerts are f
   estimates within 150 km (one emitter, all its alerts listed).
 - Pipeline: NEW alerts of areas no longer monitored expire like any stale alert.
 - Report: `docs/reports/2026-10-03-false-alarms.md`.
+
+## HF path anomaly (detect/hf.py, `hf-path-0.1.0`, P6 / 045, experimental)
+- Input `hf_spots` (WSPR, PSK Reporter) regrouped to 4° path-midpoint cells (`cell_deg`); per source, band and cell,
+  a 60-min window ending 20 min before now vs the same clock window on each of the previous 14 days (a day counts
+  only if the source reported anything in the box then; ≥ 5 days needed).
+- H1 count drop: usual ≥ 30 spots from ≥ 3 receivers, now ≤ 25 % of usual, robust z ≤ −3. H2 SNR drop: ≥ 10 spots
+  now and on ≥ 5 days, median SNR ≥ 8 dB below usual, z ≤ −3.
+- Explained, never flagged: GOES flux ≥ M1 from 30 min before the window with the midpoint sunlit (sun ≥ −6°), or
+  SWPC R ≥ 1 when no flux sample; Kp ≥ 5 in the last 6 h; that source's whole-box total < 60 % of usual.
+- SPECTRUM_ANOMALY, band HF, H3 r3 at the cell centre; persistence = consecutive flagged windows 30 min apart (fusion
+  needs 3); confidence ≤ 0.5 (single experimental band ≤ medium). Gaps say a drop can be receivers switched off.
+- The spectrum board keeps the per-area HF state but no longer raises HF evidence.
+- Replays (`docs/reports/2026-10-03-hf.md`): 0 alerts on 6 quiet days and on 4 days around the 14 May 2025 X2.7
+  flare; with sensitive settings the flare drop is found and explained away. Priors, no labelled HF interference set.

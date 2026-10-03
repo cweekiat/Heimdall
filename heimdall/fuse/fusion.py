@@ -297,6 +297,14 @@ def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: s
             f"{_f(lead, 'sum_frp_mw'):.0f} MW over {_f(lead, 'n_passes'):.0f} satellite passes; "
             f"{pers}; {cov}."
         )
+    if kind == AlertKind.SPECTRUM_ANOMALY and lead.detector == "hf_path":
+        parts = list(dict.fromkeys(r.description for e in group for r in e.rules if r.passed))
+        return (
+            f"HF signals reflecting over H3 {cell} far below normal for this time of day: "
+            f"{'; '.join(parts)}. No flare on the sunlit path, no geomagnetic storm, network "
+            f"reporting normally; held for {lead.persistence} half-hour windows; {cov}. "
+            "Experimental: it never names an emitter."
+        )
     if kind == AlertKind.SPECTRUM_ANOMALY:
         parts = [r.description for e in group for r in e.rules[:1]]
         return (
