@@ -28,9 +28,10 @@ LAYER_KINDS: dict[str, list[str]] = {
     "satnogs": ["sat_observation"],
     "smap": ["l_band_rfi"],
     "cygnss": ["l1_noise"],  # task 038: CYGNSS L1 noise floor per r3 cell-day
+    "conflict": ["conflict_event"],  # task 049: GDELT conflict events (context, machine-coded news)
 }
 REGIONAL = frozenset(
-    {"hf", "sar_rfi", "satnogs", "smap", "cygnss"}
+    {"hf", "sar_rfi", "satnogs", "smap", "cygnss", "conflict"}
 )  # aoi=all returns every feature
 # explicit per-kind attr whitelist (ADR-007 table); anything else is dropped
 ATTRS: dict[str, tuple[str, ...]] = {
@@ -76,6 +77,20 @@ ATTRS: dict[str, tuple[str, ...]] = {
         "base_days",
     ),
     "l_band_rfi": ("h3", "n_footprints", "n_rfi_h", "n_rfi_v", "rfi_frac", "tb_h_mean_k"),
+    "conflict_event": (
+        "cameo",
+        "root",
+        "label",
+        "goldstein",
+        "mentions",
+        "sources",
+        "articles",
+        "place",
+        "country",
+        "precision",
+        "event_day",
+        "domain",
+    ),
 }
 _SCALAR = (str, int, float, bool, type(None))
 NEXT_H = 48
@@ -140,8 +155,8 @@ def _feature(e: GeoEvent, layer: str) -> dict[str, Any] | None:
         v = e.attrs.get(k)
         if isinstance(v, _SCALAR):
             props[k] = v
-    if layer == "imagery" and e.url:
-        props["url"] = e.url  # STAC item link, text only (ADR-007 §3)
+    if layer in ("imagery", "conflict") and e.url:
+        props["url"] = e.url  # link as text only (ADR-007 §3); news pages are never fetched
     geom = e.geometry
     if geom is None:
         p = _point(e)
@@ -154,6 +169,30 @@ def _feature(e: GeoEvent, layer: str) -> dict[str, Any] | None:
 def layers_router(st: Store) -> APIRouter:
     r = APIRouter()
     cache: dict[tuple[str, int, str], tuple[float, dict[str, Any]]] = {}
+
+    @r.get("/api/news")
+    def news(limit: int = Query(40, ge=1, le=100)) -> dict[str, Any]:
+        """049: latest headlines (BBC World, Al Jazeera). Untrusted text, display only: the UI
+        writes it as text, nothing in Heimdall parses or acts on it."""
+        now = datetime.now(UTC)
+        evs = st.events_window(now - timedelta(hours=48), now + timedelta(minutes=5), ["news_item"])
+        seen: set[str] = set()
+        items = []
+        for e in sorted(evs, key=lambda e: e.ts, reverse=True):
+            key = (e.title or "").lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            items.append(
+                {
+                    "title": e.title,
+                    "feed": e.attrs.get("feed"),
+                    "url": e.url,
+                    "ts": _iso(e.ts),
+                    "untrusted": True,
+                }
+            )
+        return {"items": items[:limit], "total": len(items)}
 
     @r.get("/api/layers/{layer}")
     def get_layer(

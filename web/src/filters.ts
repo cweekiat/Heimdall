@@ -10,6 +10,7 @@ import { P3_DEFAULT_ON } from "./p3model";
 import type { P3Layer } from "./p3model";
 import { SPECTRUM_DEFAULT_ON } from "./spectrummodel";
 import type { SpectrumLayer } from "./spectrummodel";
+import type { ContextLayer } from "./globallayers";
 
 export const SHIP_CLASSES = ["cargo", "tanker", "passenger", "fishing", "military", "other"] as const;
 export const ALT_MAX = 45000;
@@ -54,6 +55,8 @@ export interface Filters {
   hiddenKinds: string[];
   /** Data-quality coverage cells (thin data is greyed). */
   coverage: boolean;
+  /** 049: open-source context layers (military bases, conflict events). Off by default. */
+  context: ContextLayer[];
 }
 
 const KEY = "hm.filters.v1";
@@ -82,6 +85,7 @@ const DEFAULTS: Filters = {
   hiddenKinds: [],
   hiddenSatGroups: [],
   coverage: false,
+  context: [],
 };
 
 function load(): Filters {
@@ -156,6 +160,8 @@ export interface PanelCtx {
   spectrumStatus: (l: SpectrumLayer) => string;
   /** Next-pass chips under "Next satellite passes". */
   extra?: () => HTMLElement;
+  /** 049: count / status of a context layer. */
+  contextStatus?: (l: ContextLayer) => string;
 }
 
 /** Detectors whose alerts the Detections group can show or hide (order = list order). */
@@ -275,6 +281,24 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx, lookBack: HTMLEle
         p3("thermal", "warn", "Heat spots", "NASA FIRMS"),
         p3("overpass", "orbit", "Next satellite passes", "CelesTrak", () => (filters.p3.includes("overpass") ? (ctx.extra?.() ?? null) : null)),
       ],
+    },
+    {
+      id: "context",
+      title: "Context (open sources)",
+      rows: (
+        [
+          ["bases", "area", "Military bases", "OpenStreetMap"],
+          ["conflict", "warn", "Conflict events, 2+ sources", "GDELT news coding"],
+        ] as [ContextLayer, IconName, string, string][]
+      ).map(([l, ic, label, src]) => ({
+        id: `c-${l}`,
+        icon: ic,
+        label,
+        src,
+        on: () => filters.context.includes(l),
+        set: (on: boolean) => setFilter({ context: toggleIn(filters.context, l, on) }),
+        count: () => ctx.contextStatus?.(l) ?? "",
+      })),
     },
     {
       id: "notices",

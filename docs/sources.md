@@ -9,6 +9,7 @@ Rule: keep a source only if it senses RF effects, explains them away (confounder
 | **Kept** | adsb_lol, adsb_fi, opensky, opensky_global, adsb_lol_history (backtest, GNSS day builds), gpsjam (validation reference only), aisstream, faa_nms_notam, nga_msi, swpc, open_meteo, firms, celestrak, stac (sentinel-1-grd only) |
 | **Planned, unverified** | P5: smap_rfi · P7: gdelt (wspr_live, pskreporter live since 032; HF detector 045) |
 | **Added 047** | ourairports: airfields for "took off from" (public domain CSV, weekly, `davidmegginson.github.io`, approved 2026-10-03; 86,158 rows, 1,813 named military fields) |
+| **Added 049** | osm_bases (Overpass, weekly, ODbL), gdelt (15 min, CAMEO 15/18/19/20, context only), news_rss (BBC World, Al Jazeera; display only). AP RSS: Cloudflare bot challenge, not used |
 | **Blocked** | kiwisdr_dir: rx.kiwisdr.com → kiwisdr.com/public/ lists receivers only after a scripted click with a fixed auth header (bot gate, checked 2026-10-03); not worked around. Mirror rx.linkfanel.net = new host (needs approval) |
 | **Removed in 027** | airplanes_live, gfw, china_msa, ioda, cloudflare_radar, black_marble, STAC sentinel-2-l2a; placeholders taiwan_mnd, japan_jso, reliefweb, acled, telegram |
 | **Not adopted** | SatNOGS, KiwiSDR live receiver sessions, PSK Reporter REST, SMOS, GIRO ionosondes |

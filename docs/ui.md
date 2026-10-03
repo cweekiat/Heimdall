@@ -29,6 +29,9 @@ The API binds 127.0.0.1 by default (`api.host`).
   opens what it is (type, operator, country, reference capabilities), where it took off (OurAirports + its own track,
   or "first seen"), what it may be doing now (likely / possible, with the measured reasons and context) and its 72 h
   track coloured by altitude. `GET /api/military/aircraft/{hex}`.
+- **Context layers and news (task 049)**: Filters → *Context (open sources)*: **Military bases** (OpenStreetMap) and
+  **Conflict events, 2+ sources** (GDELT machine-coded news; hover shows source count and the caveat). **News**
+  (rail, key `n`): BBC World and Al Jazeera headlines, display only.
 - **Demo (task 043, rail, key `p`)**: plays a precomputed demo pack (`data/replay/*/*.demo.json`) on the live server.
   The snapshot layer replaces live traffic and live alert markers until **Exit demo**; demo alerts open read-only.
   Nothing is replayed server-side, so live detection is unaffected.

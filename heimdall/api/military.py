@@ -25,7 +25,7 @@ from fastapi import APIRouter, HTTPException, Path, Query
 from heimdall import config, milactivity, miltypes
 from heimdall.fuse.fusion import ACTIVE
 from heimdall.geo import KM_PER_NM, haversine_km
-from heimdall.ingest import ourairports, plane_alert
+from heimdall.ingest import osm_bases, ourairports, plane_alert
 from heimdall.military_step import _STATE, theatres
 from heimdall.milroles import classify
 from heimdall.ports import Store
@@ -137,6 +137,53 @@ def _track(store: Store, hex_: str, now: datetime) -> list[milactivity.Point]:
     return thin
 
 
+def _mark_base(dep: dict[str, Any]) -> dict[str, Any]:
+    """049: an OSM military base within 3 km of the take-off airfield marks it military."""
+    f = dep.get("airfield")
+    if f:
+        hit = osm_bases.near(f["lat"], f["lon"], 3.0, osm_bases.bases())
+        if hit:
+            f["military"] = True
+            f["base"] = hit[0]["name"]
+    return dep
+
+
+def bases_geojson(bbox: str | None) -> dict[str, Any]:
+    """049: named military bases (OpenStreetMap, ODbL) as GeoJSON points, optional w,s,e,n box."""
+    items = osm_bases.bases()
+    if bbox:
+        try:
+            w, s_, e, n = (float(x) for x in bbox.split(","))
+        except ValueError as ex:
+            raise HTTPException(422, "bbox must be w,s,e,n") from ex
+        items = [
+            b
+            for b in items
+            if s_ <= b["lat"] <= n
+            and (w <= b["lon"] <= e if w <= e else (b["lon"] >= w or b["lon"] <= e))
+        ]
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [b["lon"], b["lat"]]},
+                "properties": {
+                    "id": b["id"],
+                    "name": b["name"],
+                    "kind": b["kind"],
+                    "label": osm_bases.KINDS.get(b["kind"], "Military base"),
+                    "operator": b.get("operator"),
+                    "icao": b.get("icao"),
+                },
+            }
+            for b in items[:6000]
+        ],
+        "total": len(items),
+        "attribution": "© OpenStreetMap contributors (ODbL)",
+    }
+
+
 def investigate(store: Store, hex_: str, now: datetime) -> dict[str, Any]:
     pts = _track(store, hex_, now)
     if not pts:
@@ -188,7 +235,7 @@ def investigate(store: Store, hex_: str, now: datetime) -> dict[str, Any]:
         "known": ident.known,
         "high_interest": ident.high_interest,
         "reference": miltypes.lookup(type_code),
-        "departure": milactivity.departure(pts, nearest, rotary),
+        "departure": _mark_base(milactivity.departure(pts, nearest, rotary)),
         "activity": {
             "label": act.label,
             "confidence": act.confidence,
@@ -224,6 +271,10 @@ def military_router(store: Store) -> APIRouter:
         out = military_summary(store, datetime.now(UTC), window_min)
         cache[window_min] = (time.monotonic(), out)
         return out
+
+    @r.get("/api/military/bases")
+    def bases(bbox: str | None = None) -> dict[str, Any]:
+        return bases_geojson(bbox)
 
     @r.get("/api/military/aircraft/{hex_id}")
     def aircraft(hex_id: str = Path(pattern=r"^[0-9a-fA-F]{6}$")) -> dict[str, Any]:

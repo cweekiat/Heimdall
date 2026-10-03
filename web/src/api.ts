@@ -399,6 +399,10 @@ export const api = {
   spectrumStatus: () => req<unknown>("/api/spectrum/status"),
   /** 039: worldwide military aircraft with identity, roles, countries, theatres. */
   military: () => req<MilitarySummary>("/api/military"),
+  /** 049: named military bases worldwide (OpenStreetMap, ODbL). */
+  bases: () => req<BasesFC>("/api/military/bases"),
+  /** 049: latest headlines, untrusted text (display only). */
+  news: (limit = 40) => req<{ items: NewsItem[]; total: number }>(`/api/news?limit=${limit}`),
   /** 047: one military aircraft investigated (identity, type reference, take-off, activity, track). */
   investigate: (hex: string) => req<Investigation>(`/api/military/aircraft/${encodeURIComponent(hex)}`),
   /** Estimated jammer locations from open GNSS-jamming alerts (GeoJSON ellipses). */
@@ -541,4 +545,27 @@ export interface Investigation {
   airfields_loaded: boolean;
   limits: string;
   attribution: string;
+}
+
+/** 049 */
+export interface BaseProps {
+  id: string;
+  name: string;
+  kind: string;
+  label: string;
+  operator: string | null;
+  icao: string | null;
+}
+export interface BasesFC {
+  type: "FeatureCollection";
+  features: { type: "Feature"; geometry: { type: "Point"; coordinates: [number, number] }; properties: BaseProps }[];
+  total: number;
+  attribution: string;
+}
+export interface NewsItem {
+  title: string;
+  feed: string | null;
+  url: string | null;
+  ts: string;
+  untrusted: true;
 }
