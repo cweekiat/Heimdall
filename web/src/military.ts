@@ -6,7 +6,7 @@ import { api } from "./api";
 import type { MilAircraft, MilitarySummary, TheatreIndexResp } from "./api";
 import { h } from "./dom";
 import { fmtHM } from "./tz";
-import { createWindow, EDGE_LEFT, EDGE_TOP } from "./wm";
+import { createWindow, EDGE_LEFT, EDGE_TOP, isOpen } from "./wm";
 
 import { ROLE_LABEL, ROLE_ORDER } from "./milroles";
 import { filters, onFilters, setFilter } from "./filters";
@@ -57,7 +57,8 @@ export class MilitaryPanel {
     try {
       this.data = await api.military();
       this.error = "";
-      this.index = await api.theatreIndex().catch(() => this.index); // 051, optional
+      // 051, optional; 055: only while the panel is open (95 baseline reads per call server-side)
+      if (isOpen("military") || !this.index) this.index = await api.theatreIndex().catch(() => this.index);
     } catch (e) {
       this.error = `Military data unavailable (${String(e).slice(0, 60)})`;
     }

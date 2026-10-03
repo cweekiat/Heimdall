@@ -6,7 +6,10 @@ Timestamps are stored as naive UTC TIMESTAMP and returned tz-aware (UTC).
 from __future__ import annotations
 
 import contextlib
+import importlib.abc
+import importlib.util
 import json
+import sys
 import threading
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
@@ -32,6 +35,25 @@ from heimdall.schemas import (
     SourceHealth,
     VesselObs,
 )
+
+
+# Perf (055): DuckDB probes `import pandas` ~6 times per query. Without pandas installed every probe
+# walks the whole import path (~1.4 s per pipeline tick measured 2026-10-03). Recording the absence
+# once makes later probes fail instantly; nothing changes when pandas is installed.
+class _NoPandas(importlib.abc.MetaPathFinder):
+    """Answers `import pandas` with ModuleNotFoundError at once (pandas is not installed)."""
+
+    def find_spec(self, name: str, path: Any = None, target: Any = None) -> None:
+        if name == "pandas" or name.startswith("pandas."):
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+        return None
+
+
+if importlib.util.find_spec("pandas") is None and not any(
+    isinstance(f, _NoPandas) for f in sys.meta_path
+):
+    sys.meta_path.insert(0, _NoPandas())
+
 
 T_MIN = datetime(1970, 1, 1, tzinfo=UTC)
 _log = get_logger("heimdall.duckdb")
@@ -79,6 +101,18 @@ class _Table:
         self.model = model
         self.cols = list(model.model_fields)
         self.types = {c: _sql_type(f.annotation) for c, f in model.model_fields.items()}
+        # 055: rows Heimdall validated before writing and whose fields are plain scalars
+        # (aircraft, vessels: no enums or nested models) are rebuilt without re-validation:
+        # ~3x faster reads and no intermediate copies at 100k+ rows per tick
+        self.trusted = name in ("aircraft", "vessels")
+        self._ts = {c for c in self.cols if self.types[c] == "TIMESTAMP"}
+        self._fset = set(self.cols)  # shared: every column is always set on trusted rows
+        # repeated short strings (hex, provider, H3 cells, ...) interned: ~25 % less memory
+        self._intern = [
+            c
+            for c in ("hex", "provider", "src_type", "type_code", "flight", "h3_r4", "h3_r6")
+            if c in self.cols
+        ]
 
     def ddl(self) -> str:
         cols = ", ".join(f"{c} {self.types[c]}" for c in self.cols)
@@ -109,6 +143,23 @@ class _Table:
         return pa.table(cols, schema=schema)
 
     def from_row(self, row: Sequence[Any]) -> Any:
+        if self.trusted:
+            fast = dict(zip(self.cols, row, strict=True))
+            for c in self._ts:
+                fast[c] = _from_db(fast[c])
+            if "is_global" in fast:
+                fast["is_global"] = bool(fast["is_global"])  # NULL on rows written before 024g
+            for c in self._intern:
+                v = fast[c]
+                if isinstance(v, str):
+                    fast[c] = sys.intern(v)
+            # what model_construct does, minus its per-field default handling (~3x faster)
+            m = self.model.__new__(self.model)
+            object.__setattr__(m, "__dict__", fast)
+            object.__setattr__(m, "__pydantic_fields_set__", self._fset)
+            object.__setattr__(m, "__pydantic_extra__", None)
+            object.__setattr__(m, "__pydantic_private__", None)
+            return m
         d: dict[str, Any] = {}
         for c, v in zip(self.cols, row, strict=True):
             if self.types[c] == "TIMESTAMP":
@@ -275,8 +326,26 @@ class DuckDBStore:
         sql = (
             f"SELECT {', '.join(t.cols)} FROM {t.name} WHERE ts >= ? AND ts < ? {extra} ORDER BY ts"
         )
-        rows = self._read(sql, [_to_db(start), _to_db(end), *extra_params])
-        return [t.from_row(r) for r in rows]
+        return self._read_models(t, sql, [_to_db(start), _to_db(end), *extra_params])
+
+    def _read_models(self, t: _Table, sql: str, params: Sequence[Any]) -> list[Any]:
+        """055: stream in batches so raw rows and models never all sit in memory together."""
+        try:
+            return self._read_models_once(t, sql, params)
+        except duckdb.FatalException as e:
+            self._recover(e)
+            return self._read_models_once(t, sql, params)
+
+    def _read_models_once(self, t: _Table, sql: str, params: Sequence[Any]) -> list[Any]:
+        cur = self._con.cursor()
+        out: list[Any] = []
+        try:
+            cur.execute(sql, list(params))
+            while batch := cur.fetchmany(10_000):
+                out.extend(t.from_row(r) for r in batch)
+        finally:
+            cur.close()
+        return out
 
     def _filters(
         self,
@@ -382,14 +451,20 @@ class DuckDBStore:
         ident: Ident | None = None,
         local_only: bool = False,
         mil_only: bool = False,
+        mil_types: Sequence[str] = (),
     ) -> list[AircraftObs]:
         sql, p = self._filters(h3_r4, bbox, ident, "hex")
         if sql is None:
             return []
         if local_only:  # 024g display-only rows never feed detectors; skip them in SQL
             sql += " AND NOT coalesce(is_global, false)"
-        if mil_only:  # task 039: military rows only (any source)
-            sql += " AND coalesce(mil, false)"
+        if mil_only:  # task 039: military rows only (any source); 055: or a military type code
+            if mil_types:
+                ph = ", ".join("?" for _ in mil_types)
+                sql += f" AND (coalesce(mil, false) OR upper(type_code) IN ({ph}))"
+                p = [*p, *(t.upper() for t in mil_types)]
+            else:
+                sql += " AND coalesce(mil, false)"
         return self._window(_AIR, start, end, sql, p)
 
     def vessels_window(

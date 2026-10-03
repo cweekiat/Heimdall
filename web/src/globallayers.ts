@@ -33,7 +33,15 @@ export class GlobalLayers {
   ) {
     this.tip = h("div", { class: "hovercard tip", hidden: true });
     wrap.append(this.tip);
-    onFilters(() => void this.refresh());
+    // 055: refetch only when the context layers themselves change, not on every filter tweak
+    let last = filters.context.join(",");
+    onFilters(() => {
+      const now = filters.context.join(",");
+      if (now !== last) {
+        last = now;
+        void this.refresh();
+      }
+    });
   }
 
   start(): void {

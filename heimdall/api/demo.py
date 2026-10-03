@@ -795,9 +795,17 @@ class LiveDemoStore(MemoryStore):
         ident: Ident | None = None,
         local_only: bool = False,
         mil_only: bool = False,
+        mil_types: Sequence[str] = (),
     ) -> list[AircraftObs]:
         rows = super().aircraft_window(
-            start, end, h3_r4, bbox=bbox, ident=ident, local_only=local_only, mil_only=mil_only
+            start,
+            end,
+            h3_r4,
+            bbox=bbox,
+            ident=ident,
+            local_only=local_only,
+            mil_only=mil_only,
+            mil_types=mil_types,
         )
         if h3_r4 is not None:
             return rows
@@ -975,13 +983,21 @@ class ReplayDemoStore(ReplayStore):
         ident: Ident | None = None,
         local_only: bool = False,
         mil_only: bool = False,
+        mil_types: Sequence[str] = (),
     ) -> list[AircraftObs]:
         if end - start >= self.span:
             return []
         out: list[AircraftObs] = []
         for r0, r1, shift in self._segments(start, end):
             rows = super().aircraft_window(
-                r0, r1, h3_r4, bbox=bbox, ident=ident, local_only=local_only, mil_only=mil_only
+                r0,
+                r1,
+                h3_r4,
+                bbox=bbox,
+                ident=ident,
+                local_only=local_only,
+                mil_only=mil_only,
+                mil_types=mil_types,
             )
             out += [o.model_copy(update={"ts": o.ts + shift}) for o in rows]
         return out

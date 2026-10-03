@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from heimdall import orbits
@@ -34,7 +34,7 @@ from heimdall.detect.common import (
 )
 from heimdall.fuse.admiralty import grades_from_sources
 from heimdall.fuse.fusion import ACTIVE, apply_evidence_update, fuse
-from heimdall.geo import h3_cell, haversine_km
+from heimdall.geo import KM_PER_NM, h3_cell, haversine_km, within_radius_nm
 from heimdall.logging import get_logger
 from heimdall.military_step import MIL_KINDS, military_step
 from heimdall.ports import Store
@@ -43,6 +43,7 @@ from heimdall.schemas import (
     Alert,
     AlertKind,
     AlertStatus,
+    Band,
     Evidence,
     GeoEvent,
     VesselObs,
@@ -306,12 +307,48 @@ def _p3_evidence(
     return evs
 
 
-def spectrum_windows(store: Store, now: datetime) -> list[GeoEvent]:
-    """Spectrum events each band indicator needs, one read per kind with its own look-back."""
+# 055: day-scale kinds change a few times a day but were re-read every tick (SMAP alone: ~84k
+# events, 1.4 s and ~200 MB of objects per tick, 2026-10-03). They are re-read every
+# SLOW_REFRESH and only events within reach of a monitored area are kept.
+SLOW_SPECTRUM = {
+    "sat_observation": Band.SAT_DOWNLINK,
+    "l_band_rfi": Band.L_1400,
+    "sar_rfi": Band.C_SAR,
+}
+SLOW_REFRESH = timedelta(minutes=15)
+_SPEC_CACHE: list[tuple[Store, datetime, tuple[Any, ...], list[GeoEvent]]] = []
+
+
+def spectrum_windows(store: Store, now: datetime, aois: Sequence[AOI] = ()) -> list[GeoEvent]:
+    """Spectrum events each band indicator needs, one read per kind with its own look-back.
+    With `aois`, slow kinds are cached for SLOW_REFRESH and filtered to those areas' reach."""
     out: list[GeoEvent] = []
     for kind, span in spectrum_state.EVENT_WINDOWS.items():
+        if kind in SLOW_SPECTRUM and aois:
+            continue
         out += store.events_window(now - span, now + timedelta(minutes=5), [kind])
-    return out
+    if not aois:
+        return out
+    sig = tuple((a.name, a.lat, a.lon, a.radius_nm) for a in aois)
+    bucket = datetime.fromtimestamp(
+        now.timestamp() // SLOW_REFRESH.total_seconds() * SLOW_REFRESH.total_seconds(), UTC
+    )
+    if _SPEC_CACHE and _SPEC_CACHE[0][0] is store and _SPEC_CACHE[0][1:3] == (bucket, sig):
+        return out + _SPEC_CACHE[0][3]
+    slow: list[GeoEvent] = []
+    for kind, band in SLOW_SPECTRUM.items():
+        reach = float(spectrum_state.INDICATORS[band]["reach_km"])
+        span = spectrum_state.EVENT_WINDOWS[kind]
+        for e in store.events_window(now - span, now + timedelta(minutes=5), [kind]):
+            if e.lat is None or e.lon is None:
+                continue
+            if any(
+                within_radius_nm(e.lat, e.lon, a.lat, a.lon, a.radius_nm + reach / KM_PER_NM)
+                for a in aois
+            ):
+                slow.append(e)
+    _SPEC_CACHE[:] = [(store, bucket, sig, slow)]
+    return out + slow
 
 
 def spectrum_step(
@@ -670,15 +707,39 @@ def tick(
             grades_from_sources(_config.sources()) if source_grades is None else source_grades
         )
     dets = {a.name: settings.detectors_for(a) for a in settings.aois}  # per-AOI overrides
-    lookback = max(
-        float(det.get(k, {}).get("window_min", d))
-        + float(det.get("jamming", {}).get("step_min", 5))
-        for det in [settings.detectors, *dets.values()]
-        for k, d in (("jamming", 30), ("spoofing", 30), ("orbit", 75))
+
+    def _lb(kinds: Sequence[tuple[str, float]]) -> float:
+        return max(
+            float(det.get(k, {}).get("window_min", d))
+            + float(det.get("jamming", {}).get("step_min", 5))
+            for det in [settings.detectors, *dets.values()]
+            for k, d in kinds
+        )
+
+    lookback = _lb((("jamming", 30), ("spoofing", 30)))
+    orbit_lb = max(lookback, _lb((("orbit", 75),)))
+    mil_types = sorted(
+        {
+            str(t).upper()
+            for det in [settings.detectors, *dets.values()]
+            for t in det.get("orbit", {}).get("mil_types", [])
+        }
     )
     # 024g: worldwide display rows (no NIC/NACp) never feed AOI detectors
-    # filtered in the store: loading them and dropping them here cost ~0.5 M objects per tick
-    obs_all = store.aircraft_window(now - timedelta(minutes=lookback), now, local_only=True)
+    # filtered in the store: loading them and dropping them here cost ~0.5 M objects per tick.
+    # 055: only the orbit detector looks back 75 min, and only at military aircraft, so the older
+    # part of the window is read for military rows only (~300k -> ~130k objects per tick with
+    # three busy areas, 2026-10-03)
+    obs_all = [
+        *store.aircraft_window(
+            now - timedelta(minutes=orbit_lb),
+            now - timedelta(minutes=lookback),
+            local_only=True,
+            mil_only=True,
+            mil_types=mil_types,
+        ),
+        *store.aircraft_window(now - timedelta(minutes=lookback), now, local_only=True),
+    ]
     v_lookback = max(
         float(d.get("ais_gap", {}).get("window_h", 24)) * 60 + 5
         for d in [settings.detectors, *dets.values()]
@@ -703,7 +764,7 @@ def tick(
         sources_cfg = _config.sources().get("sources", {})
     update_overpasses(store, settings.aois, sources_cfg.get("celestrak", {}), now)
     p3 = _p3_windows(store, dets, now)
-    spec_events = spectrum_windows(store, now)
+    spec_events = spectrum_windows(store, now, settings.aois)
     cyg = cygnss_windows(store, dets, now)
     hf_st = _HF.state_for(store, dict(settings.detectors.get("hf", {})), now)
     total = TickResult(now=now, n_obs=len(obs_all))
