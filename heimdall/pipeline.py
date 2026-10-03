@@ -18,6 +18,7 @@ from heimdall.detect import (
     ais_gap,
     ais_spoofing,
     cygnss,
+    hf,
     jamming,
     orbit,
     spectrum_state,
@@ -387,6 +388,66 @@ def cygnss_windows(
     return evs, sw
 
 
+class HfCache:
+    """P6: spot bins for the HF detector. Past days' bins are stable, so each 10-min bin of a
+    baseline day is read once and kept; the current day's span is re-read every run (late
+    uploads complete recent bins). One `hf.prepare` per newest-window end is shared by all AOIs."""
+
+    def __init__(self) -> None:
+        self.store: Store | None = None
+        self.hist: dict[datetime, list[hf.SpotBin]] = {}
+        self.t_end: datetime | None = None
+        self.state: hf.HfState | None = None
+
+    def bins_for(self, store: Store, t_end: datetime, cfg: Mapping[str, Any]) -> list[hf.SpotBin]:
+        if store is not self.store:
+            self.store, self.hist, self.t_end, self.state = store, {}, None, None
+        sp, ten = hf.span(cfg), timedelta(minutes=10)
+        days = int(cfg.get("baseline_days", hf.DEFAULTS["baseline_days"]))
+        wanted: set[datetime] = set()
+        for d in range(1, days + 1):
+            t = t_end - timedelta(days=d) - sp
+            while t < t_end - timedelta(days=d):
+                wanted.add(t)
+                t += ten
+        self.hist = {t: v for t, v in self.hist.items() if t in wanted}  # slid out: drop
+        need = [t for t in wanted if t not in self.hist]
+        if need:
+            got: dict[datetime, list[hf.SpotBin]] = {t: [] for t in need}
+            # contiguous runs -> one read each (first run: one per baseline day)
+            runs: list[list[datetime]] = []
+            for t in sorted(need):
+                if runs and t - runs[-1][-1] == ten:
+                    runs[-1].append(t)
+                else:
+                    runs.append([t])
+            for run in runs:
+                evs = store.events_window(run[0], run[-1] + ten, [hf.KIND])
+                for b in hf.bins_from_events(evs):
+                    if b.t in got:
+                        got[b.t].append(b)
+            self.hist.update(got)
+        cur = hf.bins_from_events(store.events_window(t_end - sp, t_end, [hf.KIND]))
+        return [b for bs in self.hist.values() for b in bs] + cur
+
+    def state_for(self, store: Store, cfg: Mapping[str, Any], now: datetime) -> hf.HfState | None:
+        c = {**hf.DEFAULTS, **cfg}
+        if not c.get("enabled", True):
+            return None
+        t_end = hf.newest_window_end(now, c)
+        if store is self.store and self.t_end == t_end and self.state is not None:
+            return self.state
+        bins = self.bins_for(store, t_end, c)
+        ctx = store.events_window(
+            t_end - hf.span(c) - timedelta(hours=7), t_end, list(hf.CONTEXT_KINDS)
+        )
+        self.state, self.t_end = hf.prepare(bins, ctx, t_end, c, created=now), t_end
+        return self.state
+
+
+_HF = HfCache()
+
+
 def run_aoi(
     store: Store,
     aoi: AOI,
@@ -402,6 +463,7 @@ def run_aoi(
     p3: P3Windows | None = None,
     spectrum_events: Sequence[GeoEvent] | None = None,
     cygnss_events: tuple[Sequence[GeoEvent], Sequence[GeoEvent]] | None = None,
+    hf_state: hf.HfState | None = None,
 ) -> TickResult:
     """One AOI step. `vessels`: AIS window for the AOI; `vessels_all`: the unfiltered AIS window
     for dark-gap detection (ships leaving the AOI keep reporting outside it; a gap belongs to the
@@ -454,6 +516,8 @@ def run_aoi(
         evs += cygnss.detect(
             cy_ev, dict(detectors.get("cygnss", {})), now, aoi=aoi, space_weather=cy_sw
         )
+    if hf_state is not None:  # P6: persistence = consecutive flagged windows, set by the detector
+        evs += hf.detect(hf_state, aoi, dict(detectors.get("hf", {})), now)
 
     min_ac = int(jcfg.get("min_aircraft", 5))
     for cell, st in stats.items():
@@ -641,6 +705,7 @@ def tick(
     p3 = _p3_windows(store, dets, now)
     spec_events = spectrum_windows(store, now)
     cyg = cygnss_windows(store, dets, now)
+    hf_st = _HF.state_for(store, dict(settings.detectors.get("hf", {})), now)
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
         obs = [o for o in obs_all if aoi.contains(o.lat, o.lon)]
@@ -660,6 +725,7 @@ def tick(
             p3=p3,
             spectrum_events=spec_events,
             cygnss_events=cyg,
+            hf_state=hf_st,
         )
         total.evidence += r.evidence
         total.alerts += r.alerts

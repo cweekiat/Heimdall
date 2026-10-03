@@ -3,11 +3,16 @@
 No key, no position (lat/lon None). One event per Kp interval. NOAA scales are a current snapshot,
 so r/s/g scales from it are attached to the latest Kp interval only; earlier intervals carry a
 G-scale derived from Kp alone (Kp 5 -> G1 ... Kp 9 -> G5, NOAA's definition) and null r/s.
+
+P6: GOES X-ray flux (0.1-0.8 nm, last 6 h, 1-min samples) -> `solar_xray` events, one per 5-min
+bin with the bin's peak flux and flare class. A flare on the day side causes a shortwave fade-out
+on HF paths, the main natural explanation the HF detector must rule out.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import timedelta
 from typing import Any
 
 from heimdall.config import Settings
@@ -84,6 +89,54 @@ def parse_swpc(kp_payload: Any, scales_payload: Any = None) -> tuple[list[GeoEve
     return events, dropped
 
 
+XRAY_BAND = "0.1-0.8nm"
+
+
+def flare_class(flux: float) -> str:
+    """GOES class of a 0.1-0.8 nm flux in W/m^2, e.g. 2.7e-4 -> 'X2.7', 3e-6 -> 'C3.0'."""
+    for letter, lo in (("X", 1e-4), ("M", 1e-5), ("C", 1e-6), ("B", 1e-7)):
+        if flux >= lo:
+            return f"{letter}{flux / lo:.1f}"
+    return f"A{flux / 1e-8:.1f}"
+
+
+def parse_xray(payload: Any, bin_min: int = 5) -> tuple[list[GeoEvent], int]:
+    """SWPC `xrays-6-hour.json` -> one `solar_xray` event per bin (peak 0.1-0.8 nm flux)."""
+    if not isinstance(payload, list):
+        return [], 0
+    peak: dict[Any, float] = {}
+    dropped = 0
+    for r in payload:
+        if not isinstance(r, Mapping) or r.get("energy") != XRAY_BAND:
+            continue
+        ts = parse_dt(r.get("time_tag"))
+        try:
+            flux = float(r.get("flux"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            flux = -1.0
+        if ts is None or not 0 < flux < 1e-1:  # also rejects NaN
+            dropped += 1
+            continue
+        t = ts.replace(minute=ts.minute - ts.minute % bin_min, second=0, microsecond=0)
+        peak[t] = max(peak.get(t, 0.0), flux)
+    events = [
+        GeoEvent(
+            id=f"swpc|xray|{t.strftime('%Y%m%dT%H%M')}",
+            ts=t,
+            source="swpc",
+            domain=Domain.SPACE,
+            kind="solar_xray",
+            valid_from=t,
+            valid_to=t + timedelta(minutes=bin_min),
+            title="GOES X-ray flux",
+            value=f,
+            attrs={"role": "confounder", "flux_wm2": f, "flare_class": flare_class(f)},
+        )
+        for t, f in sorted(peak.items())
+    ]
+    return events, dropped
+
+
 class SwpcConnector(PollConnector):
     domain = Domain.SPACE
 
@@ -103,7 +156,11 @@ class SwpcConnector(PollConnector):
                 self._fail(type(e).__name__)
             return parse_swpc(kp.json(), scales)
 
-        return [run]
+        async def xray() -> tuple[list[GeoEvent], int]:
+            r = await self.client.get(f"{self.base_url}/json/goes/primary/xrays-6-hour.json")
+            return parse_xray(r.json())
+
+        return [run, xray]
 
 
 def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connector:

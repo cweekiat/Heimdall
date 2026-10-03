@@ -239,6 +239,26 @@ detectors:
     anomalous_z: 3.0
     confidence_cap: 0.6     # experimental single band stays <= medium severity
     explained_factor: 0.5   # confidence x0.5 when space weather could explain it
+  hf:                       # P6 (045): HF path-midpoint anomaly, experimental. Priors from WSPR backfill replays (docs/reports/2026-10-03-hf.md)
+    enabled: true
+    cell_deg: 4.0           # midpoint cells regrouped from 2 deg: 2-deg cells hear ~1 spot/bin, 11 judgeable cells/day vs 26 at 4 deg (2026-09-29)
+    window_min: 60
+    step_min: 30            # persistence spacing; fusion needs spectrum_anomaly persistence 3 = 3 windows
+    persist_windows: 3
+    settle_min: 20          # WSPR/PSK upload lag
+    baseline_days: 14       # same clock window on each previous day (HF follows the sun)
+    min_baseline_days: 5
+    min_expected: 30        # usual spots per hour before a drop means anything
+    min_rx: 3               # usual receivers: one station switching off is not an anomaly
+    drop_ratio: 0.25
+    z_min: 3.0
+    snr_min_spots: 10
+    snr_drop_db: 8.0
+    flare_flux: 1.0e-5      # GOES M1: shortwave fade-out on sunlit paths
+    kp_explain: 5.0         # G1 storm
+    network_ok_ratio: 0.6   # whole-box drop -> feed or region-wide propagation, not local
+    reach_km: 500
+    confidence_cap: 0.5
   fusion:
     persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2, spectrum_anomaly: 3}  # CLAUDE.md: >= 2 windows; ais_*, thermal prior, not backtested
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior
