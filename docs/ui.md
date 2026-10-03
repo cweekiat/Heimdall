@@ -34,6 +34,8 @@ The API binds 127.0.0.1 by default (`api.host`).
   (rail, key `n`): BBC World and Al Jazeera headlines, display only.
 - **Regions (task 050)**: type a region or place in the search box ("Gulf", "Taiwan", "hormuz", "Global") to jump to
   one of 18 preset views.
+- **Theatre activity (task 051)**: top of the Military panel. Each theatre's level (Quiet / Watch / Elevated / High) is
+  the number of components above that theatre's own normal; click a theatre to see every component with its numbers.
 - **Demo (task 043, rail, key `p`)**: plays a precomputed demo pack (`data/replay/*/*.demo.json`) on the live server.
   The snapshot layer replaces live traffic and live alert markers until **Exit demo**; demo alerts open read-only.
   Nothing is replayed server-side, so live detection is unaffected.

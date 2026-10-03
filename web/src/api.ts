@@ -399,6 +399,8 @@ export const api = {
   spectrumStatus: () => req<unknown>("/api/spectrum/status"),
   /** 039: worldwide military aircraft with identity, roles, countries, theatres. */
   military: () => req<MilitarySummary>("/api/military"),
+  /** 051: theatre activity index (components vs each theatre's own normal). */
+  theatreIndex: () => req<TheatreIndexResp>("/api/military/theatres/index"),
   /** 049: named military bases worldwide (OpenStreetMap, ODbL). */
   bases: () => req<BasesFC>("/api/military/bases"),
   /** 049: latest headlines, untrusted text (display only). */
@@ -568,4 +570,28 @@ export interface NewsItem {
   url: string | null;
   ts: string;
   untrusted: true;
+}
+
+/** 051 */
+export interface TheatreComponent {
+  key: string;
+  label: string;
+  now: number;
+  normal: number | null;
+  above: boolean;
+  why: string;
+}
+export interface TheatreIdx {
+  name: string;
+  lat: number;
+  lon: number;
+  radius_km: number;
+  level: number;
+  word: string;
+  components: TheatreComponent[];
+}
+export interface TheatreIndexResp {
+  generated: string;
+  theatres: TheatreIdx[];
+  note: string;
 }

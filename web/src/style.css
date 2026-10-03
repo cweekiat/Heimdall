@@ -1890,3 +1890,13 @@ button.mil-bar[aria-pressed="true"] { outline: 1px solid var(--accent, #58a6ff);
 .news-list a { color: inherit; text-decoration: none; }
 .news-list a:hover { text-decoration: underline; }
 .news-list small { opacity: 0.7; font-size: 11px; }
+
+/* 051: theatre activity index */
+.th-idx { border-bottom: 1px solid var(--line, #30363d); }
+.th-idx-head { display: grid; grid-template-columns: 74px 1fr auto; gap: 8px; align-items: center; width: 100%; background: none; border: 0; color: inherit; font: inherit; text-align: left; padding: 5px 2px; cursor: pointer; }
+.th-lvl { font-size: 11px; padding: 1px 6px; border-radius: 3px; border: 1px solid currentColor; text-align: center; opacity: 0.8; }
+.th-idx.lvl-1 .th-lvl { color: var(--military, #f0a020); opacity: 1; }
+.th-idx.lvl-2 .th-lvl, .th-idx.lvl-3 .th-lvl { color: var(--military, #f0a020); background: color-mix(in srgb, var(--military, #f0a020) 18%, transparent); opacity: 1; font-weight: 600; }
+.th-comps { list-style: none; margin: 0 0 6px; padding: 0 0 0 8px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.th-comps li { display: flex; flex-direction: column; opacity: 0.75; }
+.th-comps li.above { opacity: 1; border-left: 2px solid var(--military, #f0a020); padding-left: 6px; }
