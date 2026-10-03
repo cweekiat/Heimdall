@@ -168,6 +168,20 @@ military only, altitude band, ship types); they never change what is collected. 
 place that switches collection on or off. Warnings and NOTAMs appear as hatched areas. Spectrum watch and the
 area status board open from **Area of Ops**.
 
+**Alert workflow.** The Alerts window has four tabs: **Needs action** (new; press Acknowledge to take ownership),
+**In progress** (run the checks shown in the alert, then **Confirm real**, **False alarm** with a reason, or **Shelve**
+for 2/8/24 h), **Confirmed** (real, being tracked; **Close: ended** when the activity stops) and **Closed** (history,
+Reopen). Cards show whether the activity is still ongoing.
+
+**Demo** (rail button or `p`). Steps through a recorded case on the live server, e.g. Operation Midnight Hammer:
+the map shows the recorded military aircraft for each step and hides live data until you press Exit demo. The
+demo is a precomputed file (`data/replay/midnight_hammer/midnight_hammer.demo.json`, built by
+`scripts/midnight_hammer.py`), so live monitoring is not affected.
+
+**Shift report** (`h`) includes rule-based Trends. For a written summary, install [Ollama](https://ollama.com) and
+`ollama pull qwen2.5:7b-instruct`: the report then offers *Summarise with … (local)*. The model runs on this machine
+(non-local URLs are refused), sees only Heimdall's alert facts and must cite alert refs.
+
 **Military air activity** (rail button or `m`). Every aircraft the ADS-B networks flag as military, worldwide, refreshed
 each minute: contacts, roles (tankers, bombers, surveillance, command posts, transport, fighters, government/VIP),
 types, operator countries, high-interest aircraft and per-theatre counts; click an aircraft or theatre to fly there.

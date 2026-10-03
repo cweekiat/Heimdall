@@ -18,6 +18,15 @@ privacy:
   allow_outbound_sharing: false    # exports/briefs stay local; no upload/share integrations
   redact_entities_in_exports: true
 
+# task 044: shift brief narration by a LOCAL model (Ollama on this machine). Loopback URLs only:
+# any other host is refused in code, so this never sends data off the machine.
+brief:
+  llm:
+    enabled: true
+    url: http://127.0.0.1:11434
+    model: qwen2.5:7b-instruct   # ollama pull qwen2.5:7b-instruct (~4.7 GB); any chat model works
+    timeout_s: 120
+
 api:
   host: 127.0.0.1      # localhost only until auth is enabled
   port: 8000

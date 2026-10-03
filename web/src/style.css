@@ -1833,3 +1833,9 @@ button.mil-bar[aria-pressed="true"] { outline: 1px solid var(--accent, #58a6ff);
 .next-step .checks li { margin: 2px 0; }
 .tri-row { flex-wrap: wrap; gap: 6px; }
 .tri-menu { flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+
+/* 044: shift brief */
+.brief { margin: 8px 0 12px; }
+.brief h3 { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; }
+.brief ul { margin: 0; padding-left: 18px; }
+.brief-text { white-space: pre-wrap; font-family: inherit; font-size: 13px; margin: 4px 0; padding: 8px; border-left: 3px solid var(--accent, #58a6ff); background: color-mix(in srgb, var(--accent, #58a6ff) 8%, transparent); }

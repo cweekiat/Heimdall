@@ -25,6 +25,7 @@ from heimdall.aoi_ctl import AoiService
 from heimdall.api import triage
 from heimdall.api.aois import aois_router
 from heimdall.api.basemap import basemap_router
+from heimdall.api.brief import brief_router
 from heimdall.api.demo_packs import DemoPacks, demo_router
 from heimdall.api.gnss import gnss_router
 from heimdall.api.keys import keys_router
@@ -531,6 +532,7 @@ def create_app(
     app.include_router(spectrum_router(st))
     app.include_router(military_router(st))
     app.include_router(demo_router(demo_packs))
+    app.include_router(brief_router(st))
     app.include_router(keys_router(secrets, sources))
     app.include_router(
         aois_router(

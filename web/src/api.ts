@@ -346,6 +346,11 @@ export const api = {
   /** 040: demo replays only — jump the replay clock to a recorded moment. */
   replaySeek: (at: string) => post<{ at: string }>("/api/replay/seek", { at }),
   /** 043: precomputed demos served by the live server (static files, no replay). */
+  /** 044: shift brief: trends (rule-based) and a local-model summary (this machine only). */
+  briefStatus: () => req<{ available: boolean; model: string; reason?: string }>("/api/brief/status"),
+  briefTrends: (hours: number) => req<{ trends: string[] }>(`/api/brief/trends?hours=${hours}`),
+  briefSummary: (hours: number) =>
+    post<{ trends: string[]; narrative: string; model: string; cited: string[]; unsupported: string[] }>("/api/brief/summary", { hours }),
   demoPacks: () => req<{ name: string; title: string; summary: string; n_steps: number }[]>("/api/demo/packs"),
   demoPack: (name: string) => req<Scenario>(`/api/demo/packs/${encodeURIComponent(name)}`),
   health: () => req<{ sources: SourceHealth[]; time: string }>("/api/health"),
