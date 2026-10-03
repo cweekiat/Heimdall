@@ -206,6 +206,11 @@ country, where it took off (or where it was first seen when the take-off was not
 (for example "likely air-refuelling track" or "transit towards the Europe staging theatre") with the measured reasons,
 and its 72-hour track coloured by altitude. These are estimates from public ADS-B: intent is never known.
 
+**Context layers and news.** Filters → Context: **military bases** worldwide (OpenStreetMap) and **conflict events**
+(fighting, strikes, shows of force coded from world news by GDELT every 15 minutes; only events reported by two or
+more sources are drawn, and the hover says they can be wrong or old). **News** (rail or `n`): BBC World and Al
+Jazeera headlines for context. None of these raise alerts or feed the AI brief.
+
 **Military roles on the map and the aircraft list** (rail button or `y`). Military planes are coloured by role. Pick
 roles (tanker, surveillance, transport, helicopter, …) in Filters → Quick filters, in the Military panel or in the
 list to show only those. The list has All / In view / Selected tabs, sortable columns, filters for callsign, type,

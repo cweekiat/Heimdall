@@ -17,6 +17,7 @@ def _isolated_secret_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> I
     monkeypatch.setenv("HEIMDALL_MIL_STATE", "")
     monkeypatch.setenv("HEIMDALL_PLANE_ALERT", str(tmp_path / "plane-alert-db.csv"))
     monkeypatch.setenv("HEIMDALL_AIRPORTS", str(tmp_path / "airports.csv"))  # 047
+    monkeypatch.setenv("HEIMDALL_BASES", str(tmp_path / "military_bases.json"))  # 049
     monkeypatch.setattr(secrets_file, "_default", None)
     yield
     secrets_file._default = None

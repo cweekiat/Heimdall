@@ -45,6 +45,8 @@ import { SpectrumWatch } from "./watch";
 import { MilitaryPanel } from "./military";
 import { AircraftList } from "./aclistwin";
 import { Investigator } from "./investigate";
+import { GlobalLayers } from "./globallayers";
+import { NewsWindow } from "./news";
 import { ScenarioPanel } from "./scenario";
 import { demoLive, demoLiveLayers } from "./demolive";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
@@ -86,6 +88,8 @@ const sourcesWin = new Sources();
 // 047: click a military aircraft -> what it is, whose, capabilities, where from, what it may be doing now
 const investigator = new Investigator({ flyTo: (lon, lat) => ops?.flyTo(lon, lat), render: () => ops?.render() });
 const milWin = new MilitaryPanel({ flyTo: (lon, lat) => ops?.flyTo(lon, lat), investigate: (hex) => investigator.open(hex) });
+// 049: world news headlines (context only, display only)
+const newsWin = new NewsWindow();
 // 046: IntelSky-style military aircraft list (tabs, sort, filters, hide others, CSV/KML)
 const acList = new AircraftList({
   bbox: () => ops?.bbox() ?? "-180,-90,180,90",
@@ -171,6 +175,7 @@ const winToggles: Record<string, () => void> = {
   w: () => toggleWindow("watch"),
   m: () => toggleWindow("military"),
   y: () => toggleWindow("aclist"),
+  n: () => toggleWindow("news"),
   p: () => void openLiveDemo(),
   ",": () => toggleWindow("settings"),
   g: () => ops?.toggleGlobe(),
@@ -184,6 +189,7 @@ const tools: Tool[] = [
   { id: "draw", icon: "draw", label: T.drawAreas, key: "o", toggle: winToggles.o!, hint: "Draw, list and monitor areas" },
   { id: "military", icon: "plane", label: "Military", key: "m", toggle: winToggles.m!, hint: "Military aircraft worldwide, roles, theatres" },
   { id: "aclist", icon: "filter", label: "Aircraft list", key: "y", toggle: winToggles.y!, hint: "Sort, filter, select and export military aircraft" },
+  { id: "news", icon: "notice", label: "News", key: "n", toggle: winToggles.n!, hint: "World headlines for context (never used for alerts)" },
   { id: "scenario", icon: "timeline", label: "Demo", key: "p", toggle: () => void openLiveDemo(), hint: "Step through a real recorded case (e.g. Operation Midnight Hammer)" },
   { id: "sources", icon: "sources", label: T.sources, key: "u", toggle: winToggles.u!, hint: "Source health, on/off, API keys" },
   { id: "settings", icon: "settings", label: "Settings", key: ",", toggle: winToggles[","]!, hint: "Theme, map overlays, layout" },
@@ -594,10 +600,11 @@ async function boot(): Promise<void> {
     ctxHooks.onFootprint = (id) => p3.focus(id, () => setFilter({ p3: [...filters.p3, "imagery"] }));
     const spec = new SpectrumLayers(ops, $("mapwrap")); // task 030: band ladder + spectrum layers
     const sats = new Satellites(ops, $("mapwrap"));
+    const globalLayers = new GlobalLayers(ops, $("mapwrap")); // 049: bases + conflict events
     ops.extraLayers = (tool, zoom) =>
       demoLive.active
         ? [...(demoLiveLayers() as never[])] // 043: a live-server demo shows only its recorded snapshot
-        : [...spec.layers(tool), ...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom), ...(investigator.layers() as never[]), ...(sats.layers() as never[]), ...(demoLayers() as never[])];
+        : [...spec.layers(tool), ...p3.layers(tool), ...notices.layers(tool), ...traffic.layers(tool, zoom), ...(globalLayers.layers(zoom) as never[]), ...(investigator.layers() as never[]), ...(sats.layers() as never[]), ...(demoLayers() as never[])];
     tourMap.view = (lon, lat, zoom) => ops?.view(lon, lat, zoom);
     tourMap.redraw = () => (ops?.render(), placePops());
     tourMap.home = () => ops?.home();
@@ -613,6 +620,7 @@ async function boot(): Promise<void> {
           return c;
         },
         spectrumExtra: (l) => spec.extra(l),
+        contextStatus: (l) => globalLayers.status(l),
         spectrumStatus: (l) => spec.layerStatus(l),
         extra: () => p3.chipList(),
       },
@@ -669,6 +677,8 @@ async function boot(): Promise<void> {
       safe("satellites", () => sats.start());
       safe("military", () => milWin.start());
       safe("aclist", () => acList.start());
+      safe("context", () => globalLayers.start());
+      safe("news", () => newsWin.start());
     });
     void refreshSpaceWeather();
     setInterval(() => void refreshSpaceWeather(), 300_000);
