@@ -15,7 +15,18 @@ The API binds 127.0.0.1 by default (`api.host`).
 - **Areas of Ops**: none by default; drawn circles/polygons limited to 250 nm; monitored areas outlined green.
 - **Alerts**: two categories, **Critical** (red, small pop-up card on the map from zoom 3) and **Warning**. Details are one
   factual view: detected time, area, position + MGRS, first/last seen, sources, confidence %, affected aircraft/vessels,
-  and "Why it was flagged" (value vs alert threshold and normal). Actions: **Acknowledge** and **Clear** only.
+  and "Why it was flagged" (value vs alert threshold and normal).
+- **Alert workflow (task 042, `web/src/workflow.ts`)**: the Alerts window has four tabs with counts. **Needs action**
+  (new; inline **Acknowledge** = "I own this") → **In progress** (acknowledged / under review / shelved: run the checklist
+  for the alert type, then **Confirm real**, **False alarm** with a reason, or **Shelve** 2 / 8 / 24 h) → **Confirmed**
+  (real, being tracked; **Close: ended** once there is no fresh evidence for 60 min) → **Closed** (resolved, false alarm,
+  expired; **Reopen**). Details open with a "Next step" box; cards show whether the activity is still ongoing.
+- **Demo (task 043, rail, key `p`)**: plays a precomputed demo pack (`data/replay/*/*.demo.json`) on the live server.
+  The snapshot layer replaces live traffic and live alert markers until **Exit demo**; demo alerts open read-only.
+  Nothing is replayed server-side, so live detection is unaffected.
+- **Shift report (`h`, task 044)**: rule-based **Trends** (this period vs the previous one, by type, area and band,
+  spectrum-board anomalies) always; **Summarise with local AI** when a local Ollama model is running (loopback only),
+  with cited alert refs and any unsupported refs flagged.
 - **Filters** only show/hide data (never change ingestion): Data type (source) rows such as Aircraft (ADS-B), GNSS and
   radio spectrum, Earth observation, alerts/notices, detections (ship gone dark, military aircraft circling, …), quick filters.
 - **Data sources**: plain names, On/Off switch with no confirmation; click a keyed source for an API key pop-up.
@@ -82,6 +93,11 @@ Shortcuts are ignored while typing in a field; `Esc` always closes the topmost t
 | GET | `/api/metrics/{key}/{metric}?since=` | baseline series (key = h3 cell) |
 | GET | `/api/aois`, `/api/health`, `/api/playbook` | config / source health / allow-list |
 | POST | `/api/alerts/{id}/feedback` | `{verdict: confirm|dismiss, reason}`; sets alert status |
+| POST | `/api/alerts/{id}/status` | `{status, reason?, shelve_until?}`; transitions in `heimdall/api/triage.py` (`resolved` = real, activity over; reason needed for dismissed / shelved) |
+| GET | `/api/demo/packs`, `/api/demo/packs/{name}` | demo packs (steps, snapshots, alert list); `/api/alerts/{id}` falls back to packs (`demo: true`) |
+| GET | `/api/brief/status`, `/api/brief/trends?hours=` | local model availability; fact sheet + trend lines |
+| POST | `/api/brief/summary` | `{hours}`; local-model narrative with `cited` / `unsupported` refs; 503 if no local model |
+| GET | `/api/jammers` | merged jammer fits (GeoJSON), see Map layers |
 | POST | `/api/alerts/{id}/actions` | `{action_id}`; 422 unless in playbook and `applies_to` matches; status `proposed`; returns `id` |
 | POST | `/api/actions/{id}/approve`, `/reject` | id = `ActionRequest.id` (uuid4 hex, ADR-002); only for `proposed`; approve sets `approved` (recording stub, runs nothing) |
 | GET | `/api/stream` | SSE: `snapshot` (all alerts) on connect, then `alert` per change |
@@ -181,8 +197,9 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
   HF or GPS effects.
 
 ## More map layers from existing data (Live group)
-- **Estimated jammer locations**: an ellipse and centre per open GNSS-jamming alert (radio-horizon fit or centroid,
-  `GET /api/jammers`); hover shows the fit method and the share of aircraft consistent with it.
+- **Estimated jammer locations**: one ellipse and centre per estimated emitter (`GET /api/jammers`). Since 041 only
+  radio-horizon fits are drawn (≥ 5 degraded aircraft, ≥ 70 % agreement, ellipse ≤ 300 km; no centroid fallback) and
+  fits within 150 km are merged, listing every alert behind them; hover shows the share of aircraft consistent with it.
 - **Receivers heard**: hexes of receivers per cell over the last hour for the band picked in the ladder (L1 GNSS,
   L 1090 or VHF marine; `GET /api/coverage`), which shows where "no data" is really "no receivers".
 - **HF spots**: band selector (3–28 MHz) and brightness by median SNR.

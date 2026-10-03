@@ -16,4 +16,10 @@ separate layer groups with their data date.
 Process (MVP): a single `heimdall.run` hosts connectors + writer + scheduler + fusion **and** the API
 (same asyncio loop, one shared Store), because DuckDB locks the file per process (ADR-002).
 Analyst state (feedback, actions, status overrides) lives in `data/analyst.duckdb`. A hosted server store lifts this constraint.
+Alert workflow (042): new → acknowledged → confirmed → resolved, or dismissed / shelved / expired; transitions in
+`heimdall/api/triage.py`, applied as status overrides by `CompositeStore`.
+Shift brief (044): `heimdall/brief/facts.py` builds a fact sheet from stored alerts (own fields only) and trend lines;
+`heimdall/brief/local_llm.py` may narrate it through a local Ollama model (loopback URLs only, refs checked).
+Demo packs (043): precomputed `*.demo.json` files served read-only by the live API (`heimdall/api/demo_packs.py`);
+no replay store or pipeline runs on the live server.
 See ADR-001 for scale-out mapping.

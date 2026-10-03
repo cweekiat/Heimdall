@@ -11,6 +11,11 @@ uv run python -m heimdall.api.demo --replay data/replay/midnight_hammer/midnight
 Open http://127.0.0.1:8030. The **Demo** window steps through the timeline: each step moves the replay clock and the
 map to that moment; "Open Heimdall's alert" shows the alert Heimdall raised from the same data, with its rules.
 
+**On the live server** (task 043): `scripts/midnight_hammer.py` also writes a demo pack,
+`data/replay/midnight_hammer/midnight_hammer.demo.json` (≈ 1 MB: steps, aircraft snapshots, alerts + evidence). The
+live UI's **Demo** rail item (key `p`) plays it without any replay work on the server; live data is hidden until
+**Exit demo**, and demo alerts are read-only.
+
 Rebuild from scratch (≈17 GB streamed, raw archives deleted; output ≈ 25 MB):
 ```bash
 for d in 2025-06-18 2025-06-19 2025-06-20 2025-06-21 2025-06-22; do OUT=data/replay/midnight_hammer/$d.parquet scripts/fetch_adsblol_day.sh $d --mil --every 60; done

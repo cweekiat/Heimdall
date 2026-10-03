@@ -16,7 +16,9 @@ Every Evidence carries `bands` (the AFFECTED RF band, not the observing one); fu
 `none`; warning_area: `l1_gnss` when category/title/text names GNSS/GPS (regex only, text is untrusted), else `none`.
 Old rows without `bands` load as `[]`. `GET /api/coverage?band=&bbox=` gives receivers per H3 r4 cell (last hour).
 
-## GNSS jamming (detect/jamming.py, `jamming-1.2.0`)
+## GNSS jamming (detect/jamming.py, `jamming-1.3.0`)
+Current thresholds and the 1.3.0 changes (≥ 3 degraded aircraft, equipment faults excluded, stricter jammer
+fit): see [041 false-alarm fixes](#041-false-alarm-fixes-spoofing-120-jamming-130) below; the text here is the 1.2.0 base.
 Scope: airborne (`on_ground=false`) **true ADS-B** reports (`src_type ∈ {adsb_icao, adsb_icao_nt}`).
 Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `coverage.n_observed`.
 
@@ -32,7 +34,7 @@ Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `cove
   (z ≥ `robust_z` (3) or baseline has < `baseline_min_samples` (288) values → gap "no baseline").
 * **Hysteresis hold** (cell had jamming Evidence in the previous step, passed in as `active`):
   total ≥ `min_aircraft` ∧ R' ≥ `ratio_clear` (0.06); z not required. Rule `hysteresis_hold`.
-* Emitter estimate, **centroid fallback** (`emitter_method` 0): first degraded fix of each bad
+* Emitter estimate, **centroid fallback** (`emitter_method` 0; stored on the Evidence but not drawn as a jammer since 041): first degraded fix of each bad
   aircraft → centroid and 2σ covariance ellipse in a local equirectangular frame, with a (5 km)²
   variance floor per axis. Features `emitter_lat/lon`, `ellipse_major_km/minor_km/angle_deg`.
 * Emitter estimate, **radio-horizon fit** (1.2.0, `emitter_method` 1; all `loc_*` keys are priors,
@@ -82,7 +84,9 @@ Cell = H3 r4, window 30 min, step 5 min. MLAT/TIS-B aircraft count only in `cove
 * Counterfactual: "would not fire if ≤ ⌊thr·total + 1⌋ of total were degraded", plus the
   baseline median that would have silenced the z-test.
 
-## GNSS spoofing (detect/spoofing.py, `spoofing-1.0.2`)
+## GNSS spoofing (detect/spoofing.py, `spoofing-1.2.0`)
+The 1.2.0 changes (one provider per track, ≥ 2 km error, ≥ 60 s displacement, per-foot altitude norm) are in
+[041 false-alarm fixes](#041-false-alarm-fixes-spoofing-120-jamming-130) below; the text here is the base.
 Per aircraft in the 30-min window; true-ADS-B fixes de-duplicated by timestamp (tie → provider name),
 then thinned so consecutive fixes are ≥ `min_dt_s` (5 s) apart.
 
