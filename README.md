@@ -206,6 +206,9 @@ country, where it took off (or where it was first seen when the take-off was not
 (for example "likely air-refuelling track" or "transit towards the Europe staging theatre") with the measured reasons,
 and its 72-hour track coloured by altitude. These are estimates from public ADS-B: intent is never known.
 
+**Regions.** Type a region in the search box (Global, Gulf and Hormuz, Taiwan Strait, Ukraine and Black Sea, Baltic,
+High North, …) to jump there. HF coverage now spans Eurasia east of 20°E and Australia.
+
 **Context layers and news.** Filters → Context: **military bases** worldwide (OpenStreetMap) and **conflict events**
 (fighting, strikes, shows of force coded from world news by GDELT every 15 minutes; only events reported by two or
 more sources are drawn, and the hover says they can be wrong or old). **News** (rail or `n`): BBC World and Al

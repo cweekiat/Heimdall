@@ -229,6 +229,8 @@ detectors:
       - {name: "Hawaii", lat: 21.3, lon: -157.9, radius_km: 500}          # Hickam
       - {name: "Black Sea", lat: 44.0, lon: 33.0, radius_km: 800}
       - {name: "Baltic", lat: 56.5, lon: 20.0, radius_km: 600}
+      - {name: "Ukraine / Poland", lat: 50.0, lon: 27.0, radius_km: 700}  # 050: Rzeszów logistics hub, western Ukraine
+      - {name: "High North", lat: 69.5, lon: 25.0, radius_km: 800}       # 050: Bodø, Andøya, Kola peninsula
       # home bases: routine airlift/tankers would always "deploy", so only command posts / bombers airborne count
       - {name: "Continental US", lat: 38.5, lon: -96.0, radius_km: 2400, rules: [high_interest]}  # Offutt, Tinker, Andrews, Whiteman
   spectrum_state:           # 033/034: per-AOI band indicators vs own history. Priors, not backtested (ADR-008)
@@ -241,7 +243,7 @@ detectors:
     explained_factor: 0.5   # confidence x0.5 when space weather could explain it
   hf:                       # P6 (045): HF path-midpoint anomaly, experimental. Priors from WSPR backfill replays (docs/reports/2026-10-03-hf.md)
     enabled: true
-    cell_deg: 4.0           # midpoint cells regrouped from 2 deg: 2-deg cells hear ~1 spot/bin, 11 judgeable cells/day vs 26 at 4 deg (2026-09-29)
+    cell_deg: 4.0           # 050: connectors now aggregate at 4 deg too; older 2-deg bins are regrouped. Midpoint cells regrouped from 2 deg: 2-deg cells hear ~1 spot/bin, 11 judgeable cells/day vs 26 at 4 deg (2026-09-29)
     window_min: 60
     step_min: 30            # persistence spacing; fusion needs spectrum_anomaly persistence 3 = 3 windows
     persist_windows: 3

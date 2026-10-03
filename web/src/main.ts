@@ -46,6 +46,7 @@ import { MilitaryPanel } from "./military";
 import { AircraftList } from "./aclistwin";
 import { Investigator } from "./investigate";
 import { GlobalLayers } from "./globallayers";
+import { findRegions } from "./regions";
 import { NewsWindow } from "./news";
 import { ScenarioPanel } from "./scenario";
 import { demoLive, demoLiveLayers } from "./demolive";
@@ -254,6 +255,7 @@ function findAll(q: string): Hit[] {
   const ll = parseLatLon(q);
   if (ll) out.push({ group: "Go to", label: fmtLatLon(ll[0], ll[1]), detail: `MGRS ${toMgrs(ll[0], ll[1])}`, pick: () => ops?.flyTo(ll[1], ll[0]) });
   const s = q.trim().toLowerCase();
+  for (const r of findRegions(q)) out.push({ group: "Regions", label: r.name, detail: "view", pick: () => ops?.view(r.lon, r.lat, r.zoom) });
   for (const a of state.aois) {
     const label = a.label ?? aoiName(a.name);
     if (label.toLowerCase().includes(s) || a.name.toLowerCase().includes(s))

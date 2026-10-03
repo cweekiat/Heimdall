@@ -32,6 +32,8 @@ The API binds 127.0.0.1 by default (`api.host`).
 - **Context layers and news (task 049)**: Filters → *Context (open sources)*: **Military bases** (OpenStreetMap) and
   **Conflict events, 2+ sources** (GDELT machine-coded news; hover shows source count and the caveat). **News**
   (rail, key `n`): BBC World and Al Jazeera headlines, display only.
+- **Regions (task 050)**: type a region or place in the search box ("Gulf", "Taiwan", "hormuz", "Global") to jump to
+  one of 18 preset views.
 - **Demo (task 043, rail, key `p`)**: plays a precomputed demo pack (`data/replay/*/*.demo.json`) on the live server.
   The snapshot layer replaces live traffic and live alert markers until **Exit demo**; demo alerts open read-only.
   Nothing is replayed server-side, so live detection is unaffected.
