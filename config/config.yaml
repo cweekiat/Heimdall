@@ -308,6 +308,7 @@ detectors:
     observability:
       footprint_window_h: 48   # prior, not calibrated — review after 022b backtest
       n_next: 3                # prior, not calibrated — review after 022b backtest
-    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, time_slack_h: 2, thermal_jam_km: 50}  # thermal_jam_km: prior, not backtested (task 022b)
+    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, time_slack_h: 2, thermal_jam_km: 50, cross_band_km: 300, cross_band_slack_h: 6}  # thermal_jam_km (022b), cross_band_* (052): priors, not backtested
+    cross_band_boost: true    # 052: support on another band from an independent family raises low/medium one step (max high)
 
 schedule: {}                # task 022a: per-source daily run times (UTC); none configured

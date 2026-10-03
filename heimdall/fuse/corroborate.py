@@ -11,6 +11,8 @@ other sources give it:
   sees it as *same-family* support);
 * thermal <-> jamming within `thermal_jam_km`; thermal <- covering notice (as jamming);
   needs windows overlapping within `time_slack_h`;
+* P7 cross-band (052): GNSS jamming <-> a radio band anomaly (HF, satellite downlink, L 1.4 GHz,
+  C SAR) within `cross_band_km` and `cross_band_slack_h`: the same place disturbed on two bands;
 * `context`: other-kind Evidence in `context` in the same H3 cell that
   is not already support. Context kinds (weather, imagery, overpass) never count as families.
 
@@ -31,7 +33,15 @@ from typing import Any, Literal
 from heimdall.detect.warning_area import covering_cells, safe_ref
 from heimdall.fuse.admiralty import KIND_DOMAIN, source_key
 from heimdall.geo import h3_center, h3_parent, haversine_km
-from heimdall.schemas import AlertKind, Corroboration, Domain, Evidence, GeoEvent
+from heimdall.schemas import AlertKind, Band, Corroboration, Domain, Evidence, GeoEvent
+
+BAND_WORDS = {
+    Band.HF: "HF",
+    Band.SAT_DOWNLINK: "satellite downlink",
+    Band.L_1400: "L-band 1.4 GHz",
+    Band.C_SAR: "C-band SAR",
+    Band.L1_GNSS: "GPS L1",
+}
 
 CORROBORATING_CATEGORIES = (
     "military_exercise",
@@ -48,6 +58,8 @@ DEFAULT_CORROBORATION: dict[str, Any] = {
     "thermal_jam_km": 50,  # prior, not backtested
     "jam_orbit_space_km": 300,  # task 038: ADS-B jamming <-> CYGNSS L1 noise. Prior
     "jam_orbit_space_slack_h": 96,  # CYGNSS days lag 2-3 days behind live ADS-B. Prior
+    "cross_band_km": 300,  # P7 052: L1 jamming <-> other-band anomaly. Prior, not backtested
+    "cross_band_slack_h": 6,  # band indicators use 1 h to 3 d windows. Prior
 }
 
 DEFAULT_SOURCE_FAMILY: dict[str, str] = {
@@ -198,6 +210,27 @@ def cross_source(
     jams = [e for e in gated if e.kind == AlertKind.GNSS_JAMMING]
     ais_sp = [e for e in gated if e.kind == AlertKind.AIS_SPOOFING]
     thermals = [e for e in gated if e.kind == AlertKind.THERMAL]
+    spectra = [e for e in gated if e.kind == AlertKind.SPECTRUM_ANOMALY]
+    xb_km, xb_slack = float(c["cross_band_km"]), timedelta(hours=float(c["cross_band_slack_h"]))
+
+    def cross_band(e: Evidence, others: Sequence[Evidence]) -> list[Corroboration]:
+        out_: list[Corroboration] = []
+        for o in others:
+            if not set(o.bands) - set(e.bands) or not _near_in_time(e, o, xb_slack):
+                continue
+            d = _dist(e, o)
+            if d is not None and d <= xb_km:
+                words = ", ".join(BAND_WORDS.get(b, b.value) for b in o.bands if b != Band.NONE)
+                what = "GNSS jamming" if o.kind == AlertKind.GNSS_JAMMING else "band anomaly"
+                out_.append(
+                    Corroboration(
+                        domain=KIND_DOMAIN.get(o.kind, Domain.SPECTRUM),
+                        evidence_id=o.id,
+                        relation="supports",
+                        note=f"{what} on another band ({words}) {d:.0f} km away",
+                    )
+                )
+        return out_
 
     out: dict[str, list[Corroboration]] = {}
     for e in gated:
@@ -242,6 +275,10 @@ def cross_source(
                             note=f"{what} evidence {d:.0f} km away",
                         )
                     )
+        if e.kind == AlertKind.GNSS_JAMMING:
+            supports += cross_band(e, spectra)
+        if e.kind == AlertKind.SPECTRUM_ANOMALY:
+            supports += cross_band(e, jams)
         if e.kind == AlertKind.AIS_SPOOFING:
             for j in jams:
                 d = _dist(e, j)

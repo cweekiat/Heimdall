@@ -554,3 +554,8 @@ Confidence 0.6 (ADS-B coverage; aircraft flying dark are not seen). Alerts are f
 - The spectrum board keeps the per-area HF state but no longer raises HF evidence.
 - Replays (`docs/reports/2026-10-03-hf.md`): 0 alerts on 6 quiet days and on 4 days around the 14 May 2025 X2.7
   flare; with sensitive settings the flare drop is found and explained away. Priors, no labelled HF interference set.
+
+## Cross-band fusion (P7, 052)
+GNSS jamming and a radio band anomaly on another band within 300 km and 6 h support each other. An experimental
+band alone (HF, satellite downlink, L 1.4 GHz, C SAR) stays at most medium unless another band or an official notice
+supports it; support on another band from an independent source family raises low or medium one step (max high).
