@@ -267,6 +267,7 @@ export function mountFilters(root: HTMLElement, ctx: PanelCtx, lookBack: HTMLEle
       rows: [
         spec("gnss", "gps", "GPS interference map", "ADS-B accuracy"),
         spec("jammers", "ring", "Estimated jammer locations", "ADS-B"),
+        spec("cygnss", "orbit", "GPS noise from orbit (daily)", "CYGNSS"),
         spec("sar_rfi", "radio", "C-band interference", "Sentinel-1"),
         spec("smap", "radio", "L-band interference", "SMAP"),
         spec("hf", "activity", "HF propagation", "WSPR, PSK Reporter"),

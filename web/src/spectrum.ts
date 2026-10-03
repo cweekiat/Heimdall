@@ -12,6 +12,10 @@ import { parseLayer, pointOf, ringOf } from "./p3model";
 import type { LayerFC, LayerFeature } from "./p3model";
 import { rgba } from "./theme/palette";
 import {
+  CYGNSS_LEGEND,
+  cygnssHover,
+  cygnssStrength,
+  parseCygnssDay,
   BANDS,
   BAND_NAME,
   COVERAGE_BANDS,
@@ -40,7 +44,7 @@ import {
   worstState,
   writeHash,
 } from "./spectrummodel";
-import type { EventLayer, GnssCell, GnssDay, SpectrumLayer, SpectrumStatus } from "./spectrummodel";
+import type { CygnssCell, CygnssDay, EventLayer, GnssCell, GnssDay, SpectrumLayer, SpectrumStatus } from "./spectrummodel";
 
 const EMPTY: LayerFC = { type: "FeatureCollection", features: [], truncated: false };
 const isEvent = (l: SpectrumLayer): l is EventLayer => l === "hf" || l === "satnogs" || l === "sar_rfi" || l === "smap";
@@ -57,6 +61,9 @@ export class SpectrumLayers {
   private gnss: GnssDay | null = null;
   private gnssMissing = false;
   private days: string[] = [];
+  private cy: CygnssDay | null = null;
+  private cyDays: string[] = [];
+  private cyDate = ""; // "" = newest day
   private tip: HTMLElement;
   private timers: number[] = [];
   private liveBox = h("div", { class: "spectrum-toggles" });
@@ -134,6 +141,15 @@ export class SpectrumLayers {
           }
           return;
         }
+        if (l === "cygnss") {
+          try {
+            if (!this.cyDays.length) this.cyDays = (await api.cygnssDays()).days;
+            this.cy = parseCygnssDay(await api.cygnssDay(this.cyDate));
+          } catch {
+            this.cy = null; // 404: no CYGNSS data yet
+          }
+          return;
+        }
         if (l === "jammers") {
           try {
             this.jam = parseLayer(await api.jammers());
@@ -180,7 +196,7 @@ export class SpectrumLayers {
   /** Extra controls under a switched-on layer (GNSS date picker, HF band), else null. */
   extra(l: SpectrumLayer): HTMLElement | null {
     if (!this.on(l)) return null;
-    return l === "gnss" ? this.gnssControls() : l === "hf" ? this.hfSelect() : null;
+    return l === "gnss" ? this.gnssControls() : l === "hf" ? this.hfSelect() : l === "cygnss" ? this.cygnssControls() : null;
   }
 
   /** Short status text for a layer row ("12 open", newest data date ...). */
@@ -203,7 +219,7 @@ export class SpectrumLayers {
   private drawBox(l: SpectrumLayer): void {
     const b = this.boxes.get(l);
     if (!b) return;
-    const extra = l === "gnss" && this.on("gnss") ? this.gnssControls() : l === "hf" && this.on("hf") ? this.hfSelect() : "";
+    const extra = this.extra(l) ?? "";
     b.replaceChildren(this.toggle(l, this.note(l)), extra);
   }
 
@@ -242,6 +258,29 @@ export class SpectrumLayers {
     );
   }
 
+  private cygnssControls(): HTMLElement {
+    const sel = h("select", { "aria-label": "CYGNSS day (UTC)" });
+    for (const d of ["", ...[...this.cyDays].reverse()]) {
+      const o = h("option", { value: d }, d ? `${d} UTC` : "Newest day");
+      o.selected = d === this.cyDate;
+      sel.append(o);
+    }
+    sel.addEventListener("change", () => {
+      this.cyDate = sel.value;
+      void this.refresh(["cygnss"]);
+    });
+    const c = this.cy;
+    const label = c ? `data for ${c.date} UTC · ${c.cells.filter((x) => x.flag).length} cells meet the alert rules · ${c.cells.length} of ${c.total} cells shown` : "No CYGNSS data yet (2–3 days delay)";
+    return h(
+      "div",
+      { class: "gnss-controls" },
+      sel,
+      h("div", { class: "note" }, label),
+      h("div", { class: "gnss-legend" }, ...CYGNSS_LEGEND.map(([c2, t]) => h("span", { class: "gnss-key" }, h("i", { class: `sw ${c2}` }), t))),
+      h("div", { class: "note" }, c?.limits || "GPS-band noise measured by satellites from GPS reflections. Covers 38° S to 38° N only."),
+    );
+  }
+
   private pickDate(d: string): void {
     setFilter({ gnssDate: d });
     this.setHash({ gnss: d === "last24h" ? "" : d });
@@ -262,6 +301,7 @@ export class SpectrumLayers {
     if (!this.on(l)) return "";
     if (isEvent(l)) return newestLabel((this.data.get(l) ?? EMPTY).features);
     if (l === "jammers") return `${this.jam.features.length} open`;
+    if (l === "cygnss") return this.cy ? `data for ${this.cy.date}` : "no data yet";
     if (l === "coverage") return COVERAGE_BANDS.includes(filters.band) ? `${BAND_NAME[filters.band]}` : "pick L1 GNSS, L 1090 or VHF marine";
     return "";
   }
@@ -275,6 +315,7 @@ export class SpectrumLayers {
     this.dailyBox.replaceChildren(
       ...DAILY_LAYERS.map((l) => this.toggle(l, this.note(l))),
       this.on("gnss") ? this.gnssControls() : "",
+      this.on("cygnss") ? this.cygnssControls() : "",
     );
   }
 
@@ -403,6 +444,25 @@ export class SpectrumLayers {
         }),
       );
     }
+    const cy = this.cy;
+    if (this.on("cygnss") && cy?.cells.length)
+      out.push(
+        new H3HexagonLayer<CygnssCell>({
+          id: "spec-cygnss",
+          data: cy.cells,
+          getHexagon: (d) => d.h3,
+          // scientific scale like the GNSS map: amber by closeness to the thresholds, red when the rules are met
+          getFillColor: (d) => (d.flag ? [...GNSS_RGB.red, 170] : [...GNSS_RGB.yellow, Math.round(15 + 160 * cygnssStrength(d, cy) ** 2)]) as [number, number, number, number],
+          getLineColor: (d) => (d.flag ? [...GNSS_RGB.red, 255] : [0, 0, 0, 0]) as [number, number, number, number],
+          updateTriggers: { getFillColor: [cy], getLineColor: [cy] },
+          stroked: true,
+          lineWidthMinPixels: 1,
+          filled: true,
+          extruded: false,
+          pickable: pick,
+          onHover: (i) => this.hover(i.object ? cygnssHover(i.object as CygnssCell) : null, i.x, i.y),
+        }),
+      );
     const smap = this.feats("smap").filter((f) => typeof f.properties.h3 === "string");
     if (smap.length)
       out.push(

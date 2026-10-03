@@ -11,7 +11,7 @@ stations and satellites. It infers interference and emitters from how those rece
 | L-band 1090 MHz → GNSS L1 | Aircraft ADS-B integrity (NIC/NACp): **GNSS jamming** cells with an emitter estimate, **GNSS spoofing** (five independent signals), military tanker/AEW/ISR orbits | live |
 | VHF marine 162 MHz | Ship AIS: **AIS spoofing** (impossible speeds, positions on land), **dark gaps** | live |
 | GNSS L1, daily | A GPSJam-style daily interference map rebuilt from Heimdall's own ingest, plus a rolling last-24 h view | live |
-| L-band from orbit | SMAP 1.4 GHz interference flags (needs EARTHDATA_TOKEN); CYGNSS L1 noise floor | SMAP connector live; CYGNSS planned |
+| L-band from orbit | SMAP 1.4 GHz interference flags (needs EARTHDATA_TOKEN); CYGNSS L1 noise floor | SMAP and CYGNSS live; CYGNSS map layer (Filters → GPS noise from orbit) |
 | C-band 5.4 GHz | Sentinel-1 radar interference annotations (Planetary Computer) | connector live; detector planned |
 | HF 3–30 MHz | WSPR and PSK Reporter spots at path midpoints: **HF fade** far below the usual for that time of day (flares, storms and feed drops ruled out); SatNOGS satellite passes | experimental |
 
