@@ -16,6 +16,7 @@ def _isolated_secret_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> I
     # task 039: military track state and the plane-alert list never come from data/
     monkeypatch.setenv("HEIMDALL_MIL_STATE", "")
     monkeypatch.setenv("HEIMDALL_PLANE_ALERT", str(tmp_path / "plane-alert-db.csv"))
+    monkeypatch.setenv("HEIMDALL_AIRPORTS", str(tmp_path / "airports.csv"))  # 047
     monkeypatch.setattr(secrets_file, "_default", None)
     yield
     secrets_file._default = None

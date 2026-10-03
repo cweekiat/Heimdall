@@ -200,6 +200,12 @@ transport, bombers, surveillance, notices, GPS jamming). Theatres are presets in
 (`detectors.military.theatres`) plus every area you draw. These are indicator checklists: they never predict a
 target or a strike, and aircraft flying with transponders off are not seen.
 
+**Investigate a military aircraft**: click it, then **Investigate** (also from the list or the Military panel). You
+see the type and what it is built for (range, crew, refuelling, capabilities, with a source link), operator and
+country, where it took off (or where it was first seen when the take-off was not covered), what it may be doing now
+(for example "likely air-refuelling track" or "transit towards the Europe staging theatre") with the measured reasons,
+and its 72-hour track coloured by altitude. These are estimates from public ADS-B: intent is never known.
+
 **Military roles on the map and the aircraft list** (rail button or `y`). Military planes are coloured by role. Pick
 roles (tanker, surveillance, transport, helicopter, …) in Filters → Quick filters, in the Military panel or in the
 list to show only those. The list has All / In view / Selected tabs, sortable columns, filters for callsign, type,

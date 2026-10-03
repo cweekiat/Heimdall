@@ -15,7 +15,7 @@ import { createWindow, EDGE_LEFT, EDGE_TOP, isOpen } from "./wm";
 export interface ListHooks {
   bbox: () => string;
   flyTo: (lon: number, lat: number) => void;
-  /** Open the aircraft card (after flying there, so its position is loaded). */
+  /** Open the aircraft investigation (047); it flies the map there itself. */
   pick: (hex: string) => void;
 }
 
@@ -168,7 +168,7 @@ export class AircraftList {
         cb,
         h(
           "button",
-          { type: "button", class: "acl-id", title: "Show on map", onclick: () => (this.hooks.flyTo(a.lon, a.lat), this.hooks.pick(a.hex)) },
+          { type: "button", class: "acl-id", title: "Investigate", onclick: () => this.hooks.pick(a.hex) },
           h("b", {}, ident(a)),
           h("small", {}, a.hex.toUpperCase()),
         ),
