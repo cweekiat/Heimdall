@@ -18,6 +18,10 @@ CIRCUIT_OPEN = Counter("heimdall_circuit_open_total", "Circuit breaker openings"
 
 def configure_logging(level: int = logging.INFO) -> None:
     logging.basicConfig(stream=sys.stdout, level=level, format="%(message)s")
+    # 057: httpx / httpcore log every request URL at INFO, including short-lived signed download
+    # links (NASA Earthdata user id + signature, Azure SAS `sig=`). Keep them out of logs.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(max(level, logging.WARNING))
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
