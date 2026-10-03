@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -114,7 +115,7 @@ async def test_mixed_batch_reaches_correct_topics_and_tables() -> None:
 
     taps = [asyncio.create_task(_tap(t)) for t in (TOPIC_AIR, TOPIC_SEA, TOPIC_EVENTS)]
     await asyncio.sleep(0)
-    await pump(_Mixed(), bus)
+    await pump(_Mixed(), bus, delay_s=0)
     await asyncio.sleep(0.05)
     assert {k: len(v) for k, v in seen.items()} == {TOPIC_AIR: 1, TOPIC_SEA: 2, TOPIC_EVENTS: 1}
     w.flush(T0)
@@ -220,7 +221,7 @@ async def test_pump_survives_connector_crash() -> None:
             raise RuntimeError("kaput")
             yield []  # pragma: no cover
 
-    await pump(_Boom(), MemoryBus())  # logs, does not raise
+    await pump(_Boom(), MemoryBus(), delay_s=0)  # logs, does not raise
 
 
 async def test_sea_and_events_keep_flowing_after_first_flush() -> None:
@@ -239,3 +240,22 @@ async def test_sea_and_events_keep_flowing_after_first_flush() -> None:
     assert len(store.vessels) == 2 and len(store.events) == 1
     consumer.cancel()
     await asyncio.gather(consumer, return_exceptions=True)
+
+
+def test_start_offsets_are_spaced() -> None:
+    """057: connectors start one slot apart (no startup burst on one provider)."""
+    from heimdall.run import START_SLOT_S, START_SPREAD_S, start_offset
+
+    offs = [start_offset() for _ in range(6)]
+    gaps = [(b - a) % START_SPREAD_S for a, b in itertools.pairwise(offs)]
+    assert all(0 <= o < START_SPREAD_S for o in offs) and all(g == START_SLOT_S for g in gaps)
+
+
+def test_http_client_urls_not_logged() -> None:
+    """057: signed download links must not reach the log through httpx's INFO request lines."""
+    import logging
+
+    from heimdall.logging import configure_logging
+
+    configure_logging()
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib
+import itertools
 import os
 import signal
 import sys
@@ -62,8 +63,20 @@ def route(batch: Sequence[BaseModel]) -> dict[str, list[BaseModel]]:
     return out
 
 
-async def pump(conn: Connector, bus: Bus) -> None:
+START_SLOT_S = 2.5  # 057: connectors start one slot apart (no 420/429 burst on shared providers)
+START_SPREAD_S = 30.0
+_slots = itertools.count()
+
+
+def start_offset() -> float:
+    """Next start delay: 0, 2.5, 5, ... wrapping at START_SPREAD_S (connectors started later,
+    e.g. switched on in Data sources, take the next slot)."""
+    return (next(_slots) * START_SLOT_S) % START_SPREAD_S
+
+
+async def pump(conn: Connector, bus: Bus, delay_s: float | None = None) -> None:
     try:
+        await asyncio.sleep(start_offset() if delay_s is None else delay_s)
         async for batch in conn.stream():
             for topic, rows in route(batch).items():
                 await bus.publish(topic, rows)
