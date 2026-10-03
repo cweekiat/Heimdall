@@ -130,6 +130,8 @@ export interface AlertDetail {
   notes: Note[];
   actions: ActionRec[];
   playbook: PlaybookAction[];
+  /** 043: alert from a demo pack (read-only, never in the live store). */
+  demo?: boolean;
 }
 export interface Cell {
   h3: string;
@@ -343,6 +345,9 @@ export const api = {
     }>("/api/ui-config"),
   /** 040: demo replays only — jump the replay clock to a recorded moment. */
   replaySeek: (at: string) => post<{ at: string }>("/api/replay/seek", { at }),
+  /** 043: precomputed demos served by the live server (static files, no replay). */
+  demoPacks: () => req<{ name: string; title: string; summary: string; n_steps: number }[]>("/api/demo/packs"),
+  demoPack: (name: string) => req<Scenario>(`/api/demo/packs/${encodeURIComponent(name)}`),
   health: () => req<{ sources: SourceHealth[]; time: string }>("/api/health"),
   playbook: () => req<PlaybookAction[]>("/api/playbook"),
   track: (hex: string) => req<TrackPt[]>(`/api/tracks/${encodeURIComponent(hex)}`),
@@ -454,6 +459,22 @@ export interface ScenarioStep {
   zoom: number;
   examples: string[];
   alert: string | null;
+  /** 043: military aircraft at that moment (demo packs only). */
+  snapshot?: DemoAircraft[];
+}
+export interface DemoAircraft {
+  hex: string;
+  flight: string | null;
+  type: string | null;
+  type_name: string | null;
+  role: string;
+  operator: string | null;
+  country: string | null;
+  lat: number;
+  lon: number;
+  alt: number | null;
+  track: number | null;
+  trail: number[][];
 }
 export interface Scenario {
   title: string;

@@ -448,6 +448,80 @@ def scenario(obs: Sequence[AircraftObs], alerts: Sequence[Alert]) -> dict[str, A
     }
 
 
+STRATEGIC_ROLES = ("tanker", "airlift", "isr", "c2", "bomber")
+
+
+def _bearing(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    import math
+
+    la1, la2 = math.radians(a[1]), math.radians(b[1])
+    dl = math.radians(b[2] - a[2])
+    y = math.sin(dl) * math.cos(la2)
+    x = math.cos(la1) * math.sin(la2) - math.sin(la1) * math.cos(la2) * math.cos(dl)
+    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+
+
+def snapshot(t: MilTracks, ids: dict[str, MilIdent], at: datetime) -> list[dict[str, Any]]:
+    """Military aircraft at `at` (last fix within 15 min) with a 3 h trail (5-min steps) for the
+    strategic roles: what the Demo page draws for one step (task 043)."""
+    ts = at.timestamp()
+    out = []
+    for h, tr in t.tracks.items():
+        pts = [p for p in tr.points if ts - 10800 <= p[0] <= ts]
+        if not pts or ts - pts[-1][0] > 900:
+            continue
+        last = pts[-1]
+        i = ids[h]
+        trail: list[list[float]] = []
+        if i.role in STRATEGIC_ROLES:
+            for p in pts:
+                if not trail or p[0] - trail[-1][2] >= 300:
+                    trail.append([round(p[2], 3), round(p[1], 3), p[0]])
+        out.append(
+            {
+                "hex": h,
+                "flight": tr.flight,
+                "type": tr.type_code,
+                "type_name": i.type_name,
+                "role": i.role,
+                "operator": i.operator,
+                "country": i.country,
+                "lat": round(last[1], 4),
+                "lon": round(last[2], 4),
+                "alt": None if last[3] < 0 else int(last[3]),
+                "track": round(_bearing(pts[-2], last), 1) if len(pts) > 1 else None,
+                "trail": [[x, y] for x, y, _ in trail],
+            }
+        )
+    return out
+
+
+def write_pack(
+    sc: dict[str, Any], obs: Sequence[AircraftObs], alerts: Sequence[Alert], evidence: Sequence[Any]
+) -> Path:
+    """`<stem>.demo.json`: the scenario plus everything the live Demo page needs (no store)."""
+    t, ids = tracks_of(obs)
+    steps = [
+        {**s, "snapshot": snapshot(t, ids, datetime.fromisoformat(s["at"].replace("Z", "+00:00")))}
+        for s in sc["steps"]
+    ]
+    used = {s["alert"] for s in steps if s.get("alert")}
+    keep_alerts = [a for a in alerts]  # all of them: the demo alert list shows the week's alerts
+    ev_ids = {i for a in keep_alerts for i in a.evidence_ids}
+    pack = {
+        **{k: v for k, v in sc.items() if k != "steps"},
+        "name": OUT.stem,
+        "steps": steps,
+        "alerts": [a.model_dump(mode="json") for a in keep_alerts],
+        "evidence": [e.model_dump(mode="json") for e in evidence if e.id in ev_ids],
+        "linked_alerts": sorted(used),
+    }
+    p = OUT.with_name(OUT.stem + ".demo.json")
+    p.write_text(json.dumps(pack, separators=(",", ":")))
+    print(f"demo pack {p} ({p.stat().st_size / 1e6:.1f} MB)")
+    return p
+
+
 def main() -> None:
     obs = load()
     alerts, evidence = run_pipeline(obs)
@@ -461,6 +535,7 @@ def main() -> None:
         )
     sc = scenario(obs, alerts)
     OUT.with_name(OUT.stem + ".scenario.json").write_text(json.dumps(sc, indent=1))
+    write_pack(sc, obs, alerts, evidence)
     print(sc["summary"])
 
 

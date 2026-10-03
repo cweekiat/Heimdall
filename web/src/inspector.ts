@@ -101,8 +101,8 @@ function body(d: AlertDetail): Node[] {
     h(
       "div",
       { class: `next-step st-${stageOf(a.status)}` },
-      h("b", {}, "Next step: "),
-      nextStep(a),
+      h("b", {}, d.demo ? "Demo: " : "Next step: "),
+      d.demo ? "raised by Heimdall from the recorded data of this case." : nextStep(a),
       open && checks.length
         ? h("ul", { class: "checks" }, ...checks.map((c) => h("li", {}, c)))
         : null,
@@ -144,6 +144,7 @@ let menu: "" | "false" | "shelve" = "";
 
 function footer(d: AlertDetail): HTMLElement {
   const a = d.alert;
+  if (d.demo) return h("div", { class: "foot" }, h("p", { class: "note" }, "Demo alert from a recorded case: read only."));
   const run = async (st: AlertStatus, reason?: string, until?: string): Promise<void> => {
     menu = "";
     error = (await triage(a.id, st, reason, until)) ?? "";

@@ -17,6 +17,10 @@ export interface ScenarioHooks {
   openAlert: (id: string) => void;
   /** Refresh layers after the clock moved. */
   refresh: () => void;
+  /** 043: show a step (live server: draw its snapshot). Default: seek the replay clock (demo server). */
+  step?: (s: ScenarioStep) => void | Promise<void>;
+  /** 043: leave the demo (live server); shows an Exit button when set. */
+  exit?: () => void;
 }
 
 export class ScenarioPanel {
@@ -33,6 +37,14 @@ export class ScenarioPanel {
     openWindow("scenario");
   }
 
+  /** 043: load another scenario into the same window (live Demo page). */
+  setScenario(sc: Scenario): void {
+    this.sc = sc;
+    this.cur = -1;
+    this.render();
+    openWindow("scenario");
+  }
+
   async go(i: number): Promise<void> {
     const s = this.sc.steps[i];
     if (!s || this.busy) return;
@@ -40,9 +52,9 @@ export class ScenarioPanel {
     this.cur = i;
     this.render();
     try {
-      await api.replaySeek(s.at);
+      await (this.hooks.step ? this.hooks.step(s) : api.replaySeek(s.at));
     } catch (e) {
-      console.error("seek failed", e);
+      console.error("demo step failed", e);
     }
     // keep the subject right of this window: move the centre west by half the window width
     const win = this.body.closest(".win")?.getBoundingClientRect();
@@ -73,6 +85,7 @@ export class ScenarioPanel {
     const nav = h(
       "div",
       { class: "sc-nav" },
+      this.hooks.exit ? h("button", { type: "button", class: "btn", onclick: () => this.hooks.exit?.() }, "Exit demo") : null,
       h("button", { type: "button", class: "btn", onclick: () => void this.go(Math.max(0, this.cur - 1)), disabled: this.cur <= 0 }, "Back"),
       h("button", { type: "button", class: "btn primary", onclick: () => void this.go(Math.min(this.sc.steps.length - 1, this.cur + 1)), disabled: this.cur >= this.sc.steps.length - 1 }, this.cur < 0 ? "Start" : "Next"),
     );
