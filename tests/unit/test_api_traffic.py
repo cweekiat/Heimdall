@@ -219,3 +219,21 @@ def test_density_resolution_by_zoom() -> None:
     from heimdall.api.traffic import density_res
 
     assert [density_res(z) for z in (1, 2.4, 2.5, 3.9, 4, 4.99)] == [3, 3, 4, 4, 5, 5]
+
+
+def test_military_rows_carry_role_and_country() -> None:
+    """046: military aircraft carry role / country (map role filter); civil rows carry None."""
+    s = MemoryStore()
+    s.insert_aircraft(
+        [
+            _ac("ae04c5", 5, mil=True, type_code="K35R"),
+            _ac("abc001", 5, type_code="A320"),
+        ]
+    )
+    c = TestClient(create_app(s, playbook=PB, allowed_hosts=HOSTS))
+    p = _props(c.get(f"/api/traffic/air?bbox={BB}"))
+    assert p["ae04c5"]["role"] == "tanker" and p["ae04c5"]["country"] == "United States"
+    assert p["abc001"]["role"] is None and p["abc001"]["country"] is None
+    cols = c.get(f"/api/traffic/air?bbox={BB}&fmt=compact").json()["cols"]
+    i = cols["hex"].index("ae04c5")
+    assert cols["role"][i] == "tanker"

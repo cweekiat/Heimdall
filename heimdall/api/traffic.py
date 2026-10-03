@@ -18,7 +18,9 @@ from fastapi.responses import JSONResponse, Response
 
 from heimdall import config
 from heimdall.geo import BBox, h3_cell, haversine_km, in_bbox
+from heimdall.ingest import plane_alert
 from heimdall.live import Entry, Layer, LivePositions
+from heimdall.milroles import classify
 from heimdall.ports import Store
 from heimdall.schemas import AircraftObs, AlertStatus, Band, VesselObs
 
@@ -116,6 +118,17 @@ def _json(body: dict[str, Any]) -> JSONResponse:
 
 _Rows = Sequence[tuple[Any, Iterable[str]]]  # (AircraftObs | VesselObs, providers)
 
+MIL_FIELDS = ("role", "country", "operator", "type_name")
+
+
+def mil_ident(o: AircraftObs) -> dict[str, Any]:
+    """046: role / country / operator / type name for military aircraft (None for others), so the
+    map can filter and colour by role. plane-alert-db first, then the type code (milroles)."""
+    if not o.mil:
+        return dict.fromkeys(MIL_FIELDS)
+    i = classify(o.hex.lower(), o.type_code, plane_alert.index().get(o.hex.lower()))
+    return {"role": i.role, "country": i.country, "operator": i.operator, "type_name": i.type_name}
+
 
 def _frag(kind: str, e: Entry) -> str:
     """Serialised feature up to (excluding) the per-request fields; cached on the entry."""
@@ -134,6 +147,7 @@ def _frag(kind: str, e: Entry) -> str:
             "provider": o.provider,
             "providers": sorted(e.providers),
             "gps_bad": e.gps_bad,
+            **mil_ident(o),
         }
     else:
         props = {
@@ -166,6 +180,7 @@ AIR_STATIC = (
     "provider",
     "providers",
     "gps_bad",
+    *MIL_FIELDS,
 )
 SEA_STATIC = (
     "mmsi",
@@ -196,6 +211,7 @@ def _static(kind: str, e: Entry) -> dict[str, Any]:
             "provider": o.provider,
             "providers": sorted(e.providers),
             "gps_bad": e.gps_bad,
+            **mil_ident(o),
         }
     return {
         "mmsi": o.mmsi,
@@ -317,6 +333,9 @@ def _emit(
             "gps_bad": [gps_bad(o) for o in os],
             "in_alert": [o.hex.lower() in hot for o in os],
         }
+        idents = [mil_ident(o) for o in os]
+        for k in MIL_FIELDS:
+            cols[k] = [i[k] for i in idents]
     else:
         os = [o for o, _ in picked]
         cols = {

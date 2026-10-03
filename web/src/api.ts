@@ -232,6 +232,11 @@ export interface AirProps {
   gps_bad: boolean;
   in_alert: boolean;
   squawk?: string | null;
+  /** 046: military identity (null for non-military aircraft). */
+  role?: string | null;
+  country?: string | null;
+  operator?: string | null;
+  type_name?: string | null;
 }
 export interface SeaProps {
   mmsi: number;

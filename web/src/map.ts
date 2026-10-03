@@ -666,7 +666,7 @@ export function legend(): HTMLElement {
     sw(dot(css("alert")), "Red: needs attention (an alert). Bigger and stronger = higher priority"),
     sw(`background:${css("alert", 0.25)};outline:1px solid ${css("alert")}`, "Red area: share of aircraft with bad GPS (stronger = more)"),
     sw(dot(css("neutral")), "Grey-blue: normal aircraft, ships and tracks (aircraft are planes, ships are arrows)"),
-    sw(`background:${css("military")};clip-path:polygon(50% 0,62% 38%,100% 55%,62% 62%,58% 88%,72% 100%,28% 100%,42% 88%,38% 62%,0 55%,38% 38%)`, "Amber plane: military aircraft. Amber ring: selected"),
+    sw(`background:${css("military")};clip-path:polygon(50% 0,62% 38%,100% 55%,62% 62%,58% 88%,72% 100%,28% 100%,42% 88%,38% 62%,0 55%,38% 38%)`, "Coloured plane: military aircraft, colour by role (amber tanker, blue transport, purple surveillance, pink command post, orange bomber, green helicopter or drone; full key in Filters). Amber ring: selected"),
     sw(`background:transparent;outline:1px dashed ${css("notice")}`, "Grey outline: navigation warning or NOTAM area"),
     sw(`background:${monitorCss(0.15)};outline:2px solid ${monitorCss()}`, "Green outline: an area you are monitoring (grey = drawn, not monitored; amber = selected)"),
     sw(`background:linear-gradient(90deg, rgb(${GNSS_RGB.green.join(",")}) 33%, rgb(${GNSS_RGB.yellow.join(",")}) 33% 66%, rgb(${GNSS_RGB.red.join(",")}) 66%)`, "GNSS map: green < 2 %, yellow 2-10 %, red > 10 % of aircraft with degraded GPS"),

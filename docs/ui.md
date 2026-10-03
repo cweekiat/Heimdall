@@ -21,6 +21,10 @@ The API binds 127.0.0.1 by default (`api.host`).
   for the alert type, then **Confirm real**, **False alarm** with a reason, or **Shelve** 2 / 8 / 24 h) → **Confirmed**
   (real, being tracked; **Close: ended** once there is no fresh evidence for 60 min) → **Closed** (resolved, false alarm,
   expired; **Reopen**). Details open with a "Next step" box; cards show whether the activity is still ongoing.
+- **Military roles and aircraft list (task 046)**: military planes are coloured by role (tanker, transport,
+  surveillance, command post, bomber, fighter, helicopter, drone, VIP, trainer). Role chips (Filters → Quick filters,
+  the Military panel's role bars, the list) are one shared filter. **Aircraft list** (rail, key `y`): All / In view /
+  Selected tabs, sortable columns, text filters, select + Hide others, CSV / KML export.
 - **Demo (task 043, rail, key `p`)**: plays a precomputed demo pack (`data/replay/*/*.demo.json`) on the live server.
   The snapshot layer replaces live traffic and live alert markers until **Exit demo**; demo alerts open read-only.
   Nothing is replayed server-side, so live detection is unaffected.

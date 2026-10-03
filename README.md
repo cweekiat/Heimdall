@@ -200,6 +200,11 @@ transport, bombers, surveillance, notices, GPS jamming). Theatres are presets in
 (`detectors.military.theatres`) plus every area you draw. These are indicator checklists: they never predict a
 target or a strike, and aircraft flying with transponders off are not seen.
 
+**Military roles on the map and the aircraft list** (rail button or `y`). Military planes are coloured by role. Pick
+roles (tanker, surveillance, transport, helicopter, …) in Filters → Quick filters, in the Military panel or in the
+list to show only those. The list has All / In view / Selected tabs, sortable columns, filters for callsign, type,
+hex and operator, "Hide others" for the aircraft you ticked, and CSV / KML export.
+
 New here? The console offers a guided tour on first visit (relaunch it from the `?` icon), and [docs/walkthrough.md](docs/walkthrough.md) walks the same monitor, triage, verify, decide, log workflow in prose.
 
 The full API and UI reference is in [docs/ui.md](docs/ui.md).

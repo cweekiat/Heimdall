@@ -43,6 +43,7 @@ import { P3Layers } from "./p3layers";
 import { SpectrumLayers } from "./spectrum";
 import { SpectrumWatch } from "./watch";
 import { MilitaryPanel } from "./military";
+import { AircraftList } from "./aclistwin";
 import { ScenarioPanel } from "./scenario";
 import { demoLive, demoLiveLayers } from "./demolive";
 import { filters, mountFilters, onFilters, setFilter } from "./filters";
@@ -82,6 +83,13 @@ createWindow({ id: "layers", title: T.layers, icon: "filter", body: layersBody, 
 const sourcesWin = new Sources();
 // 039: worldwide military air activity (contacts, roles, theatres, high-interest aircraft)
 const milWin = new MilitaryPanel({ flyTo: (lon, lat) => ops?.flyTo(lon, lat) });
+// 046: IntelSky-style military aircraft list (tabs, sort, filters, hide others, CSV/KML)
+let pickAircraft: (hex: string) => void = () => undefined;
+const acList = new AircraftList({
+  bbox: () => ops?.bbox() ?? "-180,-90,180,90",
+  flyTo: (lon, lat) => ops?.flyTo(lon, lat),
+  pick: (hex) => window.setTimeout(() => pickAircraft(hex), 900), // after the fly-to loads its position
+});
 
 // 043: Demo page on the live server. Packs are precomputed files; while one is open the map shows its recorded
 // snapshot and hides live traffic and live alerts. Exit restores the live picture.
@@ -160,6 +168,7 @@ const winToggles: Record<string, () => void> = {
   t: () => toggleWindow("timeline"),
   w: () => toggleWindow("watch"),
   m: () => toggleWindow("military"),
+  y: () => toggleWindow("aclist"),
   p: () => void openLiveDemo(),
   ",": () => toggleWindow("settings"),
   g: () => ops?.toggleGlobe(),
@@ -172,6 +181,7 @@ const winToggles: Record<string, () => void> = {
 const tools: Tool[] = [
   { id: "draw", icon: "draw", label: T.drawAreas, key: "o", toggle: winToggles.o!, hint: "Draw, list and monitor areas" },
   { id: "military", icon: "plane", label: "Military", key: "m", toggle: winToggles.m!, hint: "Military aircraft worldwide, roles, theatres" },
+  { id: "aclist", icon: "filter", label: "Aircraft list", key: "y", toggle: winToggles.y!, hint: "Sort, filter, select and export military aircraft" },
   { id: "scenario", icon: "timeline", label: "Demo", key: "p", toggle: () => void openLiveDemo(), hint: "Step through a real recorded case (e.g. Operation Midnight Hammer)" },
   { id: "sources", icon: "sources", label: T.sources, key: "u", toggle: winToggles.u!, hint: "Source health, on/off, API keys" },
   { id: "settings", icon: "settings", label: "Settings", key: ",", toggle: winToggles[","]!, hint: "Theme, map overlays, layout" },
@@ -572,6 +582,9 @@ async function boot(): Promise<void> {
     void areasWin.reload();
     wireMapExtras(ops);
     const traffic = new Traffic(ops, $("mapwrap"));
+    pickAircraft = (hex) => traffic.select({ kind: "air", id: hex });
+    const trafficMove = ops.onMove;
+    ops.onMove = () => (trafficMove(), isOpen("aclist") && acList.draw());
     trafficSearch = (q) => traffic.search(q).map((t) => ({ group: "Aircraft and ships in view", label: t.label, detail: t.detail, pick: () => (ops?.flyTo(t.lon, t.lat), t.pick()) }));
     const notices = new Notices(ops);
     const p3 = new P3Layers(ops, $("mapwrap"));
@@ -653,6 +666,7 @@ async function boot(): Promise<void> {
       safe("watch", () => watch.start());
       safe("satellites", () => sats.start());
       safe("military", () => milWin.start());
+      safe("aclist", () => acList.start());
     });
     void refreshSpaceWeather();
     setInterval(() => void refreshSpaceWeather(), 300_000);
