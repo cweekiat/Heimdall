@@ -34,6 +34,7 @@ function mapAlerts(): ReturnType<typeof visibleAlerts> {
 import { patch, refreshAll, refreshHealth, selectAlert, state, subscribe, triage, upsertAlert } from "./store";
 import { renderTimeline } from "./timeline";
 import { mountToolbar } from "./toolbar";
+import { mountSession } from "./session";
 import type { Tool } from "./toolbar";
 import { Sources } from "./sources";
 import { Areas } from "./areas";
@@ -232,6 +233,7 @@ $("sb-actions").replaceChildren(
   topBtn("timeline", "timeline", T.timeline, "t", winToggles.t!),
   topBtn("shift", "shift", "Shift report", "h", winToggles.h!),
 );
+void mountSession($("sb-actions"));
 function setAlertBadge(count: number, worst: string): void {
   alertBadge.hidden = count === 0;
   alertBadge.textContent = count > 99 ? "99+" : String(count);

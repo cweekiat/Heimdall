@@ -63,7 +63,12 @@ class ApiCfg(BaseModel):
     layers: LayersCfg = Field(default_factory=LayersCfg)
     host: str = "127.0.0.1"
     port: int = 8000
-    auth: str = "none"
+    # none = localhost tool; access_code = hosted mode (062, ADR-009): every path needs a session.
+    auth: Literal["none", "access_code"] = "none"
+    allowed_hosts: list[str] = Field(default_factory=list)  # public hostnames (hosted mode)
+    session_days: float = 7
+    cookie_secure: bool = True  # false only for local http testing of hosted mode
+    trusted_proxies: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
 
 
 class UiCfg(BaseModel):
@@ -127,6 +132,10 @@ def settings() -> Settings:
     s = Settings.model_validate(_load_yaml("config.yaml"))
     if host := os.environ.get("HEIMDALL_API_HOST"):
         s.api.host = host  # e.g. 0.0.0.0 inside a container; publish on 127.0.0.1 only
+    if auth := os.environ.get("HEIMDALL_AUTH"):
+        s.api = ApiCfg.model_validate({**s.api.model_dump(), "auth": auth})
+    if hosts := os.environ.get("HEIMDALL_ALLOWED_HOSTS"):
+        s.api.allowed_hosts = [h.strip() for h in hosts.split(",") if h.strip()]
     return s
 
 

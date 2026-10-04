@@ -23,6 +23,7 @@ from heimdall import config
 from heimdall.adapters.aoi_file import MemoryAoiStore
 from heimdall.aoi_ctl import AoiService
 from heimdall.api import triage
+from heimdall.api.access import PUBLIC_PATHS, AccessGate, access_router, current_user
 from heimdall.api.airforce import airforce_router
 from heimdall.api.aois import aois_router
 from heimdall.api.basemap import basemap_router
@@ -141,7 +142,7 @@ def _since(value: str | None, default_hours: float | None = None) -> datetime | 
 def create_app(
     store: Store,
     playbook: dict[str, Any] | None = None,
-    auth_check: Callable[[Request], Awaitable[bool]] | None = None,
+    access: AccessGate | None = None,
     stream_interval_s: float = 2.0,
     allowed_hosts: list[str] | None = None,
     basemap: str | None = None,
@@ -176,6 +177,22 @@ def create_app(
                 return Response("origin required", status_code=403)
         return await call_next(request)
 
+    @app.middleware("http")
+    async def auth_middleware(
+        request: Request, call_next: Callable[..., Awaitable[Response]]
+    ) -> Response:
+        # Hosted mode (062, ADR-009): every path needs a session except the login page itself.
+        if access is not None:
+            request.state.auth_enabled = True
+            user = access.user_for(request)
+            if user is not None:
+                request.state.user, request.state.admin = user.name, user.admin
+            elif request.url.path not in PUBLIC_PATHS:
+                if request.method == "GET" and not request.url.path.startswith("/api"):
+                    return Response(status_code=303, headers={"Location": "/login.html"})
+                return Response("sign in required", status_code=401)
+        return await call_next(request)
+
     csp = csp_for(basemap or config.settings().ui.basemap)
 
     @app.middleware("http")
@@ -186,21 +203,15 @@ def create_app(
         resp.headers["Content-Security-Policy"] = csp
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["Referrer-Policy"] = "no-referrer"
+        resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+        if access is not None:
+            resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            resp.headers["Cache-Control"] = resp.headers.get("Cache-Control", "private")
         return resp
 
-    @app.middleware("http")
-    async def auth_middleware(
-        request: Request, call_next: Callable[..., Awaitable[Response]]
-    ) -> Response:
-        # Hook: no-op when api.auth == none. Hosted deployments plug in auth_check (e.g. OIDC).
-        if (
-            auth_check is not None
-            and config.settings().api.auth != "none"
-            and request.url.path.startswith("/api")
-            and not await auth_check(request)
-        ):
-            return Response("unauthorized", status_code=401)
-        return await call_next(request)
+    def need_admin(request: Request) -> None:
+        if access is not None and not getattr(request.state, "admin", False):
+            raise HTTPException(403, "admin access code required")
 
     def playbook_for(kind: str) -> list[dict[str, Any]]:
         return [
@@ -258,7 +269,7 @@ def create_app(
         return ev[0]
 
     def set_status(
-        a: Alert, to: AlertStatus, reason: str | None, until: datetime | None
+        a: Alert, to: AlertStatus, reason: str | None, until: datetime | None, user: str
     ) -> AnalystNote:
         now = _now()
         if until is not None and until.tzinfo is None:
@@ -270,6 +281,7 @@ def create_app(
             id=uuid.uuid4().hex,
             alert_id=a.id,
             ts=now,
+            user=user,
             kind="shelve" if to == AlertStatus.SHELVED else "status",
             text=(reason or "").strip(),
             status_to=to,
@@ -279,16 +291,23 @@ def create_app(
         return note
 
     @app.post("/api/alerts/{alert_id}/status")
-    def post_status(alert_id: str, body: StatusIn) -> dict[str, Any]:
-        note = set_status(need_alert(alert_id), body.status, body.reason, body.shelve_until)
+    def post_status(alert_id: str, body: StatusIn, request: Request) -> dict[str, Any]:
+        note = set_status(
+            need_alert(alert_id),
+            body.status,
+            body.reason,
+            body.shelve_until,
+            current_user(request),
+        )
         return {
             "alert": need_alert(alert_id).model_dump(mode="json"),
             "note": note.model_dump(mode="json"),
         }
 
     @app.post("/api/alerts/clear")
-    def clear_alerts() -> dict[str, int]:
+    def clear_alerts(request: Request) -> dict[str, int]:
         """Expire every open alert (not a verdict; DISMISSED is analyst-only), audited."""
+        need_admin(request)
         open_states = [
             AlertStatus.NEW,
             AlertStatus.ACKNOWLEDGED,
@@ -303,6 +322,7 @@ def create_app(
                     id=uuid.uuid4().hex,
                     alert_id=a.id,
                     ts=now,
+                    user=current_user(request),
                     kind="status",
                     text="cleared by user",
                     status_to=AlertStatus.EXPIRED,
@@ -317,10 +337,14 @@ def create_app(
         return st.notes_for(alert_id)
 
     @app.post("/api/alerts/{alert_id}/notes")
-    def post_note(alert_id: str, body: NoteIn) -> AnalystNote:
+    def post_note(alert_id: str, body: NoteIn, request: Request) -> AnalystNote:
         need_alert(alert_id)
         note = AnalystNote(
-            id=uuid.uuid4().hex, alert_id=alert_id, ts=_now(), text=body.text.strip()
+            id=uuid.uuid4().hex,
+            alert_id=alert_id,
+            ts=_now(),
+            user=current_user(request),
+            text=body.text.strip(),
         )
         if not note.text:
             raise HTTPException(422, "note text is empty")
@@ -328,11 +352,14 @@ def create_app(
         return note
 
     @app.post("/api/alerts/{alert_id}/feedback")
-    def post_feedback(alert_id: str, body: FeedbackIn) -> Feedback:
+    def post_feedback(alert_id: str, body: FeedbackIn, request: Request) -> Feedback:
         a = need_alert(alert_id)
         to = AlertStatus.CONFIRMED if body.verdict == "confirm" else AlertStatus.DISMISSED
-        set_status(a, to, body.reason, None)
-        fb = Feedback(alert_id=alert_id, verdict=body.verdict, reason=body.reason, ts=_now())
+        user = current_user(request)
+        set_status(a, to, body.reason, None, user)
+        fb = Feedback(
+            alert_id=alert_id, verdict=body.verdict, reason=body.reason, user=user, ts=_now()
+        )
         st.add_feedback(fb)
         return fb
 
@@ -502,8 +529,9 @@ def create_app(
 
     @app.post("/api/sources/{key}")
     async def set_source(
-        body: SourceIn, key: str = Path(pattern=r"^[a-z0-9_]{1,40}$")
+        body: SourceIn, request: Request, key: str = Path(pattern=r"^[a-z0-9_]{1,40}$")
     ) -> dict[str, Any]:
+        need_admin(request)
         if sources is None:
             raise HTTPException(404, "source control unavailable")
         try:
@@ -549,6 +577,7 @@ def create_app(
     app.include_router(tuning_router(st))  # 061: feedback-driven tuning (read-only)
     app.include_router(demo_router(demo_packs))
     app.include_router(brief_router(st))
+    app.include_router(access_router(access))
     app.include_router(keys_router(secrets, sources))
     app.include_router(
         aois_router(
