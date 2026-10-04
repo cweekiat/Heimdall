@@ -23,8 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false, fetch-depth: 0}
-      - name: Tag must point at a commit on main
+      - name: Tag must be a plain version on a commit on main
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::bad tag"; exit 1; }
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - id: meta
@@ -57,8 +60,9 @@ jobs:
         with: {persist-credentials: false}
       - uses: docker/login-action@v3
         with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
-      - run: deploy/scripts/deploy.sh "${{ needs.promote.outputs.tag }}"
+      - run: deploy/scripts/deploy.sh "$TAG"   # via env, never interpolated into the script
         env:
+          TAG: ${{ needs.promote.outputs.tag }}
           IMAGE_REPO: ${{ needs.promote.outputs.repo }}
 
   verify-prod:

@@ -152,7 +152,8 @@ def test_proxy_headers_only_from_trusted_peer(setup: Any) -> None:
     spoof = {"cf-connecting-ip": "1.2.3.4", "x-forwarded-for": "5.6.7.8"}
     assert gate.client_ip(Req("203.0.113.9", spoof)) == "203.0.113.9"  # type: ignore[arg-type]
     assert gate.client_ip(Req("10.1.2.3", spoof)) == "1.2.3.4"  # type: ignore[arg-type]
-    assert gate.client_ip(Req("10.1.2.3", {"x-forwarded-for": "5.6.7.8, 10.0.0.1"})) == "5.6.7.8"  # type: ignore[arg-type]
+    xff = {"x-forwarded-for": "5.6.7.8, 10.0.0.1"}
+    assert gate.client_ip(Req("10.1.2.3", xff)) == "10.1.2.3"  # type: ignore[arg-type]
 
 
 def test_admin_only_writes_and_attribution(setup: Any) -> None:

@@ -68,6 +68,12 @@ sudo rsync -a /tmp/heimdall-data/ /srv/heimdall/data/ && sudo chown -R 10001:100
   - Secret `BENCH_CODE`: an analyst code issued on **dev** for the perf check.
 - **Self-hosted runners**: Settings → Actions → Runners → New (Linux, ARM64). On each VM, as `heimdall-runner`, follow the shown commands. Add the labels `heimdall-dev` (dev VM) or `heimdall-prod` (prod VM). Then `sudo ./svc.sh install heimdall-runner && sudo ./svc.sh start`.
   - Only `ci.yml` deploy-dev (push to main) uses `heimdall-dev`, and only `release.yml` (tags) uses `heimdall-prod`. PR jobs run on GitHub-hosted runners only.
+  - **The runner label is a convention, not an access control.** Anyone with write access to the repo can push a workflow that targets `heimdall-prod`. Docker on that runner is root on the prod VM (security review 2026-10-04, High).
+    - On GitHub Free, keep the repo **single-writer**: you only, and collaborators get read access at most.
+    - Before you give anyone write access, upgrade to GitHub Pro (about $4 a month). Then:
+      1. Add an environment `production` with yourself as required reviewer, and reference it from `deploy-prod`.
+      2. Add a tag ruleset that restricts `v*` to you.
+      3. Put the prod runner in a runner group limited to `release.yml`.
 
 ## 6. Host config
 Copy `deploy/hosted.env.example` to `/srv/heimdall/hosted.env`, fill it in, and set mode 0600 with owner `heimdall-runner`:

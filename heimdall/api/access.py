@@ -64,7 +64,7 @@ class RateLimiter:
 
     per_client: int = 5
     per_client_window_s: float = 60.0
-    global_max: int = 30
+    global_max: int = 200  # throttle only: a low cap would let one attacker lock everyone out
     global_window_s: float = 600.0
     _clients: dict[str, deque[float]] = field(default_factory=dict)
     _global: deque[float] = field(default_factory=deque)
@@ -156,10 +156,9 @@ class AccessGate:
         except ValueError:
             trusted = False
         if trusted:
-            fwd = (
-                request.headers.get("cf-connecting-ip")
-                or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-            )
+            # Cloudflare sets CF-Connecting-IP and overwrites any client copy. X-Forwarded-For is
+            # not used: its first entry is client-controlled (rate-limit evasion).
+            fwd = request.headers.get("cf-connecting-ip", "").strip()
             if fwd:
                 return fwd
         return peer or "unknown"

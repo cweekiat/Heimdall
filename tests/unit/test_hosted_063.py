@@ -119,3 +119,10 @@ def test_model_host_rules(monkeypatch: pytest.MonkeyPatch) -> None:
     assert LocalLLM({"url": "http://ollama:11434"}).enabled
     assert not LocalLLM({"url": "http://ollama.evil.example:11434"}).enabled
     assert not LocalLLM({"url": "https://api.example.com"}).enabled
+
+
+def test_caddy_csp_matches_app() -> None:
+    from heimdall.api.app import csp_for
+
+    caddy = (config.ROOT / "deploy" / "Caddyfile").read_text()
+    assert f'?Content-Security-Policy "{csp_for("openfreemap")}"' in caddy
