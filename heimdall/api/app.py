@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
@@ -188,7 +189,11 @@ def create_app(
             if user is not None:
                 request.state.user, request.state.admin = user.name, user.admin
             elif request.url.path not in PUBLIC_PATHS:
-                if request.method == "GET" and not request.url.path.startswith("/api"):
+                # Caddy forward_auth (063) asks /api/auth/check on behalf of the original URI.
+                path = request.url.path
+                if path == "/api/auth/check":
+                    path = request.headers.get("x-forwarded-uri", "/api")
+                if request.method in ("GET", "HEAD") and not path.startswith("/api"):
                     return Response(status_code=303, headers={"Location": "/login.html"})
                 return Response("sign in required", status_code=401)
         return await call_next(request)
@@ -521,6 +526,16 @@ def create_app(
             "time": _now().isoformat(),
             "sources": [h.model_dump(mode="json") for h in st.list_health()],
         }
+
+    @app.get("/api/ready")
+    def ready() -> Response:
+        # Readiness probe (063): public, says only yes/no. Deploys wait on it; rollback if not.
+        try:
+            st.list_alerts(limit=1)
+        except Exception as e:
+            log.error("not_ready", error=type(e).__name__)
+            return JSONResponse({"ready": False}, status_code=503)
+        return JSONResponse({"ready": True})
 
     # ------------------------------------------------------------------ sources
     @app.get("/api/sources")

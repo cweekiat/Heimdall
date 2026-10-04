@@ -34,7 +34,15 @@ COOKIE_SECURE = "__Host-hm_session"  # __Host-: Secure, Path=/, no Domain (brows
 COOKIE_PLAIN = "hm_session"  # local http testing only (api.cookie_secure: false)
 # Reachable without a session: the login page itself and the login/session probes.
 PUBLIC_PATHS = frozenset(
-    {"/login.html", "/login.js", "/login.css", "/favicon.svg", "/api/login", "/api/session"}
+    {
+        "/login.html",
+        "/login.js",
+        "/login.css",
+        "/favicon.svg",
+        "/api/login",
+        "/api/session",
+        "/api/ready",
+    }
 )
 
 

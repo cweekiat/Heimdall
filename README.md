@@ -124,10 +124,12 @@ cd web && npm run dev                    # http://localhost:5173, proxies /api t
 ```
 
 ### Docker
+Images come from one `deploy/Dockerfile`. The `prod` target is the production build and the `dev` target is the development build with tests and source maps. Compose files are explained in `docs/tasks/063-containers-envs.md`.
 ```bash
-docker compose -f deploy/docker-compose.yml up                  # live worker on 127.0.0.1:8000
-docker compose -f deploy/docker-compose.yml --profile demo up   # demo on 127.0.0.1:8001
+docker compose -f deploy/compose.yml -f deploy/compose.dev.yml up --build heimdall    # dev build, 127.0.0.1:8000
+docker compose -f deploy/compose.yml -f deploy/compose.local.yml up --build           # prod images + access codes, 127.0.0.1:8080
 ```
+Hosting on the free Oracle VMs behind Cloudflare is covered in `docs/deploy-oracle.md`.
 
 ### Hosted mode (invited users, access codes)
 Hosting plan and trust boundaries: `docs/decisions/ADR-009-hosted-deployment.md`. Set `api.auth: access_code`

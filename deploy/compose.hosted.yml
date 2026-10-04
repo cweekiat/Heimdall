@@ -1,0 +1,36 @@
+# Dev and prod VMs (ADR-009): adds the Cloudflare Tunnel (outbound only) and the optional local model.
+# On the VM: deploy/hosted.env holds HEIMDALL_IMAGE, HEIMDALL_EDGE_IMAGE, HEIMDALL_ENV (dev|prod),
+# HEIMDALL_ALLOWED_HOSTS, HEIMDALL_DATA and TUNNEL_TOKEN (0600, never committed). See docs/deploy-oracle.md.
+#   docker compose --env-file deploy/hosted.env -f deploy/compose.yml -f deploy/compose.hosted.yml up -d
+#   ... --profile llm up -d    # also start Ollama (prod VM only)
+services:
+  heimdall:
+    mem_limit: ${HEIMDALL_MEM:-12g}
+    cpus: ${HEIMDALL_CPUS:-2.5}
+
+  edge:
+    mem_limit: 256m
+
+  tunnel:
+    image: cloudflare/cloudflared:2025.8.0
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:2000", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in deploy/hosted.env}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    mem_limit: 128m
+    depends_on: [edge]
+
+  ollama:
+    profiles: [llm]
+    image: ollama/ollama:0.11.4
+    volumes: ["ollama:/root/.ollama"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    mem_limit: 8g
+
+volumes:
+  ollama: {}

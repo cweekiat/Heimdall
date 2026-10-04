@@ -1,0 +1,15 @@
+# Production overlay (HEIMDALL_ENV=prod, task 063, ADR-009). Merged over config.yaml.
+# Runtime and infrastructure values only: detector thresholds never live here.
+storage:
+  duckdb_memory_limit: 4GB   # prod VM: 18 GB RAM (Oracle A1); leaves room for the live index and Ollama
+  duckdb_threads: 3          # 3 OCPU
+api:
+  host: 0.0.0.0              # inside the container; no published port, only the edge (Caddy) reaches it
+  auth: access_code          # every page needs an access code (scripts/access_codes.py)
+  cookie_secure: true
+  # Caddy on the compose network is the only peer; its X-Forwarded-For / CF-Connecting-IP is believed.
+  trusted_proxies: ["172.16.0.0/12", "192.168.0.0/16", "10.0.0.0/8", "127.0.0.1"]
+  # allowed_hosts: set HEIMDALL_ALLOWED_HOSTS=heimdall.<your-domain> in deploy/.env.prod
+brief:
+  llm:
+    url: http://ollama:11434  # same-VM service, internal network only (no egress)
