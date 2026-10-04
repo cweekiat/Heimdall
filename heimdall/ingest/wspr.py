@@ -40,6 +40,21 @@ GROUP BY t, band, glat, glon
 FORMAT JSON
 """
 
+# task 060: the same spots grouped by RECEIVER cell (where a local noise source would sit). Only
+# stations inside the box; n_rx / n_tx count distinct callsigns, which are never stored.
+RX_SQL = """
+SELECT toStartOfInterval(time, INTERVAL {bin_min} MINUTE) AS t, band,
+  round(rx_lat / {g}) * {g} AS glat, round(rx_lon / {g}) * {g} AS glon,
+  count() AS n, uniqExact(tx_sign, rx_sign) AS paths, median(snr) AS snr_med,
+  avg(snr) AS snr_mean, uniqExact(rx_sign) AS n_rx, uniqExact(tx_sign) AS n_tx,
+  avg(distance) AS dist_km
+FROM wspr.rx
+WHERE time >= '{t0}' AND time < '{t1}' AND distance >= {min_km} AND distance <= {max_km}
+  AND rx_lat BETWEEN {s} AND {n} AND rx_lon BETWEEN {w} AND {e}
+GROUP BY t, band, glat, glon
+FORMAT JSON
+"""
+
 DEFAULT_BBOX = (60.0, -20.0, 160.0, 50.0)  # Indo-Pacific: SE Asia AOIs + paths reflecting over them
 
 
@@ -52,10 +67,11 @@ def build_query(
     bin_min: int = 10,
     min_km: int = 500,
     max_km: int = 12000,
+    receiver: bool = False,
 ) -> str:
     w, s, e, n = (float(v) for v in bbox)
     fmt = "%Y-%m-%d %H:%M:%S"
-    return SQL.format(
+    return (RX_SQL if receiver else SQL).format(
         bin_min=int(bin_min),
         g=float(grid_deg),
         t0=t0.astimezone(UTC).strftime(fmt),
@@ -75,8 +91,10 @@ def parse_wspr(
     bin_min: int = 10,
     grid_deg: float = 2.0,
     bbox: tuple[float, float, float, float] = DEFAULT_BBOX,
+    receiver: bool = False,
 ) -> tuple[list[GeoEvent], int]:
-    """ClickHouse `FORMAT JSON` body -> (events, n_dropped)."""
+    """ClickHouse `FORMAT JSON` body -> (events, n_dropped). `receiver`: rows are receiver cells
+    (`hf_rx`, task 060) instead of path midpoints (`hf_spots`)."""
     rows = payload.get("data") if isinstance(payload, Mapping) else None
     if not isinstance(rows, list):
         return [], 0
@@ -101,16 +119,16 @@ def parse_wspr(
             continue
         out.append(
             GeoEvent(
-                id=spot_id("wspr", t, band, glat, glon),
+                id=spot_id("wsprrx" if receiver else "wspr", t, band, glat, glon),
                 ts=t,
                 source="wspr_live",
                 domain=Domain.SPECTRUM,
-                kind="hf_spots",
+                kind="hf_rx" if receiver else "hf_spots",
                 lat=glat,
                 lon=glon,
                 valid_from=t,
                 valid_to=t + timedelta(minutes=bin_min),
-                title=f"WSPR {band} MHz spots",
+                title=f"WSPR {band} MHz {'reception' if receiver else 'spots'}",
                 value=n,
                 attrs={
                     "role": "signal",
@@ -124,7 +142,7 @@ def parse_wspr(
                     "snr_mean": num(r.get("snr_mean")),
                     "mean_dist_km": num(r.get("dist_km")),
                     "grid_deg": grid_deg,
-                    "geo": "path_midpoint",
+                    "geo": "receiver_cell" if receiver else "path_midpoint",
                 },
             )
         )
@@ -146,11 +164,13 @@ class WsprConnector(PollConnector):
         settle_min: int = 5,
         min_km: int = 500,
         max_km: int = 12000,
+        rx_grid_deg: float = 0.0,
         **kw: Any,
     ) -> None:
         super().__init__(name, **kw)
         self.base_url = base_url.rstrip("/")
         self.bbox, self.grid_deg, self.bin_min = bbox, grid_deg, bin_min
+        self.rx_grid_deg = rx_grid_deg  # 0 = no receiver-cell query
         self.lookback_min, self.settle_min = lookback_min, settle_min
         self.min_km, self.max_km = min_km, max_km
 
@@ -161,23 +181,29 @@ class WsprConnector(PollConnector):
         return end - timedelta(minutes=self.lookback_min), end
 
     def units(self) -> Sequence[Unit]:
-        async def run() -> tuple[list[GeoEvent], int]:
-            t0, t1 = self.window()
-            q = build_query(
-                t0,
-                t1,
-                bbox=self.bbox,
-                grid_deg=self.grid_deg,
-                bin_min=self.bin_min,
-                min_km=self.min_km,
-                max_km=self.max_km,
-            )
-            r = await self.client.get(f"{self.base_url}/", params={"query": q})
-            return parse_wspr(
-                r.json(), bin_min=self.bin_min, grid_deg=self.grid_deg, bbox=self.bbox
-            )
+        def unit(receiver: bool) -> Unit:
+            g = self.rx_grid_deg if receiver else self.grid_deg
 
-        return [run]
+            async def run() -> tuple[list[GeoEvent], int]:
+                t0, t1 = self.window()
+                q = build_query(
+                    t0,
+                    t1,
+                    bbox=self.bbox,
+                    grid_deg=g,
+                    bin_min=self.bin_min,
+                    min_km=self.min_km,
+                    max_km=self.max_km,
+                    receiver=receiver,
+                )
+                r = await self.client.get(f"{self.base_url}/", params={"query": q})
+                return parse_wspr(
+                    r.json(), bin_min=self.bin_min, grid_deg=g, bbox=self.bbox, receiver=receiver
+                )
+
+            return run
+
+        return [unit(False), unit(True)] if self.rx_grid_deg > 0 else [unit(False)]
 
 
 def _bbox(v: Any) -> tuple[float, float, float, float]:
@@ -198,6 +224,7 @@ def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connector:
         settle_min=int(cfg.get("settle_min", 5)),
         min_km=int(cfg.get("min_km", 500)),
         max_km=int(cfg.get("max_km", 12000)),
+        rx_grid_deg=float(cfg.get("rx_grid_deg", 0.0)),
         poll_s=float(cfg.get("poll_s", 600)),
         rps=float(cfg.get("rps", 0.2)),
         reliability=SourceReliability(cfg.get("reliability", "B")),

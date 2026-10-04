@@ -261,6 +261,25 @@ detectors:
     network_ok_ratio: 0.6   # whole-box drop -> feed or region-wide propagation, not local
     reach_km: 500
     confidence_cap: 0.5
+  hf_rx:                    # 060: HF reception at the RECEIVER cell, experimental. Priors from the WSPR receiver-cell backfill 2026-09-17..10-03 (docs/tasks/060-hf-receiver.md)
+    enabled: true
+    window_min: 60
+    step_min: 30
+    persist_windows: 3
+    settle_min: 20
+    baseline_days: 14
+    min_baseline_days: 5
+    min_rx: 2               # min_rx 3 cut false flags 38 -> 8 (2.4 days) but loses 2-station cells
+    min_spots: 20           # usual spots per hour; 10 adds sparse SE Asia cells but +40% raw flags
+    snr_drop_db: 6.0        # relative to neighbours; own-cell same-hour drop p1 = -5.7 dB (2026-10-01..03)
+    rate_ratio: 0.4         # decodes per active receiver vs usual (relative to neighbours)
+    z_min: 2.0              # relative test; injected -10 dB caught in 4/4 judgeable cells, -8 dB + 60% decode loss 3/4
+    z_min_alone: 3.0        # cells with no neighbour: absolute test, day-to-day spread 2-3 dB
+    neighbour_km: 1500
+    kp_explain: 5.0
+    network_ok_ratio: 0.6
+    reach_km: 300
+    confidence_cap: 0.5     # single experimental band stays <= medium
   fusion:
     persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2, spectrum_anomaly: 3}  # CLAUDE.md: >= 2 windows; ais_*, thermal prior, not backtested
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior

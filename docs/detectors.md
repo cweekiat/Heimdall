@@ -555,6 +555,24 @@ Confidence 0.6 (ADS-B coverage; aircraft flying dark are not seen). Alerts are f
 - Replays (`docs/reports/2026-10-03-hf.md`): 0 alerts on 6 quiet days and on 4 days around the 14 May 2025 X2.7
   flare; with sensitive settings the flare drop is found and explained away. Priors, no labelled HF interference set.
 
+## HF reception at the receiver (detect/hf_rx.py, `hf-rx-0.1.0`, P6 / 060, experimental)
+- Input `hf_rx` (WSPR receiver-cell query, PSK Reporter receiver bins): spots per 10-min bin, band and 2° receiver
+  cell, with distinct receivers and median SNR. A local noise source (jammer or any interference) makes receivers
+  near it hear every signal, from every direction, weaker and decode fewer.
+- Main test is relative: the cell minus the median of its neighbouring receiver cells (same source and band, within
+  1,500 km) in the same hour, vs that difference on each of the previous 14 days at the same clock time. Shared
+  propagation swings (2–3 dB SNR, ×0.3–×3 decodes day to day) cancel.
+- R1 SNR: relative drop ≥ 6 dB, z ≤ −2, cell itself ≥ 3 dB down. R2 decodes per active receiver: relative ≤ 0.4×,
+  z ≤ −2, cell itself ≤ 0.7× (switched-off stations do not count). ≥ 2 receivers now and usually, ≥ 20 usual spots.
+  No neighbours: absolute same-hour test with z ≤ −3 and confidence ×0.6, stated in the Evidence. R4 (support):
+  other bands at the same receivers down too.
+- Explained, never flagged: M1+ flare with the cell sunlit, Kp ≥ 5, source whole-box total < 60 % of usual.
+- SPECTRUM_ANOMALY, band HF; persistence = consecutive flagged windows (fusion needs 3); confidence ≤ 0.5.
+- Backfill replay 1–3 Oct 2026 (WSPR, ~100 judgeable receiver cells/hour, mostly Europe, Australia/NZ, Japan): 3
+  persistent (≥ 3 windows) flags in 2.4 days, all 2-receiver cells; injected −10 dB caught in 4/4 judgeable cells,
+  −8 dB with 60 % decode loss 3/4 (absolute test before: 2/8 and 1/8). Sparse SE Asia cells are usually not
+  judgeable. Priors; no labelled interference set.
+
 ## Cross-band fusion (P7, 052)
 GNSS jamming and a radio band anomaly on another band within 300 km and 6 h support each other. An experimental
 band alone (HF, satellite downlink, L 1.4 GHz, C SAR) stays at most medium unless another band or an official notice

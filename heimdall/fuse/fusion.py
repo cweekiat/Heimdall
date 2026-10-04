@@ -344,6 +344,15 @@ def _summary(kind: AlertKind, group: Sequence[Evidence], lead: Evidence, cell: s
             f"reporting normally; held for {lead.persistence} half-hour windows; {cov}. "
             "Experimental: it never names an emitter."
         )
+    if kind == AlertKind.SPECTRUM_ANOMALY and lead.detector == "hf_rx":
+        parts = list(dict.fromkeys(r.description for e in group for r in e.rules if r.passed))
+        return (
+            f"HF receivers in H3 {cell} hearing far worse than usual, from all directions, while "
+            f"neighbouring receivers do not: {'; '.join(parts)}. No flare with them sunlit, no "
+            f"geomagnetic storm, network reporting normally; held for {lead.persistence} "
+            f"half-hour windows; {cov}. Experimental: local interference of any kind looks the "
+            "same; it never names an emitter."
+        )
     if kind == AlertKind.SPECTRUM_ANOMALY:
         parts = [r.description for e in group for r in e.rules[:1]]
         return (
