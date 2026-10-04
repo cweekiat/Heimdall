@@ -72,11 +72,16 @@ Phase 1 needs **no keys**: adsb.lol and adsb.fi are free and keyless. airplanes.
 ## 2. Run
 
 ### HF baseline (one-off, optional)
-The HF detector compares each hour with the same time on the previous 14 days. On a new install, fill that history
-from the WSPR archive (stop `heimdall.run` first; DuckDB allows one writer):
+Both HF detectors compare each hour with the same time on the previous 14 days: the path detector (where signals
+reflect) and the receiver detector (060: how well receivers in each area hear, against their neighbours). On a new
+install, fill that history from the WSPR archive (stop `heimdall.run` first; DuckDB allows one writer):
 ```bash
 uv run python scripts/hf_backfill.py --start 2026-09-19 --end 2026-10-02 --store data/heimdall.duckdb
 ```
+```bash
+uv run python scripts/hf_backfill.py --rx --start 2026-09-19 --end 2026-10-02 --store data/heimdall.duckdb
+```
+A saved download can be inserted again with `--from-file data/replay/hf/wspr_rx.jsonl --store data/heimdall.duckdb`.
 
 ### Demo (synthetic data, no network)
 The quickest way to see the UI. It uses in-memory synthetic alerts: jamming, spoofing and a tanker orbit.
@@ -296,8 +301,8 @@ your permission. See [docs/guardrails.md](docs/guardrails.md).
 | P4 | Spectrum core: remove non-RF sources, band on every alert, jammer localisation, AIS circle spoofing, ship-to-ship transfers, interference notices, band ladder UI, GPSJam-style daily map |
 | P5 (done) | Space RF: CYGNSS GNSS interference from orbit, SMAP, Sentinel-1 interference annotations |
 | Military (039) | Worldwide military aircraft (readsb `/v2/mil`), plane-alert-db identities, deployment / surge / high-interest / build-up indicators per theatre |
-| P6 (done) | HF: WSPR and PSK Reporter path-midpoint detector with flare/storm explain-away (KiwiSDR directory blocked) |
-| P7 | Cross-band fusion, GDELT, cited Claude briefs, daily SITREP, feedback-driven tuning |
+| P6 (done) | HF: WSPR and PSK Reporter path-midpoint and receiver-cell detectors with flare/storm explain-away (KiwiSDR directory blocked) |
+| P7 (done except cited Claude briefs) | Cross-band fusion, GDELT, daily SITREP, feedback-driven tuning; briefs by a local model |
 
 Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
 
@@ -305,7 +310,7 @@ Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
 - ADS-B and AIS coverage over open SE Asian seas is sparse (for example, Myanmar sees about 3–10 aircraft within 250 NM). Confidence is lowered to match, and sparse-region defaults are being calibrated in task 006.
 - Thresholds are priors until the Baltic backtest (task 006) calibrates them.
 - Every sensor is a volunteer or satellite receiver: where there are no receivers there is no data, and that is
-  never read as "no interference". The HF detector is experimental, needs 5+ days of history (backfill: `scripts/hf_backfill.py`, see below) and never names an emitter type.
+  never read as "no interference". The HF detectors are experimental, need 5+ days of history (backfill: `scripts/hf_backfill.py`, see below) and never names an emitter type.
 - Internet-outage, night-light, Sentinel-2 and Global Fishing Watch sources are being removed in task 027 (ADR-008).
 - Military tracking only sees aircraft that broadcast ADS-B and are flagged military; strike packages often fly
   dark and use decoys. Theatre thresholds are priors and the surge baseline needs 3 days of data.
