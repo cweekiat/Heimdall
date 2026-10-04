@@ -38,7 +38,12 @@ The API binds 127.0.0.1 by default (`api.host`).
   the number of components above that theatre's own normal; click a theatre to see every component with its numbers.
 - **Air force watch (task 056, rail, key `a`)**: one air force's visible fleet by status (airborne, home base,
   overseas detachment, elsewhere at home, abroad), notes, movements between countries, flights per day; click an
-  aircraft to investigate. `GET /api/airforces/{key}?days=`.
+  aircraft to investigate. Ten air forces (058): RSAF, RMAF, TNI-AU, PAF, RTAF, RoCAF, JASDF, ROKAF, RAAF, RNZAF
+  (`config/air_forces.yaml`). `GET /api/airforces`, `GET /api/airforces/{key}?days=`; the first load reads the lake
+  for all fleets at once (~10 s), later switches are instant.
+- **Detector tuning (task 061, rail, key `k`)**: per detector, alerts, reviews, share confirmed real with a 95 %
+  range, false-alarm reasons, and threshold proposals that keep every confirmed alert (with the `config/config.yaml`
+  line and a Copy button). Read-only; proposals appear after 5 false alarms and 3 confirmed alerts. `GET /api/tuning?days=`.
 - **Demo (task 043, rail, key `p`)**: plays a precomputed demo pack (`data/replay/*/*.demo.json`) on the live server.
   The snapshot layer replaces live traffic and live alert markers until **Exit demo**; demo alerts open read-only.
   Nothing is replayed server-side, so live detection is unaffected.
@@ -115,6 +120,8 @@ Shortcuts are ignored while typing in a field; `Esc` always closes the topmost t
 | GET | `/api/demo/packs`, `/api/demo/packs/{name}` | demo packs (steps, snapshots, alert list); `/api/alerts/{id}` falls back to packs (`demo: true`) |
 | GET | `/api/brief/status`, `/api/brief/trends?hours=` | local model availability; fact sheet + trend lines |
 | POST | `/api/brief/summary` | `{hours}`; local-model narrative with `cited` / `unsupported` refs; 503 if no local model |
+| GET | `/api/cygnss/days`, `/api/cygnss/day?date=` | CYGNSS L1 noise day map (059): cells worth a look with excess, rise vs own baseline, `flag` level/change |
+| GET | `/api/tuning?days=` | detector precision from verdicts and threshold proposals (061, read-only) |
 | GET | `/api/jammers` | merged jammer fits (GeoJSON), see Map layers |
 | POST | `/api/alerts/{id}/actions` | `{action_id}`; 422 unless in playbook and `applies_to` matches; status `proposed`; returns `id` |
 | POST | `/api/actions/{id}/approve`, `/reject` | id = `ActionRequest.id` (uuid4 hex, ADR-002); only for `proposed`; approve sets `approved` (recording stub, runs nothing) |

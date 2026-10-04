@@ -7,10 +7,10 @@ Scheduler (every step_min) ──► Detectors (detect/*, pure) ─┴► Eviden
                                                                          │  persistence, severity, playbook
 API (FastAPI, api/*) ◄── Store ─────────────────────────────────────────┘
   REST + SSE ──► Web UI (web/): map · alert queue · evidence card · actions · trends · SITREP · data health
-Analyst feedback ──► Store.feedback ──► precision stats ──► proposed threshold changes (human-approved)
+Analyst feedback ──► Store.feedback ──► tuning.py (precision, what-if) ──► proposed threshold changes (human-approved)
 ```
 Bands (ADR-008): every source is a receiver on a band (HF, VHF marine, L 1090, L1 GNSS, L 1.4 GHz, C SAR). Detectors
-emit `RfEffect`s with receiver coverage; fusion corroborates across bands. Two tempos: **live** (ADS-B, AIS, and later
+emit `RfEffect`s with receiver coverage; fusion corroborates across bands. Two tempos: **live** (ADS-B, AIS,
 PSK/WSPR; seconds to minutes) and **daily sweep** (GNSS day map, CYGNSS, SMAP, Sentinel-1; hours to a day), shown as
 separate layer groups with their data date.
 Process (MVP): a single `heimdall.run` hosts connectors + writer + scheduler + fusion **and** the API
@@ -22,4 +22,10 @@ Shift brief (044): `heimdall/brief/facts.py` builds a fact sheet from stored ale
 `heimdall/brief/local_llm.py` may narrate it through a local Ollama model (loopback URLs only, refs checked).
 Demo packs (043): precomputed `*.demo.json` files served read-only by the live API (`heimdall/api/demo_packs.py`);
 no replay store or pipeline runs on the live server.
+HF (045, 060): `pipeline.HfCache` keeps each baseline-day 10-min bin once and runs one `prepare` per window end,
+shared by all areas; one instance per detector module (`hf` path midpoints, `hf_rx` receiver cells).
+Tuning (061): `heimdall/tuning.py` reads alerts, verdicts and evidence from the Store and reports precision and
+threshold what-ifs (`/api/tuning`, `python -m heimdall.tuning`); it never writes config.
+Air force watch (056/058): `heimdall/airforce.py` (pure) over lake positions read by `api/airforce.LakeFleetReader`,
+one hour-partition cache shared by every configured fleet.
 See ADR-001 for scale-out mapping.
