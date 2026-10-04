@@ -171,7 +171,7 @@ def _max_sev(a: Severity, b: Severity) -> Severity:
 def alert_id(kind: str, cell: str | None, first_seen: datetime, aoi: str | None = None) -> str:
     """sha1(alert|aoi|kind|cell|first_seen ISO)."""
     raw = f"alert|{aoi or ''}|{kind}|{cell}|{first_seen.isoformat()}"
-    return hashlib.sha1(raw.encode()).hexdigest()
+    return hashlib.sha1(raw.encode(), usedforsecurity=False).hexdigest()
 
 
 def actions_for(kind: AlertKind | str, playbook: Mapping[str, Any] | None) -> list[str]:

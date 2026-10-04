@@ -47,7 +47,7 @@ def parse_rss(body: bytes | str, feed: str, now: datetime) -> tuple[list[GeoEven
             ts = now
         out.append(
             GeoEvent(
-                id=f"news|{hashlib.sha1(link.encode()).hexdigest()[:20]}",
+                id=f"news|{hashlib.sha1(link.encode(), usedforsecurity=False).hexdigest()[:20]}",
                 ts=ts,
                 source="news_rss",
                 domain=Domain.EVENTS,

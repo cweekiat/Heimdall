@@ -1,8 +1,7 @@
 # Dev and prod VMs (ADR-009): adds the Cloudflare Tunnel (outbound only) and the optional local model.
-# On the VM: deploy/hosted.env holds HEIMDALL_IMAGE, HEIMDALL_EDGE_IMAGE, HEIMDALL_ENV (dev|prod),
-# HEIMDALL_ALLOWED_HOSTS, HEIMDALL_DATA and TUNNEL_TOKEN (0600, never committed). See docs/deploy-oracle.md.
-#   docker compose --env-file deploy/hosted.env -f deploy/compose.yml -f deploy/compose.hosted.yml up -d
-#   ... --profile llm up -d    # also start Ollama (prod VM only)
+# On the VM, /srv/heimdall/hosted.env (0600, outside the repo) holds HEIMDALL_ENV (dev|prod),
+# HEIMDALL_ALLOWED_HOSTS, HEIMDALL_DATA, TUNNEL_TOKEN and optionally COMPOSE_PROFILES=llm (Ollama, prod).
+# Deploys run deploy/scripts/deploy.sh (sets the image tags). See docs/deploy-oracle.md.
 services:
   heimdall:
     mem_limit: ${HEIMDALL_MEM:-12g}
