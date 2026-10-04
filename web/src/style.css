@@ -1911,3 +1911,8 @@ button.mil-bar[aria-pressed="true"] { outline: 1px solid var(--accent, #58a6ff);
 .af-note { margin: 3px 0; padding: 4px 6px; border-left: 3px solid var(--line, #30363d); }
 .af-note.watch { border-left-color: var(--military, #f0a020); background: color-mix(in srgb, var(--military, #f0a020) 8%, transparent); }
 .af-move { margin: 2px 0; font-size: 12px; }
+
+/* task 061: detector tuning */
+.tune-prop { border-left: 3px solid var(--accent, #4c8dff); padding: 4px 8px; margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.tune-prop code { font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+.tune-prop button { align-self: flex-start; }
