@@ -1,5 +1,4 @@
-# Nightly security re-scan (task 064): new CVEs appear after merge. Reports high and above,
-# including the web advisories that do not block PRs (see ci.yml).
+# Nightly security re-scan (task 064): new CVEs appear after merge. Reports high and above.
 name: nightly
 on:
   schedule: [{cron: "17 19 * * *"}]   # 03:17 Singapore time

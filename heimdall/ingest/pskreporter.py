@@ -13,13 +13,13 @@ over `max_bytes` are rejected, and callsigns are never stored, only counts.
 from __future__ import annotations
 
 import statistics
-import xml.etree.ElementTree as ET
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from heimdall.config import Settings
+from heimdall.ingest import xmlsafe
 from heimdall.ingest.hf_common import (
     band_of,
     bin_start,
@@ -55,10 +55,7 @@ def parse_reports(
     body: bytes | str, *, max_bytes: int = MAX_BYTES
 ) -> tuple[list[Report], int, int]:
     """(reports, n_dropped, last_sequence_number). Unsafe or malformed body -> ([], 0, 0)."""
-    raw = body.encode() if isinstance(body, str) else body
-    if len(raw) > max_bytes or b"<!DOCTYPE" in raw[:4096].upper() or b"<!ENTITY" in raw:
-        raise ValueError("unsafe or oversized XML")
-    root = ET.fromstring(raw)
+    root = xmlsafe.parse(body, max_bytes)
     seq = 0
     last = root.find("lastSequenceNumber")
     if last is not None:

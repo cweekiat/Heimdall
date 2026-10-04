@@ -31,7 +31,7 @@ CIRCLE_VERTICES = 32
 CST = timezone(timedelta(hours=8))  # China Standard Time
 
 _BLOCK_TAGS = {"br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4", "table", "section"}
-_CTRL_RE = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f​-‏ -‮⁠-⁤﻿]")
+_CTRL_RE = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]")
 
 
 class _TextExtractor(HTMLParser):

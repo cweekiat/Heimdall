@@ -59,11 +59,11 @@ jobs:
         run: |
           uv export --frozen --no-dev --no-emit-project -o "$RUNNER_TEMP/req.txt"
           uvx pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/req.txt"
-      - name: Web dependency audit (runtime deps, critical blocks; high is reported nightly)
+      - name: Web dependency audit (runtime deps, high and above)
         working-directory: web
-        run: npm audit --omit=dev --audit-level=critical
-      - name: Python static analysis (bandit, medium+, new findings only; baseline reviewed in 064)
-        run: uvx bandit -q -r heimdall -ll -b .github/bandit-baseline.json
+        run: npm audit --omit=dev --audit-level=high
+      - name: Python static analysis (bandit, medium and above; reviewed exceptions carry nosec, 066)
+        run: uvx bandit -q -r heimdall -ll
       - name: Semgrep (Python, JS, Docker, secrets rules; PRs fail on NEW findings only)
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

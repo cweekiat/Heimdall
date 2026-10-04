@@ -9,13 +9,13 @@ XML with a DOCTYPE / ENTITY (entity expansion) or over `MAX_BYTES` is rejected.
 from __future__ import annotations
 
 import hashlib
-import xml.etree.ElementTree as ET
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any
 
 from heimdall.config import Settings
+from heimdall.ingest import xmlsafe
 from heimdall.ingest.poll import PollConnector, Unit
 from heimdall.ports import Connector
 from heimdall.schemas import Domain, GeoEvent, SourceReliability
@@ -29,10 +29,7 @@ def _clean(v: str | None, n: int = 200) -> str:
 
 
 def parse_rss(body: bytes | str, feed: str, now: datetime) -> tuple[list[GeoEvent], int]:
-    raw = body.encode() if isinstance(body, str) else body
-    if len(raw) > MAX_BYTES or b"<!DOCTYPE" in raw[:4096].upper() or b"<!ENTITY" in raw:
-        raise ValueError("unsafe or oversized XML")
-    root = ET.fromstring(raw)
+    root = xmlsafe.parse(body, MAX_BYTES)
     out: list[GeoEvent] = []
     dropped = 0
     for it in root.iter("item"):

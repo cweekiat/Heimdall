@@ -117,7 +117,7 @@ Source API keys:
 - **Idle reclamation**: Always Free A1 VMs whose CPU stays under 20 % for 7 days can be reclaimed. A pay-as-you-go account is exempt; otherwise keep live ingest on.
 
 ## 9. When to scale out (ADR-009 stage 2)
-Build task 066 (Postgres/TimescaleDB store, Redis/Valkey bus, N API replicas behind Caddy) only when one of these holds:
+Build the scale-out task (067: Postgres/TimescaleDB store, Redis/Valkey bus, N API replicas behind Caddy) only when one of these holds:
 - `verify-dev` perf budget fails repeatedly,
 - the pipeline tick exceeds 30 s,
 - or more than about 25 people use it at once.
