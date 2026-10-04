@@ -113,6 +113,7 @@ class _Bin:
     rx: set[str] = field(default_factory=set)
     tx: set[str] = field(default_factory=set)
     modes: dict[str, int] = field(default_factory=dict)
+    receiver: bool = False  # task 060: receiver-cell bin (`hf_rx`) instead of path midpoint
 
 
 class Aggregator:
@@ -127,8 +128,10 @@ class Aggregator:
         min_km: float = 500,
         max_km: float = 12000,
         keep_h: float = 3,
+        rx_grid_deg: float = 0.0,
     ) -> None:
         self.bin_min, self.grid_deg, self.bbox = bin_min, grid_deg, bbox
+        self.rx_grid_deg = rx_grid_deg  # 0 = no receiver-cell bins
         self.min_km, self.max_km, self.keep = min_km, max_km, timedelta(hours=keep_h)
         self.bins: dict[str, _Bin] = {}
 
@@ -140,26 +143,42 @@ class Aggregator:
             if not self.min_km <= d <= self.max_km:
                 skipped += 1
                 continue
+            t = bin_start(r.ts, self.bin_min)
             mlat, mlon = midpoint(*r.tx, *r.rx)
             glat, glon = grid(mlat, self.grid_deg), grid(mlon, self.grid_deg)
-            if not in_bbox(glat, glon, self.bbox):
+            if in_bbox(glat, glon, self.bbox):
+                touched.add(self._put(spot_id("psk", t, r.band, glat, glon), r, t, glat, glon, d))
+            else:
                 skipped += 1
-                continue
-            t = bin_start(r.ts, self.bin_min)
-            key = spot_id("psk", t, r.band, glat, glon)
-            b = self.bins.get(key)
-            if b is None:
-                b = self.bins[key] = _Bin(t, r.band, glat, glon)
-            b.n += 1
-            b.dist_sum += d
-            if r.snr is not None and len(b.snrs) < MAX_SNR_SAMPLES:
-                b.snrs.append(r.snr)
-            b.paths.add((r.tx_key, r.rx_key))
-            b.rx.add(r.rx_key)
-            b.tx.add(r.tx_key)
-            b.modes[r.mode] = b.modes.get(r.mode, 0) + 1
-            touched.add(key)
+            if self.rx_grid_deg > 0:
+                rlat, rlon = grid(r.rx[0], self.rx_grid_deg), grid(r.rx[1], self.rx_grid_deg)
+                if in_bbox(r.rx[0], r.rx[1], self.bbox):
+                    key = spot_id("pskrx", t, r.band, rlat, rlon)
+                    touched.add(self._put(key, r, t, rlat, rlon, d, receiver=True))
         return touched, skipped
+
+    def _put(
+        self,
+        key: str,
+        r: Report,
+        t: datetime,
+        glat: float,
+        glon: float,
+        d: float,
+        receiver: bool = False,
+    ) -> str:
+        b = self.bins.get(key)
+        if b is None:
+            b = self.bins[key] = _Bin(t, r.band, glat, glon, receiver=receiver)
+        b.n += 1
+        b.dist_sum += d
+        if r.snr is not None and len(b.snrs) < MAX_SNR_SAMPLES:
+            b.snrs.append(r.snr)
+        b.paths.add((r.tx_key, r.rx_key))
+        b.rx.add(r.rx_key)
+        b.tx.add(r.tx_key)
+        b.modes[r.mode] = b.modes.get(r.mode, 0) + 1
+        return key
 
     def expire(self, now: datetime) -> None:
         cut = now - self.keep
@@ -173,12 +192,12 @@ class Aggregator:
             ts=b.t,
             source="pskreporter",
             domain=Domain.SPECTRUM,
-            kind="hf_spots",
+            kind="hf_rx" if b.receiver else "hf_spots",
             lat=b.glat,
             lon=b.glon,
             valid_from=b.t,
             valid_to=b.t + timedelta(minutes=self.bin_min),
-            title=f"PSK Reporter {b.band} MHz spots",
+            title=f"PSK Reporter {b.band} MHz {'reception' if b.receiver else 'spots'}",
             value=float(b.n),
             attrs={
                 "role": "signal",
@@ -191,8 +210,8 @@ class Aggregator:
                 "snr_med": statistics.median(b.snrs) if b.snrs else None,
                 "snr_mean": statistics.fmean(b.snrs) if b.snrs else None,
                 "mean_dist_km": b.dist_sum / b.n,
-                "grid_deg": self.grid_deg,
-                "geo": "path_midpoint",
+                "grid_deg": self.rx_grid_deg if b.receiver else self.grid_deg,
+                "geo": "receiver_cell" if b.receiver else "path_midpoint",
             },
         )
 
@@ -244,6 +263,7 @@ def build(key: str, cfg: Mapping[str, Any], settings: Settings) -> Connector:
         bbox=_bbox(cfg.get("bbox")),
         min_km=float(cfg.get("min_km", 500)),
         max_km=float(cfg.get("max_km", 12000)),
+        rx_grid_deg=float(cfg.get("rx_grid_deg", 0.0)),
     )
     return PskReporterConnector(
         key,

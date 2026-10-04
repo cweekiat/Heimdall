@@ -12,6 +12,8 @@ Usage: uv run python scripts/hf_backfill.py --start 2026-09-15 --end 2026-10-02
        uv run python scripts/hf_backfill.py --from-file data/replay/hf/wspr.jsonl \
          --store data/heimdall.duckdb
        (insert an earlier download without fetching again)
+       --rx: receiver-cell bins (`hf_rx`, task 060) at `rx_grid_deg` instead of path midpoints
+       (default out data/replay/hf/wspr_rx.jsonl)
 """
 
 from __future__ import annotations
@@ -51,7 +53,9 @@ async def main(a: argparse.Namespace) -> None:
     base = str(src["base"]).rstrip("/")
     bbox = tuple(float(v) for v in src.get("bbox", DEFAULT_BBOX))
     grid, bin_min = float(src.get("grid_deg", 2.0)), int(src.get("bin_min", 10))
-    out = Path(a.out)
+    if a.rx:
+        grid = float(src.get("rx_grid_deg", 2.0))
+    out = Path(a.out or ("data/replay/hf/wspr_rx.jsonl" if a.rx else "data/replay/hf/wspr.jsonl"))
     out.parent.mkdir(parents=True, exist_ok=True)
     t = datetime.combine(a.start, time(0), UTC)
     end = datetime.combine(a.end + timedelta(days=1), time(0), UTC)
@@ -67,10 +71,17 @@ async def main(a: argparse.Namespace) -> None:
                 bin_min=bin_min,
                 min_km=int(src.get("min_km", 500)),
                 max_km=int(src.get("max_km", 12000)),
+                receiver=a.rx,
             )
             r = await client.get(f"{base}/", params={"query": q})
             r.raise_for_status()
-            evs, dropped = parse_wspr(r.json(), bin_min=bin_min, grid_deg=grid, bbox=bbox)  # type: ignore[arg-type]
+            evs, dropped = parse_wspr(
+                r.json(),
+                bin_min=bin_min,
+                grid_deg=grid,
+                bbox=bbox,  # type: ignore[arg-type]
+                receiver=a.rx,
+            )
             events += evs
             print(f"{t:%Y-%m-%d %H:%M}: {len(evs)} bins ({dropped} dropped)", flush=True)
             t = t1
@@ -88,7 +99,8 @@ if __name__ == "__main__":
     p.add_argument("--start", type=date.fromisoformat)
     p.add_argument("--end", type=date.fromisoformat)
     p.add_argument("--from-file", help="insert this earlier download instead of fetching")
-    p.add_argument("--out", default="data/replay/hf/wspr.jsonl")
+    p.add_argument("--out", default=None)
+    p.add_argument("--rx", action="store_true", help="receiver cells (hf_rx) instead of midpoints")
     p.add_argument("--store", help="also insert into this DuckDB store (live server stopped)")
     p.add_argument("--chunk-h", type=int, default=6)
     asyncio.run(main(p.parse_args()))

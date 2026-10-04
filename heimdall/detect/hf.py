@@ -108,10 +108,10 @@ def _num(v: Any) -> float | None:
     return float(v) if isinstance(v, int | float) and not isinstance(v, bool) else None
 
 
-def bins_from_events(events: Iterable[GeoEvent]) -> list[SpotBin]:
+def bins_from_events(events: Iterable[GeoEvent], kind: str = KIND) -> list[SpotBin]:
     out = []
     for e in events:
-        if e.kind != KIND or e.lat is None or e.lon is None:
+        if e.kind != kind or e.lat is None or e.lon is None:
             continue
         band, n = e.attrs.get("band_mhz"), _num(e.attrs.get("n"))
         if not isinstance(band, int) or not n:

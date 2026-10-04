@@ -19,6 +19,7 @@ from heimdall.detect import (
     ais_spoofing,
     cygnss,
     hf,
+    hf_rx,
     jamming,
     orbit,
     spectrum_state,
@@ -426,21 +427,23 @@ def cygnss_windows(
 
 
 class HfCache:
-    """P6: spot bins for the HF detector. Past days' bins are stable, so each 10-min bin of a
-    baseline day is read once and kept; the current day's span is re-read every run (late
-    uploads complete recent bins). One `hf.prepare` per newest-window end is shared by all AOIs."""
+    """P6: spot bins for an HF detector (`hf` path midpoints, 045; `hf_rx` receiver cells, 060).
+    Past days' bins are stable, so each 10-min bin of a baseline day is read once and kept; the
+    current day's span is re-read every run (late uploads complete recent bins). One `prepare`
+    per newest-window end is shared by all AOIs."""
 
-    def __init__(self) -> None:
+    def __init__(self, mod: Any = hf) -> None:
+        self.mod = mod
         self.store: Store | None = None
         self.hist: dict[datetime, list[hf.SpotBin]] = {}
         self.t_end: datetime | None = None
-        self.state: hf.HfState | None = None
+        self.state: Any = None
 
     def bins_for(self, store: Store, t_end: datetime, cfg: Mapping[str, Any]) -> list[hf.SpotBin]:
         if store is not self.store:
             self.store, self.hist, self.t_end, self.state = store, {}, None, None
-        sp, ten = hf.span(cfg), timedelta(minutes=10)
-        days = int(cfg.get("baseline_days", hf.DEFAULTS["baseline_days"]))
+        sp, ten = self.mod.span(cfg), timedelta(minutes=10)
+        days = int(cfg.get("baseline_days", self.mod.DEFAULTS["baseline_days"]))
         wanted: set[datetime] = set()
         for d in range(1, days + 1):
             t = t_end - timedelta(days=d) - sp
@@ -459,30 +462,31 @@ class HfCache:
                 else:
                     runs.append([t])
             for run in runs:
-                evs = store.events_window(run[0], run[-1] + ten, [hf.KIND])
-                for b in hf.bins_from_events(evs):
+                evs = store.events_window(run[0], run[-1] + ten, [self.mod.KIND])
+                for b in self.mod.bins_from_events(evs):
                     if b.t in got:
                         got[b.t].append(b)
             self.hist.update(got)
-        cur = hf.bins_from_events(store.events_window(t_end - sp, t_end, [hf.KIND]))
+        cur = self.mod.bins_from_events(store.events_window(t_end - sp, t_end, [self.mod.KIND]))
         return [b for bs in self.hist.values() for b in bs] + cur
 
-    def state_for(self, store: Store, cfg: Mapping[str, Any], now: datetime) -> hf.HfState | None:
-        c = {**hf.DEFAULTS, **cfg}
+    def state_for(self, store: Store, cfg: Mapping[str, Any], now: datetime) -> Any:
+        c = {**self.mod.DEFAULTS, **cfg}
         if not c.get("enabled", True):
             return None
-        t_end = hf.newest_window_end(now, c)
+        t_end = self.mod.newest_window_end(now, c)
         if store is self.store and self.t_end == t_end and self.state is not None:
             return self.state
         bins = self.bins_for(store, t_end, c)
         ctx = store.events_window(
-            t_end - hf.span(c) - timedelta(hours=7), t_end, list(hf.CONTEXT_KINDS)
+            t_end - self.mod.span(c) - timedelta(hours=7), t_end, list(self.mod.CONTEXT_KINDS)
         )
-        self.state, self.t_end = hf.prepare(bins, ctx, t_end, c, created=now), t_end
+        self.state, self.t_end = self.mod.prepare(bins, ctx, t_end, c, created=now), t_end
         return self.state
 
 
 _HF = HfCache()
+_HF_RX = HfCache(hf_rx)  # 060: receiver cells
 
 
 def run_aoi(
@@ -501,6 +505,7 @@ def run_aoi(
     spectrum_events: Sequence[GeoEvent] | None = None,
     cygnss_events: tuple[Sequence[GeoEvent], Sequence[GeoEvent]] | None = None,
     hf_state: hf.HfState | None = None,
+    hf_rx_state: hf_rx.RxState | None = None,
 ) -> TickResult:
     """One AOI step. `vessels`: AIS window for the AOI; `vessels_all`: the unfiltered AIS window
     for dark-gap detection (ships leaving the AOI keep reporting outside it; a gap belongs to the
@@ -555,6 +560,8 @@ def run_aoi(
         )
     if hf_state is not None:  # P6: persistence = consecutive flagged windows, set by the detector
         evs += hf.detect(hf_state, aoi, dict(detectors.get("hf", {})), now)
+    if hf_rx_state is not None:  # 060: receiver-cell HF, same persistence convention
+        evs += hf_rx.detect(hf_rx_state, aoi, dict(detectors.get("hf_rx", {})), now)
 
     min_ac = int(jcfg.get("min_aircraft", 5))
     for cell, st in stats.items():
@@ -767,6 +774,7 @@ def tick(
     spec_events = spectrum_windows(store, now, settings.aois)
     cyg = cygnss_windows(store, dets, now)
     hf_st = _HF.state_for(store, dict(settings.detectors.get("hf", {})), now)
+    hf_rx_st = _HF_RX.state_for(store, dict(settings.detectors.get("hf_rx", {})), now)
     total = TickResult(now=now, n_obs=len(obs_all))
     for aoi in settings.aois:
         obs = [o for o in obs_all if aoi.contains(o.lat, o.lon)]
@@ -787,6 +795,7 @@ def tick(
             spectrum_events=spec_events,
             cygnss_events=cyg,
             hf_state=hf_st,
+            hf_rx_state=hf_rx_st,
         )
         total.evidence += r.evidence
         total.alerts += r.alerts
