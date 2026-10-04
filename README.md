@@ -219,6 +219,12 @@ High North, …) to jump there. HF coverage now spans Eurasia east of 20°E and 
 more sources are drawn, and the hover says they can be wrong or old). **News** (rail or `n`): BBC World and Al
 Jazeera headlines for context. None of these raise alerts or feed the AI brief.
 
+**Detector tuning** (rail button or `k`). How often each detector was right, from your own verdicts (Confirm real /
+False alarm with a reason), with an honest range, the false-alarm reasons, and threshold changes those verdicts
+support: each keeps every confirmed alert and shows the `config/config.yaml` line to change. Nothing is applied
+automatically; proposals appear after 5 false alarms and 3 confirmed alerts for a detector. Terminal version:
+`uv run python -m heimdall.tuning --days 30` (live server stopped, or `--store` a copy).
+
 **Air force watch** (rail button or `a`). Pick an air force (Singapore RSAF, Malaysia RMAF, Indonesia TNI-AU,
 Philippines PAF, Thailand RTAF, Taiwan RoCAF, Japan JASDF, South Korea ROKAF, Australia RAAF, New Zealand RNZAF;
 edit `config/air_forces.yaml` to add more) to see where its visible aircraft are: airborne, at home bases, at known overseas training detachments (for the RSAF,

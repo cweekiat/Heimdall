@@ -36,6 +36,7 @@ from heimdall.api.military import military_router
 from heimdall.api.satellites import satellites_router
 from heimdall.api.spectrum import spectrum_router
 from heimdall.api.traffic import traffic_router
+from heimdall.api.tuning import tuning_router
 from heimdall.fuse.fusion import ACTIVE
 from heimdall.gnss_service import GnssService, StoreGnssService
 from heimdall.live import LivePositions
@@ -545,6 +546,7 @@ def create_app(
     app.include_router(military_router(st))
     app.include_router(airforce_router(st))  # 056: air force watch
     app.include_router(cygnss_router(st))  # 059: CYGNSS L1 noise map
+    app.include_router(tuning_router(st))  # 061: feedback-driven tuning (read-only)
     app.include_router(demo_router(demo_packs))
     app.include_router(brief_router(st))
     app.include_router(keys_router(secrets, sources))
