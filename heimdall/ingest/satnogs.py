@@ -1,4 +1,4 @@
-"""SatNOGS Network observations (REST, no key) -> `sat_observation` GeoEvents (ADR-008, space RF).
+"""SatNOGS Network observations (REST, no key) -> `sat_observation` GeoEvents (, space RF).
 
 Each finished observation is a satellite pass recorded by a volunteer ground station, with a
 status (good / bad / failed, or unknown until vetted). A run of `bad`/`failed` passes at stations

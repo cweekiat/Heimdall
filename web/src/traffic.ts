@@ -394,7 +394,7 @@ export class Traffic {
         visible: fade > 0.01,
         iconAtlas: this.icons,
         iconMapping: MAPPING,
-        getIcon: () => "plane", // military = the same plane in its role colour (046), amber family
+        getIcon: () => "plane", // military = the same plane in its role colour, amber family
         getPosition: (d) => [d.row.lon, d.row.lat, this.z(d.row)],
         getAngle: (d) => -(d.row.track ?? 0),
         updateTriggers: { getPosition: [view.mode, view.exaggeration] },

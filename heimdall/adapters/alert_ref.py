@@ -1,4 +1,4 @@
-"""Alert ref helpers (ADR-006): `HMD-YYYYMMDD-NNNN`, NNNN = per-UTC-day first-seen counter.
+"""Alert ref helpers: `HMD-YYYYMMDD-NNNN`, NNNN = per-UTC-day first-seen counter.
 
 Pure functions shared by every Store adapter; the counter itself lives in each store.
 """

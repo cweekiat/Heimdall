@@ -2,7 +2,7 @@
 
 Modern conflict starts well before the first shot. It shows up in the electromagnetic spectrum, where GPS signals are jammed or spoofed, and in the movement of aircraft and ships whose patterns quietly change. It also shows up in fires and warnings that, taken one at a time, look like noise.
 
-For a small, trade-dependent state in Southeast Asia, these signals are not academic. The Malacca and Singapore Straits carry a large share of the world's seaborne trade. The South China Sea, the Taiwan and Luzon Straits and the conflict in Myanmar all sit within a few hours' flight. Disruption to navigation, whether deliberate or accidental, can reach shipping, aviation and the economy long before anyone makes an official statement.
+For any trade-dependent country, these signals are not academic. A few narrow straits carry a large share of the world's seaborne trade, and contested seas and active conflicts are often only hours away by air. Disruption to navigation, whether deliberate or accidental, can reach shipping, aviation and the economy long before anyone makes an official statement.
 
 ## The problem: signals without sense-making
 
@@ -20,7 +20,7 @@ The raw data is not what's scarce. What's scarce is the analyst time needed to f
 Heimdall is an open-source-intelligence monitor that watches these feeds continuously and raises **explainable, cross-checked alerts**:
 
 1. **Detect.** Rules flag GNSS jamming and spoofing, military loitering and unusual activity, always measured against the local baseline rather than a global threshold.
-2. **Corroborate.** Alerts are fused across domains (air, sea, warnings, and in future phases thermal, connectivity and imagery) and graded with the **Admiralty system** (source reliability A–F × information credibility 1–6), the same language intelligence professionals already use.
+2. **Corroborate.** Alerts are fused across domains (air, sea, warnings, thermal and imagery) and graded with the **Admiralty system** (source reliability A–F × information credibility 1–6), the same language intelligence professionals already use.
 3. **Explain.** Every alert carries its evidence: the rules that fired, the observed values against thresholds, the underlying records, and what would have had to be different for no alert to fire. There is no black box.
 4. **Stay honest.** An alert must persist across more than one time window. Confidence is lowered where sensor coverage is thin, and the absence of evidence is labelled "Uncorroborated", never "False".
 

@@ -1,4 +1,4 @@
-"""Sentinel-1 RFI annotations (Planetary Computer) -> `sar_rfi` GeoEvents (ADR-008, C-band).
+"""Sentinel-1 RFI annotations (Planetary Computer) -> `sar_rfi` GeoEvents (, C-band).
 
 Since IPF 3.4 every Sentinel-1 Level-1 product carries an RFI annotation file (`annotation/rfi/`):
 per-swath RFI detection from noise-sensing pulses (`rfiDetected`, KL divergence, Fisher Z, RFI PSD)

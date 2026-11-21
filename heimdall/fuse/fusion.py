@@ -8,11 +8,11 @@ Steps (see docs/detectors.md "Fusion v0"):
 3. CRITICAL composite: >= critical_min_tankers distinct tanker orbits within jam_proximity_km of
    a gated jamming Evidence.
 4. Severity from s = lead.score x lead.coverage.confidence; control AOIs capped at INFO.
-5. Corroborations from `fuse/corroborate.py` (ADR-005: notices, AIS/jamming; co-located
+5. Corroborations from `fuse/corroborate.py` (notices, AIS/jamming; co-located
    other-kind Evidence = context). Credibility counts independent source *families*. Admiralty
    grade, template summary (no LLM, no notice text), recommended_actions from playbook `applies_to`.
    WARNING_AREA Evidence is context-only: it never opens an alert.
-6. Context (ADR-007 s.4-5, task 022b): `confounders.assess` on the lead Evidence multiplies the
+6. Context: `confounders.assess` on the lead Evidence multiplies the
    alert confidence by a factor in [min_factor, 1] (weather, Kp, scintillation); the notes are
    appended as `Corroboration(relation="context", factor=...)` and the gaps go to `Alert.gaps`.
    `observability.observability` appends footprint/overpass context notes. Severity is computed
@@ -78,11 +78,11 @@ DEFAULTS: dict[str, Any] = {
 
 _SEV_ORDER = [Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
 CLOSED = (AlertStatus.RESOLVED, AlertStatus.DISMISSED, AlertStatus.EXPIRED)
-#: ADR-003: an alert in any analyst status (new, acknowledged, under_review, shelved, confirmed)
+#: An alert in any analyst status (new, acknowledged, under_review, shelved, confirmed)
 #: is still the live alert for its kind+cell; only dismissed/expired alerts are closed.
 ACTIVE = tuple(s for s in AlertStatus if s not in CLOSED)
 OPEN = ACTIVE  # backwards-compatible alias
-#: Fields the pipeline may refresh from Evidence. `status` is analyst-owned (ADR-003) and is only
+#: Fields the pipeline may refresh from Evidence. `status` is analyst-owned and is only
 #: ever written by the pipeline for NEW -> EXPIRED on staleness.
 EVIDENCE_FIELDS = (
     "severity",
@@ -113,7 +113,7 @@ def required_persistence(kind: AlertKind | str, cfg: Mapping[str, Any] | None = 
     return int(c["persistence_windows"].get(str(kind), c["default_persistence"]))
 
 
-#: bands whose detectors are experimental (ADR-008 s4): alone they never exceed medium
+#: bands whose detectors are experimental: alone they never exceed medium
 EXPERIMENTAL_BANDS = frozenset({Band.HF, Band.SAT_DOWNLINK, Band.L_1400, Band.C_SAR})
 
 
@@ -127,7 +127,7 @@ def _cross_band(
     notice_ids: set[str],
     c: Mapping[str, Any],
 ) -> tuple[Severity, str]:
-    """P7 (052) cross-band rule. An experimental band alone stays <= medium unless another band or
+    """P7 cross-band rule. An experimental band alone stays <= medium unless another band or
     an official notice supports it; support on another band from an independent source family
     raises low / medium one step (never above high). Returns (severity, summary note)."""
     if kind == AlertKind.COMPOSITE:
@@ -432,8 +432,8 @@ def fuse(
 ) -> list[Alert]:
     """Return new/updated/expired alerts (caller upserts them).
 
-    `notices`: active area notices (ADR-005) used only for corroboration.
-    `context_events`: weather, space_weather, imagery_footprint and overpass events (ADR-007); they
+    `notices`: active area notices used only for corroboration.
+    `context_events`: weather, space_weather, imagery_footprint and overpass events; they
     only lower confidence and add context notes, never corroborate.
     """
     c = _cfg(cfg)

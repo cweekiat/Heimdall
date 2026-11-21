@@ -1,4 +1,4 @@
-"""Open-Meteo live forecast API (with past_days) -> `weather` confounder GeoEvents (ADR-007).
+"""Open-Meteo live forecast API (with past_days) -> `weather` confounder GeoEvents.
 
 Uses api.open-meteo.com, not archive-api (not live). Confounders only lower alert confidence; they
 never create alerts. No key. One event per grid point per hour.

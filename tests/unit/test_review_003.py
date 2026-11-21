@@ -1,4 +1,4 @@
-"""Regression tests for the task-003 review (ADR-003 statuses, persistence, ids, metrics)."""
+"""Regression tests for the task-003 review ( statuses, persistence, ids, metrics)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ ANALYST = [
 ]
 
 
-# --------------------------------------------------------------------------- 1. ADR-003
+# --------------------------------------------------------------------------- 1.
 
 
 @pytest.mark.parametrize("status", ANALYST)

@@ -1,11 +1,11 @@
-"""GNSS L1 interference seen from orbit: CYGNSS noise floor per H3 r3 cell-day (task 038, ADR-008).
+"""GNSS L1 interference seen from orbit: CYGNSS noise floor per H3 r3 cell-day.
 
 Input: `l1_noise` GeoEvents from `heimdall/ingest/cygnss.py`, one per cell and UTC day. `value`
 = median DDM noise floor in dB above the satellite channel's open-ocean median for that day; attrs
 carry n, n_sats, ocean_frac, rfi_frac and the cell's own trailing baseline (base_db, base_mad_db,
 base_days). Pure: no I/O.
 
-Rules (all priors from the 2026-09-12..29 backfill, `docs/reports/2026-10-01-cygnss.md`):
+Rules (all priors from the 2026-09-12..29 backfill):
 * C1 level (open ocean only, ocean_frac >= 0.9): excess >= level_db. Over open ocean the global
   99th percentile is ~1.5 dB; warm land in the beam adds at most ~2 dB near large deserts.
 * C1 land/coast level (ocean_frac < 0.9): excess >= land_level_db (3.5 dB = 99.5th pct of
@@ -21,7 +21,7 @@ Coverage and limits stated on every Evidence: +-38 deg latitude only, 2-3 day la
 only as good as the antenna footprint (tens to hundreds of km), absence of a flag is not absence
 of jamming. Explained away: a strong solar radio event (SWPC R >= r_scale_explain) on that day
 lowers confidence (solar radio bursts raise L-band noise on the day side). Confidence is capped
-so a CYGNSS-only alert stays <= medium (ADR-008 s4); it never names an emitter type.
+so a CYGNSS-only alert stays <= medium; it never names an emitter type.
 """
 
 from __future__ import annotations

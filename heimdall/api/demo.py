@@ -227,7 +227,7 @@ def seed(store: Store, seed_value: int = 7) -> Store:
                 corroborations=corr if i % 2 == 0 else [],
                 corroboration_status="corroborated" if i % 2 == 0 else "uncorroborated",
                 recommended_actions=["watch_cell", "export_brief"],
-                bands=[Band.L1_GNSS] if is_jam else [Band.NONE],  # task 028
+                bands=[Band.L1_GNSS] if is_jam else [Band.NONE],  #
                 sources=[
                     AlertSource(
                         connector=c,
@@ -329,7 +329,7 @@ def _seed_spectrum_metrics(store: Store, now: datetime) -> None:
 
 
 def _seed_spectrum(store: Store, now: datetime) -> None:
-    """Synthetic ADR-008 spectrum events (HF, SatNOGS, S1 / SMAP interference). Demo only."""
+    """Synthetic spectrum events (HF, SatNOGS, S1 / SMAP interference). Demo only."""
     rnd = random.Random(31)
     out: list[GeoEvent] = []
     for k in range(40):  # HF path midpoints on a 2-degree grid over the Indo-Pacific
@@ -492,7 +492,7 @@ def _seed_orbits(store: Store, now: datetime) -> None:
 
 
 def _seed_p3(store: Store, now: datetime) -> None:
-    """Synthetic ADR-007 events (thermal, imagery, overpass) + context notes."""
+    """Synthetic events (thermal, imagery, overpass) + context notes."""
     rnd = random.Random(23)
     out: list[GeoEvent] = []
     for aoi, (clat, clon) in _P3_AOIS.items():
@@ -748,7 +748,7 @@ class LiveDemoStore(MemoryStore):
                     {"name": f"RING {k}", "ship_type": 70, "sog": 14.0},
                 )
             )
-        # Synthetic worldwide traffic (024g) so the density layer works without keys. Aircraft
+        # Synthetic worldwide traffic so the density layer works without keys. Aircraft
         # hex "c*" are provider opensky, ships MMSI 2xxxxxxxx are outside the AOIs.
         grnd = random.Random(seed_value + 1)
         for i in range(1200):
@@ -1018,7 +1018,7 @@ def load_replay(path: str | Path) -> ReplayDemoStore:
 
 
 def load_scenario(path: str | Path) -> dict[str, Any] | None:
-    """`<stem>.scenario.json` next to a replay (task 040), written by scripts/midnight_hammer.py."""
+    """`<stem>.scenario.json` next to a replay, written by scripts/midnight_hammer.py."""
     p = Path(path)
     sp = p.with_name(p.stem + ".scenario.json")
     if not sp.is_file():
@@ -1067,7 +1067,7 @@ def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover
 
 
 def add_seek_route(app: Any, store: ReplayDemoStore) -> None:
-    """POST /api/replay/seek {"at": ISO time} -> jump the replay clock (demo only, task 040)."""
+    """POST /api/replay/seek {"at": ISO time} -> jump the replay clock (demo only)."""
 
     @app.post("/api/replay/seek")
     async def seek(request: Request) -> JSONResponse:

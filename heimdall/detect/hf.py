@@ -1,4 +1,4 @@
-"""HF path anomaly at ionospheric path midpoints (P6, task 045, ADR-008). Experimental. Pure.
+"""HF path anomaly at ionospheric path midpoints (P6, task 045). Experimental. Pure.
 
 Input: `hf_spots` GeoEvents (WSPR Live, PSK Reporter): spots aggregated per 10-min bin, amateur
 band and 2-degree grid cell of the transmitter-receiver great-circle midpoint, which is roughly
@@ -24,7 +24,7 @@ Natural explanations, checked per window; an explained window is NOT flagged (co
 Persistence = consecutive flagged windows `step_min` apart (fusion requires 2). Confidence is
 capped (single experimental band, <= medium) and the alert never names an emitter type: a drop
 can also be receivers switched off, which aggregated spots cannot tell apart (stated in gaps).
-All thresholds are priors from the backfill replays in `docs/reports/2026-10-03-hf.md`.
+All thresholds are priors from backfill replays.
 """
 
 from __future__ import annotations

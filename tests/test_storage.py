@@ -97,7 +97,7 @@ def test_store_evidence_alerts() -> None:
     s.upsert_alert(_alert("a2", aoi="myanmar", status=AlertStatus.CONFIRMED))
     s.upsert_alert(_alert("a1", status=AlertStatus.DISMISSED))
     got = s.get_alert("a1")
-    assert got is not None and got.ref is not None  # ADR-006: assigned on first put
+    assert got is not None and got.ref is not None  # assigned on first put
     assert got.model_copy(update={"ref": None}) == _alert("a1", status=AlertStatus.DISMISSED)
     assert s.get_alert("zz") is None
     assert len(s.list_alerts()) == 2

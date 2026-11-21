@@ -1,4 +1,4 @@
-// Spectrum model (task 030, ADR-008): bands, layer groups, GNSS map colours, hover text.
+// Spectrum model: bands, layer groups, GNSS map colours, hover text.
 // Pure functions, no deck.gl or DOM, so they run under node --test. All strings end up in textContent.
 import { fmtDT } from "./tz.ts";
 import type { LayerFeature } from "./p3model.ts";
@@ -33,7 +33,7 @@ export function bandDot(def: BandDef, sources: { key: string; status: string; en
   return "amber";
 }
 
-/** Band filter: alerts carry `bands` (task 028); older alerts without it never match a band. */
+/** Band filter: alerts carry `bands`; older alerts without it never match a band. */
 export const inBand = (a: { bands?: string[] | null }, band: string): boolean => !band || (a.bands ?? []).includes(band);
 
 export function bandCounts(alerts: { bands?: string[] | null }[]): Record<string, number> {
@@ -154,7 +154,7 @@ export function stepDay(days: string[], cur: string, dir: -1 | 1): string {
   return all[Math.max(0, Math.min(all.length - 1, j))]!;
 }
 
-// ------------------------------------------------------------------ CYGNSS L1 noise day map (059)
+// ------------------------------------------------------------------ CYGNSS L1 noise day map
 
 export interface CygnssCell {
   h3: string;
@@ -267,7 +267,7 @@ export function newestLabel(features: LayerFeature[]): string {
 /** HF spot radius (px) from spot count, log scale 3..14. */
 export const hfRadius = (n: number | null): number => Math.min(14, Math.max(3, 3 + 3 * Math.log10((n ?? 1) + 1)));
 
-// ------------------------------------------------------------------ status board (033)
+// ------------------------------------------------------------------ status board
 
 export type BandStateName = "no_coverage" | "learning" | "normal" | "elevated" | "anomalous";
 export interface BandCell {

@@ -1,6 +1,6 @@
 """AISStream (wss) connector + pure message parser.
 
-Keyed (ADR-004): without AISSTREAM_KEY the connector makes no connection and reports needs_key.
+Keyed: without AISSTREAM_KEY the connector makes no connection and reports needs_key.
 The key is sent only inside the subscription frame; it is never logged nor put in health.detail.
 """
 

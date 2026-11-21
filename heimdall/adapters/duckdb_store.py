@@ -37,7 +37,7 @@ from heimdall.schemas import (
 )
 
 
-# Perf (055): DuckDB probes `import pandas` ~6 times per query. Without pandas installed every probe
+# Perf: DuckDB probes `import pandas` ~6 times per query. Without pandas installed every probe
 # walks the whole import path (~1.4 s per pipeline tick measured 2026-10-03). Recording the absence
 # once makes later probes fail instantly; nothing changes when pandas is installed.
 class _NoPandas(importlib.abc.MetaPathFinder):
@@ -212,7 +212,7 @@ _DDL = [
     # insertion sequence: notes are ordered by it, not by ts (API and store clocks differ)
     "CREATE SEQUENCE IF NOT EXISTS notes_seq START 1",
     "ALTER TABLE notes ADD COLUMN IF NOT EXISTS seq BIGINT",
-    # ADR-006 alert refs: stable human ref per alert id + per-UTC-day counter (survives restarts)
+    # alert refs: stable human ref per alert id + per-UTC-day counter (survives restarts)
     "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS ref VARCHAR",
     "CREATE TABLE IF NOT EXISTS alert_ref_day (day VARCHAR PRIMARY KEY, n INTEGER)",
 ]
@@ -267,7 +267,7 @@ class DuckDBStore:
                 return self._con.execute(sql, list(params)).fetchall()
 
     def _read(self, sql: str, params: Sequence[Any] = ()) -> list[tuple[Any, ...]]:
-        """Read on a private cursor so API reads never wait for the writer lock (026a)."""
+        """Read on a private cursor so API reads never wait for the writer lock."""
         try:
             return self._read_once(sql, params)
         except duckdb.FatalException as e:
@@ -404,7 +404,7 @@ class DuckDBStore:
         return n
 
     def purge_hot(self, obs_before: datetime, events_before: datetime | None = None) -> int:
-        """Retention (026a): drop aircraft/vessel rows older than `obs_before` and events older
+        """Retention: drop aircraft/vessel rows older than `obs_before` and events older
         than `events_before`. The lake keeps everything; this only bounds the hot store."""
         n = 0
         with self._writing():
@@ -424,9 +424,7 @@ class DuckDBStore:
             return 0
         latest = {r.id: r for r in rows}  # last write wins, also within the batch
         tbl = _EVT.to_arrow(list(latest.values()))
-        with (
-            self._writing()
-        ):  # delete-by-id + insert atomically (ADR-004); readers see either state
+        with self._writing():  # delete-by-id + insert atomically; readers see either state
             self._con.execute("BEGIN")
             try:
                 self._con.register("_batch_events", tbl)
@@ -462,7 +460,7 @@ class DuckDBStore:
             return []
         if local_only:  # 024g display-only rows never feed detectors; skip them in SQL
             sql += " AND NOT coalesce(is_global, false)"
-        if mil_only:  # task 039: military rows only (any source); 055: or a military type code
+        if mil_only:  # military rows only (any source); 055: or a military type code
             if mil_types:
                 ph = ", ".join("?" for _ in mil_types)
                 sql += f" AND (coalesce(mil, false) OR upper(type_code) IN ({ph}))"
@@ -531,7 +529,7 @@ class DuckDBStore:
         return [Evidence.model_validate_json(r[0]) for r in rows]
 
     def _ref_for(self, alert: Alert) -> str:
-        """ADR-006: keep the stored ref; else honour a well-formed incoming one (lake rebuild,
+        """Keep the stored ref; else honour a well-formed incoming one (lake rebuild,
         bumping the day counter past it); else take the next per-UTC-day number."""
         with self._lock:
             rows = self._con.execute("SELECT ref FROM alerts WHERE id = ?", [alert.id]).fetchall()

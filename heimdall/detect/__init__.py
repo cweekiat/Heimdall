@@ -43,9 +43,9 @@ DETECTORS: dict[str, DetectorSpec] = {
     "warning_area": DetectorSpec(
         "warning_area", warning_area.VERSION, AlertKind.WARNING_AREA, warning_area.detect
     ),
-    # P3 (ADR-007): detect(events, cfg, now, *, aoi); thermal also takes baseline_events
+    # P3: detect(events, cfg, now, *, aoi); thermal also takes baseline_events
     "thermal": DetectorSpec("thermal", thermal.VERSION, AlertKind.THERMAL, thermal.detect),
-    # task 038: detect(events, cfg, now, *, aoi, space_weather) over CYGNSS `l1_noise` cell-days
+    # detect(events, cfg, now, *, aoi, space_weather) over CYGNSS `l1_noise` cell-days
     "cygnss": DetectorSpec("cygnss", cygnss.VERSION, AlertKind.GNSS_JAMMING, cygnss.detect),
 }
 

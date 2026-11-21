@@ -44,7 +44,7 @@ class FakeStore:
         return len(rows)
 
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
-        """Idempotent on GeoEvent.id, last write wins (ADR-004 section 4)."""
+        """Idempotent on GeoEvent.id, last write wins ( section 4)."""
         by_id = {e.id: i for i, e in enumerate(self.events)}
         for r in rows:
             if r.id in by_id:

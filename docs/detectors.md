@@ -9,7 +9,7 @@ for cell-level jamming); detectors take a keyword `aoi`. Every Evidence also car
 anomaly, used for persistence. Every threshold below is a key in `config/config.yaml`; defaults are in
 each module's `DEFAULTS`. Shared helpers: `heimdall/detect/common.py`, `heimdall/geo.py`.
 
-## Bands (task 028, ADR-008)
+## Bands
 
 Every Evidence carries `bands` (the AFFECTED RF band, not the observing one); fusion unions them into `Alert.bands`
 (a real band supersedes `none`). jamming, spoofing, ais_spoofing: `l1_gnss`; ais_gap: `vhf_marine`; orbit, thermal:
@@ -205,7 +205,7 @@ neighbors_median. score = min(1, gap_h/12) x covered_frac; coverage confidence =
 neighbours per covered bin / 6). Persistence subject `aoi|ais_gap|mmsi:<mmsi>`: an open gap has a
 fixed run start (the last fix), so it reaches persistence 2 on the second tick.
 
-## Warning areas (detect/warning_area.py, `warning-area-1.0.0`, ADR-005 A/B)
+## Warning areas (detect/warning_area.py, `warning-area-1.0.0`)
 One `WARNING_AREA` Evidence per **active** notice (kind nav_warning|notam, `attrs.status=="active"`,
 `valid_from <= now`, `valid_to` None or > now) of a configured category (military_exercise,
 live_firing, missile_rocket, gnss_interference) that intersects the AOI (centroid or any covering
@@ -214,7 +214,7 @@ are never read; only `attrs.ref` (re-sanitised to `[A-Z0-9/ -]`, 40 chars), sour
 url and times enter Evidence. Partial geometry (no_geometry/too_large/partial) -> centroid match,
 confidence 0.6.
 
-## Thermal anomalies (detect/thermal.py, `thermal-1.0.0`, ADR-007, task 021a)
+## Thermal anomalies (detect/thermal.py, `thermal-1.0.0`)
 Input: FIRMS `thermal` GeoEvents (value = FRP MW, `attrs.confidence`, `attrs.satellite`); `text`/`title`
 never read. Window = `window_h` (24 h) aligned to the hour. `detect(events, baseline_events, cfg, now, *, aoi)`.
 1. Keep confidence in `min_confidence` (nominal, high) and inside the AOI radius. Low-confidence pixels
@@ -235,11 +235,11 @@ never read. Window = `window_h` (24 h) aligned to the hour. `detect(events, base
    (strongest FRP first). Counterfactual: "would not fire with < 3 detections or ratio < 3".
 Known limits: pixel jitter across r8 boundaries can leak a flare (T3 ratio is the backstop); no land
 cover mask (crop burning suppressed only via the baseline); persistence is fusion's (>= 2 windows);
-priors, not backtested (calibrate on the FIRMS archive, task 016).
+priors, not backtested (calibrate on the FIRMS archive).
 
-## Internet outage (detect/outage.py, `outage-1.0.0`, ADR-007, task 021b)
+## Internet outage (detect/outage.py, `outage-1.0.0`)
 
-> **Retiring in 027 (ADR-008):** its source is removed. Kept here for history.
+> **Retiring in 027:** its source is removed. Kept here for history.
 `detect(events, cfg, now, *, aoi)` over IODA `outage_signal` (value = observed/baseline; recomputed from
 attrs if None) and Cloudflare `outage_annotation` GeoEvents, window `window_h` (6 h). Entity =
 `entity_type:entity_code`, located at the mean event lat/lon and required within AOI radius +
@@ -255,9 +255,9 @@ attrs if None) and Cloudflare `outage_annotation` GeoEvents, window `window_h` (
   "datasource missing: <name>". `geometry` None. `title`/`text` are never read; `attrs.location` is
   re-sanitised to `[A-Za-z0-9_-]`.
 
-## Night-lights drop (detect/night_lights.py, `night-lights-1.0.0`, ADR-007, task 021b)
+## Night-lights drop (detect/night_lights.py, `night-lights-1.0.0`)
 
-> **Retiring in 027 (ADR-008):** its source is removed. Kept here for history.
+> **Retiring in 027:** its source is removed. Kept here for history.
 Per r4 cell, nightly `night_lights` events (mean radiance of clean pixels, `attrs.date`, `valid_frac`).
 Valid night: N3 `valid_frac >= min_valid_frac` (0.5); invalid nights are skipped everywhere. Forward pass:
 B = median of the last `baseline_nights` (30) *clean* (not-dropped) valid nights, needing >=
@@ -273,7 +273,7 @@ produce nothing (the "gap only" case has no Evidence to attach to). Known limits
 alerting; snow, moonlight and lunar-phase effects are handled only by upstream pixel masking. Priors, not
 backtested (2021 Myanmar / Baltic control).
 
-## Confounders and observability (fuse/confounders.py, fuse/observability.py, ADR-007 s.4-5, task 021c)
+## Confounders and observability (fuse/confounders.py, fuse/observability.py)
 Pure helpers; they never create Evidence, never raise severity or change Admiralty. Config lives at
 `detectors.fusion.confounders` / `.observability`. Task 022b wires them into fusion (below).
 `assess(ev, context, cfg) -> (factor, notes, gaps)`. Context matches when
@@ -305,7 +305,7 @@ urls are never referenced. Context kinds never count as corroborating families.
    A single event shorter than one step can never reach 2; a sustained one reaches 2 on its
    second tick. Alert only if persistence ≥ `fusion.persistence_windows[kind]` (2).
 2. Group gated Evidence by (kind, cell). Merge into the live alert for that kind+cell — **any
-   status except dismissed/expired** (new, acknowledged, under_review, shelved, confirmed; ADR-003)
+   status except dismissed/expired** (new, acknowledged, under_review, shelved, confirmed)
    — updating only evidence-derived fields (severity [never downgraded], confidence, admiralty,
    summary, evidence_ids, corroborations, corroboration_status, last_seen, lat/lon). Otherwise a
    new alert, id = sha1(alert|aoi|kind|cell|first_seen). The pipeline re-reads the stored alert
@@ -316,7 +316,7 @@ urls are never referenced. Context kinds never count as corroborating families.
    Evidence (gated) within 100 km of a gated jamming Evidence → `composite` alert in the jam cell.
 4. **Control AOIs** (role=control, e.g. Baltic) produce Evidence and alerts, severity capped at info.
 5. Corroborations come from `fuse/corroborate.py::cross_source(gated, context, notices, cfg)`
-   (ADR-005 D; `fusion.corroboration`: proximity_km 50, jam_ais_km 100, jam_orbit_km 100, sar_km 10,
+   (; `fusion.corroboration`: proximity_km 50, jam_ais_km 100, jam_orbit_km 100, sar_km 10,
    time_slack_h 2). **supports**: jamming/GNSS spoofing/mil orbit <- active notice of category
    military_exercise|live_firing|missile_rocket|gnss_interference covering the cell (or within
    proximity) overlapping the window +- slack; jamming <-> AIS spoofing within jam_ais_km; mil orbit
@@ -361,7 +361,7 @@ urls are never referenced. Context kinds never count as corroborating families.
    is < now − expire_after_min and not newer than the snapshot fusion saw (a refresh between
    list and upsert wins); expiry never copies stale evidence fields. Alerts in an analyst
    status never expire automatically.
-10. **Sources and footprint (014c, ADR-006).** `Alert.sources` has one `AlertSource` per connector
+10. **Sources and footprint.** `Alert.sources` has one `AlertSource` per connector
     (source key, e.g. `adsb_lol`) whose own records show the anomaly, plus the connectors behind
     every *supporting* corroboration (contradicting sources are not listed). `family` is
     `family_of(connector)`; `admiralty` = (connector reliability from sources.yaml, F if unknown)
@@ -391,7 +391,7 @@ per-vessel A1/A4, per cell for A2/A3); record `ais_vessels` (distinct MMSIs) per
 alerts. `record_metric` is an upsert on (key, metric, ts), so re-running the same tick is
 idempotent (same ids, metrics not duplicated, persistence not inflated).
 
-## Backtest (heimdall/backtest, task 006)
+## Backtest (heimdall/backtest)
 `python -m heimdall.backtest --aoi A --date D --traces DIR [--gpsjam CSV] [--refs FILE]` ->
 `reports/backtest-A-D.md`. Offline and deterministic (no wall clock; sorted output).
 * **Traces** (`traces.py`): readsb `globe_history` per-aircraft JSON (gzip by magic bytes),
@@ -414,14 +414,14 @@ idempotent (same ids, metrics not duplicated, persistence not inflated).
 * **Lead time**: per reference time, first matching alert time (raised_at, else first_seen) in
   [ref - 24 h, ref + 6 h]; lead = ref - alert time (> 0 = early).
 * **Sparse-region profile (proposed, not applied)**: per-AOI `detectors: {jamming: {window_min:
-  60, min_aircraft: 3, confidence_cap: 0.5}}` for SE Asia AOIs.
+  60, min_aircraft: 3, confidence_cap: 0.5}}` for sparse-coverage AOIs.
 
 ## Calibration status
 All thresholds are literature/GPSJam priors, **not yet backtested** (Baltic control run pending
 in P1). Most sensitive: `ratio_alert`/`mad_floor` (jamming), `speed_diff_kt` (spoofing S1 on
 stale gs), `cluster_*` (holding stacks), `novelty_scale_h`.
 
-## Plain-language text (013a)
+## Plain-language text
 Everything shown on screen from Evidence (counterfactual, rule descriptions, gaps) avoids jargon
 (ratio, z-score, MAD, NIC/NACp, H3, sigma); the numbers stay in `features`/`RuleResult` values. Example
 (jamming): "Clears when 2 or fewer of the 12 aircraft lose GPS accuracy (alert level 10%, now 25%)".
@@ -429,7 +429,7 @@ Detector versions bumped for text: jamming-1.1.1, spoofing-1.0.2, orbit-1.0.1. `
 alert summaries still use R'/H3 wording (not in this task's scope).
 
 
-## Hormuz replay (task 014d)
+## Hormuz replay
 
 Pipeline: `scripts/fetch_adsblol_day.sh DATE` -> `scripts/filter_adsblol.py` (bbox prefilter 22.9-29.7N,
 52.5-60.1E, rows kept verbatim incl. `alt_baro`, NIC, NACp) -> `data/replay/hormuz/DATE.parquet` ->
@@ -443,7 +443,7 @@ sandbox blocked the archive host and web access, so no public jamming report cou
 release naming was not checked. Verify a source before treating the day as ground truth; if none, pick
 another date. Data: adsb.lol, ODbL 1.0 ("Contains information from adsb.lol, made available under the ODbL").
 
-## Fusion P3 additions (task 022b, ADR-007)
+## Fusion P3 additions
 * **New corroboration pairs** (`fuse/corroborate.py`, `fusion.corroboration`; all priors, not
   backtested): thermal <-> GNSS jamming within `thermal_jam_km` 50; thermal <- covering notice (same
   rule as jamming); IODA/Cloudflare outage <-> night-lights outage within `outage_nl_km` 30 (window
@@ -466,7 +466,7 @@ another date. Data: adsb.lol, ODbL 1.0 ("Contains information from adsb.lol, mad
   h, lowest r of normal"; night-lights "Night-time lights ... fell to r of normal for n clear nights".
   Entity labels are re-sanitised; no free text is echoed.
 
-## Planned detectors (ADR-008, `docs/roadmap-rf.md`)
+## Planned detectors
 Math is added here when each ships. Thresholds start as priors in `config/config.yaml`.
 - **Jammer localisation** (029a, extends jamming): radio-horizon fit. An aircraft at height h (m) is in line of sight
   of a ground jammer up to d ≈ 4.12·(√h + √h_j) km; grid-search the point that best separates degraded (inside) from
@@ -487,7 +487,7 @@ Math is added here when each ships. Thresholds start as priors in `config/config
   bad and total (`exclude_military`). Live: computed from the Parquet lake by DuckDB (`adapters/gnss_lake.py`, ~2 s
   per day), last-24 h every 15 min, finished days written once to `lake/gnss_daily/date=D/cells.parquet`, `incomplete`
   when < 22 hourly partitions. Demo/replay: from the Store. API `GET /api/gnss/day?date=|last24h&bbox=`,
-  `GET /api/gnss/days`. Validation vs GPSJam CSV: `scripts/gnss_validate.py` (031c). First real day (2026-09-30,
+  `GET /api/gnss/days`. Validation vs GPSJam CSV: `scripts/gnss_validate.py`. First real day (2026-09-30,
   16 h): 1,616 cells; top red cells Kaliningrad/Baltic (23 of 24 aircraft) and Naypyidaw (7 of 7).
 - **CYGNSS L1 noise floor** (task 038, `detect/cygnss.py`, `cygnss-1.0.0`): GNSS_JAMMING Evidence per r3 cell-day.
   C1 level: open ocean (≥ 90 % open-water reflections) ≥ 2.5 dB, land/coast ≥ 3.5 dB above the satellites' open-ocean
@@ -495,7 +495,7 @@ Math is added here when each ships. Thresholds start as priors in `config/config
   median (≥ 7 days); C3 rfi_detected share (supporting only). Persistence = flagged days among the last 3 observed;
   fusion needs 2. Confidence ≤ 0.55 (one band → ≤ medium); halved on a day with a solar radio event (R ≥ 3);
   Kp/scintillation confounders not applied. Corroborates ADS-B jamming within 300 km / 96 h as an independent
-  family. Coverage ±38°, 2–3 day latency, footprint-limited location. Validation: `docs/reports/2026-10-01-cygnss.md`.
+  family. Coverage ±38°, 2–3 day latency, footprint-limited location.
 - **SMAP 1.4 GHz RFI** (P5): RFI-flag fraction per cell, persistent-emitter map and change detection.
 - **Sentinel-1 RFI** (P5): product interference annotations per scene footprint (pixel streaks need user approval).
 - **HF path anomaly** (P6, experimental): per-path SNR and spot-count baselines by hour and band, mapped at the
@@ -512,7 +512,7 @@ Per AOI and tick, one indicator per band (see the module table): GNSS L1 % degra
 no_coverage when receivers < min_n; learning when < 288 samples (HF 36); elevated z ≥ 2; anomalous z ≥ 3.
 Natural explanations: Kp ≥ 5 (HF) / ≥ 7 (GNSS), R ≥ 1 (HF). For hf, sat_downlink, l_1400 and c_sar an anomalous state
 emits SPECTRUM_ANOMALY Evidence: score = min(1, z/6); confidence = min(0.6, n / 4·min_n), ×0.5 if explained; gaps say
-"never names an emitter type"; persistence 3 ticks. Fusion caps a single-band spectrum alert at medium (ADR-008 s4).
+"never names an emitter type"; persistence 3 ticks. Fusion caps a single-band spectrum alert at medium.
 All thresholds are priors (config `detectors.spectrum_state`). API: `GET /api/spectrum/status`.
 
 ## Military air activity (task 039, `detect/military.py`, `military-1.0.0`)
@@ -539,7 +539,7 @@ Confidence 0.6 (ADS-B coverage; aircraft flying dark are not seen). Alerts are f
   `loc_min_degraded` 5 and `loc_min_agreement` 0.7. `/api/jammers` draws only fits with ellipse <= 300 km and merges
   estimates within 150 km (one emitter, all its alerts listed).
 - Pipeline: NEW alerts of areas no longer monitored expire like any stale alert.
-- Report: `docs/reports/2026-10-03-false-alarms.md`.
+-
 
 ## HF path anomaly (detect/hf.py, `hf-path-0.1.0`, P6 / 045, experimental)
 - Input `hf_spots` (WSPR, PSK Reporter) regrouped to 4° path-midpoint cells (`cell_deg`); per source, band and cell,
@@ -552,7 +552,7 @@ Confidence 0.6 (ADS-B coverage; aircraft flying dark are not seen). Alerts are f
 - SPECTRUM_ANOMALY, band HF, H3 r3 at the cell centre; persistence = consecutive flagged windows 30 min apart (fusion
   needs 3); confidence ≤ 0.5 (single experimental band ≤ medium). Gaps say a drop can be receivers switched off.
 - The spectrum board keeps the per-area HF state but no longer raises HF evidence.
-- Replays (`docs/reports/2026-10-03-hf.md`): 0 alerts on 6 quiet days and on 4 days around the 14 May 2025 X2.7
+- Replays: 0 alerts on 6 quiet days and on 4 days around the 14 May 2025 X2.7
   flare; with sensitive settings the flare drop is found and explained away. Priors, no labelled HF interference set.
 
 ## HF reception at the receiver (detect/hf_rx.py, `hf-rx-0.1.0`, P6 / 060, experimental)
@@ -570,7 +570,7 @@ Confidence 0.6 (ADS-B coverage; aircraft flying dark are not seen). Alerts are f
 - SPECTRUM_ANOMALY, band HF; persistence = consecutive flagged windows (fusion needs 3); confidence ≤ 0.5.
 - Backfill replay 1–3 Oct 2026 (WSPR, ~100 judgeable receiver cells/hour, mostly Europe, Australia/NZ, Japan): 3
   persistent (≥ 3 windows) flags in 2.4 days, all 2-receiver cells; injected −10 dB caught in 4/4 judgeable cells,
-  −8 dB with 60 % decode loss 3/4 (absolute test before: 2/8 and 1/8). Sparse SE Asia cells are usually not
+  −8 dB with 60 % decode loss 3/4 (absolute test before: 2/8 and 1/8). Sparse cells are usually not
   judgeable. Priors; no labelled interference set.
 
 ## Cross-band fusion (P7, 052)

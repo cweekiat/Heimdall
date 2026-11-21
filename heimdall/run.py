@@ -49,7 +49,7 @@ HEALTH_S = 60.0
 
 
 def route(batch: Sequence[BaseModel]) -> dict[str, list[BaseModel]]:
-    """Split a connector batch by row type (ADR-004 item 6); unknown row types are skipped."""
+    """Split a connector batch by row type ( item 6); unknown row types are skipped."""
     out: dict[str, list[BaseModel]] = {}
     for row in batch:
         if isinstance(row, AircraftObs):
@@ -255,7 +255,7 @@ class Writer:
     def _flush_events(self) -> None:
         with self._lock:
             rows, self.evt_buf = self.evt_buf, []
-        if rows:  # Lake keeps every revision; the Store upserts by id (ADR-004)
+        if rows:  # Lake keeps every revision; the Store upserts by id
             self.lake.append("events", rows)
             self.n_events += self.store.insert_events(rows)
 
@@ -340,7 +340,7 @@ def start_api(
     live: LivePositions | None = None,
     gnss: GnssService | None = None,
 ) -> Any:
-    """Build the in-process API server (ADR-002) if heimdall.api.app is available."""
+    """Build the in-process API server if heimdall.api.app is available."""
     try:
         from heimdall.api.app import create_app
     except ImportError:
@@ -378,7 +378,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     bus = bus or MemoryBus()
     lake = ParquetLake(cfg.storage.lake_dir)
     try:
-        # ADR-002: analyst state lives in its own file so pipeline upserts never overwrite it
+        # analyst state lives in its own file so pipeline upserts never overwrite it
         analyst_path = Path(cfg.storage.duckdb_path).with_name("analyst.duckdb")
         store: Store = CompositeStore(
             DuckDBStore(
@@ -389,7 +389,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
             DuckDBStore(analyst_path, memory_limit="256MB", threads=1),
         )
     except duckdb.Error as e:
-        # DuckDB holds an exclusive file lock (ADR-002): another heimdall process may own it.
+        # DuckDB holds an exclusive file lock: another heimdall process may own it.
         msg = (
             f"cannot open {cfg.storage.duckdb_path}: {e}\n"
             "Is another `heimdall.run` (or any process holding the DuckDB file) still running?"
@@ -432,7 +432,7 @@ async def run(cfg: Settings | None = None, bus: Bus | None = None) -> None:
     writer = Writer(bus, lake, store, live=live)
     gnss = LakeGnssService(
         GnssLake(cfg.storage.lake_dir), cfg.detectors, sorted(p for p, _ in ADSB_PROVIDERS.values())
-    )  # task 031: GPSJam-style map from the lake
+    )  # GPSJam-style map from the lake
     step_min = int(cfg.detectors.get("jamming", {}).get("step_min", 5))
 
     stop = asyncio.Event()

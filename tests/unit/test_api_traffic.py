@@ -1,4 +1,4 @@
-"""Traffic, notices and actions-board endpoints (012a)."""
+"""Traffic, notices and actions-board endpoints."""
 
 from __future__ import annotations
 

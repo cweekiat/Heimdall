@@ -18,7 +18,7 @@ privacy:
   allow_outbound_sharing: false    # exports/briefs stay local; no upload/share integrations
   redact_entities_in_exports: true
 
-# task 044: shift brief narration by a LOCAL model (Ollama on this machine). Loopback URLs only:
+# shift brief narration by a LOCAL model (Ollama on this machine). Loopback URLs only:
 # any other host is refused in code, so this never sends data off the machine.
 brief:
   llm:
@@ -76,7 +76,7 @@ detectors:
     baseline_min_samples: 288 # 1 day of 5-min ticks before z is enforced; until then "no baseline" gap. Prior
     full_coverage_aircraft: 15  # coverage confidence saturates at 15 quality aircraft (docs/detectors.md)
     single_provider_factor: 0.8 # confidence penalty when only one aggregator sees the cell. Prior
-    # Emitter localisation, radio-horizon fit d = 4.12 (sqrt(h)+sqrt(h_j)) km (task 029a). All priors, not backtested
+    # Emitter localisation, radio-horizon fit d = 4.12 (sqrt(h)+sqrt(h_j)) km. All priors, not backtested
     loc_enabled: true
     loc_min_degraded: 5       # 041: was 3; fits on 3-4 aircraft gave ~130 km ellipses. Hormuz 2025-06-17 jamming fits had a median of 9
     loc_min_healthy: 2        # healthy aircraft at similar altitude for the outside test. Prior, not backtested
@@ -130,7 +130,7 @@ detectors:
     turn_deadband_deg: 3.0    # ignore sub-3-deg heading jitter in cumulative turn
     novelty_scale_h: 24       # novelty = exp(-prior orbit hours in cell (14 d) / 24 h). Prior
     mlat_factor: 0.8          # confidence penalty for MLAT-majority tracks
-  ais_spoofing:             # task 010; every value below is a prior, not backtested
+  ais_spoofing:             # every value below is a prior, not backtested
     h3_res: 4
     window_min: 60          # prior, not backtested
     step_min: 5
@@ -155,7 +155,7 @@ detectors:
     circle_max_radius_km: 5
     full_coverage_fixes: 20    # coverage confidence saturates at 20 fixes. Prior
     single_provider_factor: 0.8   # Prior
-  ais_gap:                  # task 010; every value below is a prior, not backtested
+  ais_gap:                  # every value below is a prior, not backtested
     h3_res: 4
     window_h: 24
     step_min: 5
@@ -167,26 +167,26 @@ detectors:
     gap_dr_max_km: 150      # coverage probed along the ship's expected track (ais-gap-1.3.0). Taiwan 2026-09-30: 55 gap alerts, closed ones were 8-16 kn transits out of receiver range. Prior
     valid_mmsi_min: 100000000   # skip 0xx group calls
     valid_mmsi_max: 799999999   # skip 8xx/9xx handhelds, AtoN, SART, fishing-net buoys (900/901/916 seen dark near Taiwan)
-  warning_area:             # task 010; ADR-005; every value below is a prior, not backtested
+  warning_area:             # every value below is a prior, not backtested
     categories: [military_exercise, live_firing, missile_rocket, gnss_interference]
     aoi_margin_km: 25       # one r4 cell radius. Prior
     notice_lookback_days: 30   # events pulled for notices; filtered to active at evaluation time. Prior
-  thermal:                  # task 021a; FIRMS VIIRS fire clusters; ADR-007. Each value: prior, not backtested — calibrate on FIRMS archive, see 016
-    window_h: 24            # prior, not backtested — calibrate on FIRMS archive, see 016
-    min_confidence: [nominal, high]   # prior, not backtested — calibrate on FIRMS archive, see 016
-    min_detections: 3       # per r6 cell. Prior, not backtested — calibrate on FIRMS archive, see 016
-    frp_min_mw: 50          # summed FRP per r6 cell. Prior, not backtested — calibrate on FIRMS archive, see 016
-    baseline_days: 60       # prior, not backtested — calibrate on FIRMS archive, see 016
-    static_days: 10         # r8 cell hot on >= N of baseline_days -> static heat source. Prior, not backtested — calibrate on FIRMS archive, see 016
-    ratio_min: 3            # r4 window count / (baseline mean per day + 1). Prior, not backtested — calibrate on FIRMS archive, see 016
-    expected_passes: 4      # VIIRS passes per 24 h at SE Asia latitudes (S-NPP, NOAA-20, NOAA-21, x2 day/night). Prior, not backtested — calibrate on FIRMS archive, see 016
-  gnss_map:                 # task 031: GPSJam-style daily map (descriptive, never alerts). NIC/NACp thresholds come from detectors.jamming
+  thermal:                  # FIRMS VIIRS fire clusters;. Each value: prior, not backtested — calibrate on FIRMS archive
+    window_h: 24            # prior, not backtested — calibrate on FIRMS archive
+    min_confidence: [nominal, high]   # prior, not backtested — calibrate on FIRMS archive
+    min_detections: 3       # per r6 cell. Prior, not backtested — calibrate on FIRMS archive
+    frp_min_mw: 50          # summed FRP per r6 cell. Prior, not backtested — calibrate on FIRMS archive
+    baseline_days: 60       # prior, not backtested — calibrate on FIRMS archive
+    static_days: 10         # r8 cell hot on >= N of baseline_days -> static heat source. Prior, not backtested — calibrate on FIRMS archive
+    ratio_min: 3            # r4 window count / (baseline mean per day + 1). Prior, not backtested — calibrate on FIRMS archive
+    expected_passes: 4      # VIIRS passes per 24 h at SE Asia latitudes (S-NPP, NOAA-20, NOAA-21, x2 day/night). Prior, not backtested — calibrate on FIRMS archive
+  gnss_map:                 # GPSJam-style daily map (descriptive, never alerts). NIC/NACp thresholds come from detectors.jamming
     dwell_frac: 0.5         # aircraft bad in a cell if >= 50 % of its known reports there are degraded (= jamming.bad_dwell_frac)
     exclude_military: true  # GPSJam FAQ: military trainers block their own antennas in hard manoeuvres
     refresh_min: 15         # rolling last-24 h recompute (~2 s per day of lake data, measured 2026-10-01)
     min_hours_complete: 22  # fewer hourly lake partitions -> day flagged incomplete
     backfill_days: 7
-  cygnss:                   # task 038: CYGNSS L1 noise floor per r3 cell-day. Priors from the 2026-09-12..29 backfill (docs/reports/2026-10-01-cygnss.md), not backtested against GPSJam
+  cygnss:                   # CYGNSS L1 noise floor per r3 cell-day. Priors from the 2026-09-12..29 backfill, not backtested against GPSJam
     max_age_days: 5         # CYGNSS L1 latency 2-3 days
     min_samples: 30         # reflections per cell-day (median cell has ~160)
     level_db: 2.5           # open-ocean excess; global open-ocean 99th pct ~1.5 dB (2026-09-27)
@@ -196,8 +196,8 @@ detectors:
     z_min: 4.0
     min_baseline_days: 7
     persist_days: 3         # look-back of observed days; fusion needs >= 2 flagged (gnss_jamming: 2)
-    confidence_cap: 0.55    # ADR-008 s4: one experimental band stays <= medium
-  military:                 # task 039: military air activity per theatre. All thresholds priors, not backtested (docs/tasks/039-military.md)
+    confidence_cap: 0.55    # one experimental band stays <= medium
+  military:                 # military air activity per theatre. All thresholds priors, not backtested
     state_path: data/state/mil_tracks.json
     deploy_window_h: 48     # Midnight Hammer: ~30 tankers crossed to Europe/Azores in ~48 h (15-17 Jun 2025)
     outside_margin_km: 150
@@ -233,7 +233,7 @@ detectors:
       - {name: "High North", lat: 69.5, lon: 25.0, radius_km: 800}       # 050: Bodø, Andøya, Kola peninsula
       # home bases: routine airlift/tankers would always "deploy", so only command posts / bombers airborne count
       - {name: "Continental US", lat: 38.5, lon: -96.0, radius_km: 2400, rules: [high_interest]}  # Offutt, Tinker, Andrews, Whiteman
-  spectrum_state:           # 033/034: per-AOI band indicators vs own history. Priors, not backtested (ADR-008)
+  spectrum_state:           # 033/034: per-AOI band indicators vs own history. Priors, not backtested
     baseline_days: 14
     min_samples: 288        # 1 day of 5-min ticks before any state but "learning"
     min_samples_hourly: 36  # HF: same-UTC-hour samples (3 days)
@@ -241,7 +241,7 @@ detectors:
     anomalous_z: 3.0
     confidence_cap: 0.6     # experimental single band stays <= medium severity
     explained_factor: 0.5   # confidence x0.5 when space weather could explain it
-  hf:                       # P6 (045): HF path-midpoint anomaly, experimental. Priors from WSPR backfill replays (docs/reports/2026-10-03-hf.md)
+  hf:                       # HF path-midpoint anomaly, experimental. Priors from WSPR backfill replays
     enabled: true
     cell_deg: 4.0           # 050: connectors now aggregate at 4 deg too; older 2-deg bins are regrouped. Midpoint cells regrouped from 2 deg: 2-deg cells hear ~1 spot/bin, 11 judgeable cells/day vs 26 at 4 deg (2026-09-29)
     window_min: 60
@@ -261,7 +261,7 @@ detectors:
     network_ok_ratio: 0.6   # whole-box drop -> feed or region-wide propagation, not local
     reach_km: 500
     confidence_cap: 0.5
-  hf_rx:                    # 060: HF reception at the RECEIVER cell, experimental. Priors from the WSPR receiver-cell backfill 2026-09-17..10-03 (docs/tasks/060-hf-receiver.md)
+  hf_rx:                    # 060: HF reception at the RECEIVER cell, experimental. Priors from the WSPR receiver-cell backfill 2026-09-17..10-03
     enabled: true
     window_min: 60
     step_min: 30
@@ -281,12 +281,12 @@ detectors:
     reach_km: 300
     confidence_cap: 0.5     # single experimental band stays <= medium
   fusion:
-    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2, spectrum_anomaly: 3}  # CLAUDE.md: >= 2 windows; ais_*, thermal prior, not backtested
+    persistence_windows: {gnss_jamming: 2, gnss_spoofing: 2, mil_orbit: 2, ais_spoofing: 2, ais_gap: 2, thermal: 2, spectrum_anomaly: 3}  # >= 2 windows; ais_*, thermal prior, not backtested
     severity: {high: 0.6, medium: 0.35, low: 0.15}  # on score x coverage confidence. Prior
     strong_score: 0.6         # Admiralty credibility 3 (single family strong & persistent) vs 4
     expire_after_min: 60      # open alerts with no fresh evidence for 60 min expire
     dismiss_max_episode_h: 12 # a dismissal owns its episode for <= 12 h after first_seen, then a same-severity campaign re-alerts. Prior (review 003)
-    # ADR-005 section C: independent source families (credibility counts families, not domains). Prior, not backtested
+    # independent source families (credibility counts families, not domains). Prior, not backtested
     source_family:
       adsb_lol: adsb
       adsb_fi: adsb
@@ -296,38 +296,38 @@ detectors:
       aisstream: ais
       nga_msi: notice
       faa_nms_notam: notice
-      firms: thermal        # ADR-007 s.6. Prior, not backtested
+      firms: thermal        # Prior, not backtested
       wspr_live: hf_amateur  # 034: WSPR and PSK Reporter share many amateur stations -> one family
       pskreporter: hf_amateur
       satnogs: satnogs
       sentinel1_rfi: sar
       smap_rfi: radiometer
-      adsb_mil: adsb        # task 039: same ADS-B networks
+      adsb_mil: adsb        # same ADS-B networks
       plane_alert_db: context # reference list, not an observation
-      cygnss: gnss_reflectometry  # task 038: satellites in orbit, independent of aircraft/ships
+      cygnss: gnss_reflectometry  # satellites in orbit, independent of aircraft/ships
       open_meteo: context   # context sources never count as families
       swpc: context
       celestrak: context
       stac: context
-    # ADR-005 section D cross-source rules. Prior, not backtested
-    # task 021c (ADR-007 s.4-5): confounders only lower confidence; each value: prior, not calibrated — review after 022b backtest
+    # cross-source rules. Prior, not backtested
+    # confounders only lower confidence; each value: prior, not calibrated
     confounders:
-      kp_minor: 5           # prior, not calibrated — review after 022b backtest
-      kp_minor_factor: 0.8  # prior, not calibrated — review after 022b backtest
-      kp_severe: 7          # prior, not calibrated — review after 022b backtest
-      kp_severe_factor: 0.5 # prior, not calibrated — review after 022b backtest
-      scint_lat_max: 20     # prior, not calibrated — review after 022b backtest
-      scint_hours: [19, 2]  # local solar time, wraps midnight. Prior, not calibrated — review after 022b backtest
-      scint_factor: 0.85    # prior, not calibrated — review after 022b backtest
-      storm_km: 50          # prior, not calibrated — review after 022b backtest
-      wind_ms: 20           # prior, not calibrated — review after 022b backtest
-      wind_factor: 0.9      # prior, not calibrated — review after 022b backtest
-      min_factor: 0.3       # prior, not calibrated — review after 022b backtest
-      max_age_h: 6          # forecast-API hourly weather (live, with past_days). Prior, not calibrated — review after 022b backtest
+      kp_minor: 5           # prior, not calibrated
+      kp_minor_factor: 0.8  # prior, not calibrated
+      kp_severe: 7          # prior, not calibrated
+      kp_severe_factor: 0.5 # prior, not calibrated
+      scint_lat_max: 20     # prior, not calibrated
+      scint_hours: [19, 2]  # local solar time, wraps midnight. Prior, not calibrated
+      scint_factor: 0.85    # prior, not calibrated
+      storm_km: 50          # prior, not calibrated
+      wind_ms: 20           # prior, not calibrated
+      wind_factor: 0.9      # prior, not calibrated
+      min_factor: 0.3       # prior, not calibrated
+      max_age_h: 6          # forecast-API hourly weather (live, with past_days). Prior, not calibrated
     observability:
-      footprint_window_h: 48   # prior, not calibrated — review after 022b backtest
-      n_next: 3                # prior, not calibrated — review after 022b backtest
-    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, time_slack_h: 2, thermal_jam_km: 50, cross_band_km: 300, cross_band_slack_h: 6}  # thermal_jam_km (022b), cross_band_* (052): priors, not backtested
+      footprint_window_h: 48   # prior, not calibrated
+      n_next: 3                # prior, not calibrated
+    corroboration: {proximity_km: 50, jam_ais_km: 100, jam_orbit_km: 100, time_slack_h: 2, thermal_jam_km: 50, cross_band_km: 300, cross_band_slack_h: 6}  # thermal_jam_km, cross_band_*: priors, not backtested
     cross_band_boost: true    # 052: support on another band from an independent family raises low/medium one step (max high)
 
-schedule: {}                # task 022a: per-source daily run times (UTC); none configured
+schedule: {}                # per-source daily run times (UTC); none configured

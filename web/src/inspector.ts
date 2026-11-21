@@ -69,7 +69,7 @@ export function ruleLine(r: Rule): string {
 export const inspectorHooks: { investigate: (hex: string, at?: string) => void } = { investigate: () => undefined };
 
 /** Entity id -> kind and label: 6 hex chars = aircraft (ICAO), 9 digits = vessel (MMSI). With identity
- *  (054) an aircraft reads "callsign · type", falling back to registration, then the hex. */
+ *  an aircraft reads "callsign · type", falling back to registration, then the hex. */
 export function entityLabel(e: string, info?: EntityInfo): { kind: "aircraft" | "vessel" | "other"; text: string } {
   if (/^[0-9a-f]{6}$/i.test(e)) {
     const id = info?.flight || info?.registration || e.toUpperCase();

@@ -1,6 +1,6 @@
-"""HF reception anomaly at the RECEIVER (P6, task 060, ADR-008). Experimental. Pure.
+"""HF reception anomaly at the RECEIVER (P6, task 060). Experimental. Pure.
 
-Why a second HF indicator: the path-midpoint detector (045) watches where signals reflect, which
+Why a second HF indicator: the path-midpoint detector watches where signals reflect, which
 spreads a local noise source over many midpoint cells. A jammer or strong local interference
 raises the noise floor at the receivers near it, so every signal they hear, from every direction,
 arrives weaker, and fewer are decoded. That is seen best per receiver cell.

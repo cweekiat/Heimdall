@@ -1,4 +1,4 @@
-"""OpenSky global connector (024g): parsing, OAuth, pacing from headers, 429, key gating."""
+"""OpenSky global connector: parsing, OAuth, pacing from headers, 429, key gating."""
 
 from __future__ import annotations
 

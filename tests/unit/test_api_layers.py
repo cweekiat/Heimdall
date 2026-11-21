@@ -1,4 +1,4 @@
-"""P3 layers + alert context endpoints (023a)."""
+"""P3 layers + alert context endpoints."""
 
 from __future__ import annotations
 

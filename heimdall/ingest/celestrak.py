@@ -1,4 +1,4 @@
-"""CelesTrak GP (OMM JSON) connector: `orbit_elements` plus predicted `overpass` events (ADR-007).
+"""CelesTrak GP (OMM JSON) connector: `orbit_elements` plus predicted `overpass` events.
 
 No key. One request per configured satellite per poll (daily); the pass prediction itself is pure
 math in heimdall/orbits.py. Satellite list and sensors are config priors (task 016 verifies).

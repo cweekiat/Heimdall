@@ -6,7 +6,7 @@ status override (alert_id -> status) is kept and applied over the pipeline's cur
 pipeline updates (last_seen, confidence, evidence) always show through and pipeline upserts never
 overwrite analyst status. Overrides survive restarts: they are re-derived from the latest journal
 status note, falling back to the latest analyst feedback verdict when no status note exists.
-Shelving expires (ADR-003): the alert returns to acknowledged and a system note records it.
+Shelving expires: the alert returns to acknowledged and a system note records it.
 """
 
 from __future__ import annotations
@@ -151,7 +151,7 @@ class CompositeStore:
         until = self._shelved_until.get(alert_id)
         now = self._now()
         if st == AlertStatus.SHELVED and until is not None and until <= now:
-            # ADR-003: shelved returns to acknowledged on expiry; journal it so there is no gap
+            # shelved returns to acknowledged on expiry; journal it so there is no gap
             self.add_note(
                 AnalystNote(
                     id=uuid.uuid4().hex,

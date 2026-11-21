@@ -1,8 +1,8 @@
-"""Runtime source manager (task 012a): one pump task per connector, on/off at runtime.
+"""Runtime source manager: one pump task per connector, on/off at runtime.
 
 Implements `heimdall.ports.SourceControl`. Overrides persist in a small JSON file
 (`data/state/sources.json`), are read at startup and win over `enabled` in `sources.yaml`.
-A needs_key source may be switched on; its connector then makes no requests (ADR-004).
+A needs_key source may be switched on; its connector then makes no requests.
 """
 
 from __future__ import annotations

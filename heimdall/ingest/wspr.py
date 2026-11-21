@@ -1,4 +1,4 @@
-"""WSPR Live (public ClickHouse over HTTPS, no key) -> `hf_spots` GeoEvents (ADR-008, P6 band HF).
+"""WSPR Live (public ClickHouse over HTTPS, no key) -> `hf_spots` GeoEvents (, P6 band HF).
 
 Aggregation runs server-side, so one poll moves a few thousand rows, not ~300k raw spots/hour:
 spots are grouped per (10-min bin, band, great-circle-midpoint grid cell) inside `bbox`, with
@@ -40,7 +40,7 @@ GROUP BY t, band, glat, glon
 FORMAT JSON
 """
 
-# task 060: the same spots grouped by RECEIVER cell (where a local noise source would sit). Only
+# the same spots grouped by RECEIVER cell (where a local noise source would sit). Only
 # stations inside the box; n_rx / n_tx count distinct callsigns, which are never stored.
 RX_SQL = """
 SELECT toStartOfInterval(time, INTERVAL {bin_min} MINUTE) AS t, band,
@@ -94,7 +94,7 @@ def parse_wspr(
     receiver: bool = False,
 ) -> tuple[list[GeoEvent], int]:
     """ClickHouse `FORMAT JSON` body -> (events, n_dropped). `receiver`: rows are receiver cells
-    (`hf_rx`, task 060) instead of path midpoints (`hf_spots`)."""
+    (`hf_rx`) instead of path midpoints (`hf_spots`)."""
     rows = payload.get("data") if isinstance(payload, Mapping) else None
     if not isinstance(rows, list):
         return [], 0

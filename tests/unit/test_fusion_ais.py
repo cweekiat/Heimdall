@@ -1,4 +1,4 @@
-"""Fusion with cross-source corroboration (ADR-005) and the AIS pipeline path."""
+"""Fusion with cross-source corroboration and the AIS pipeline path."""
 
 from __future__ import annotations
 

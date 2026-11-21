@@ -98,7 +98,7 @@ def h3_center(cell: str) -> tuple[float, float]:
 
 def within_radius_nm(lat: float, lon: float, clat: float, clon: float, radius_nm: float) -> bool:
     r_km = radius_nm * KM_PER_NM
-    # exact shortcut (055): the great-circle distance is never less than the latitude difference
+    # exact shortcut: the great-circle distance is never less than the latitude difference
     # (111.19 km per degree on the 6371 km sphere); most points of a worldwide window fail here
     if abs(lat - clat) * 111.19 > r_km:
         return False

@@ -17,3 +17,21 @@ web/dist/
 .claude/state/
 data/secrets/
 _site/
+
+# Build process, planning and agent tooling: kept local, not published
+CLAUDE.md
+.claude/
+docs/tasks/
+docs/decisions/
+docs/proposals/
+docs/reports/
+docs/CHANGELOG.md
+docs/roadmap-rf.md
+docs/agent-efficiency.md
+docs/guardrails.md
+docs/ui-design.md
+docs/readme/
+docs/media/build-timeline.svg
+reports/
+scripts/agent.sh
+web/src/about/building-heimdall.md

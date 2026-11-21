@@ -25,7 +25,7 @@ ADSB_PROVIDERS: dict[str, tuple[str, str]] = {
 
 
 class DisabledConnector:
-    """Placeholder for a configured source whose implementation is missing (ADR-004 item 5)."""
+    """Placeholder for a configured source whose implementation is missing ( item 5)."""
 
     def __init__(self, name: str, cfg: Mapping[str, Any], detail: str = "not installed") -> None:
         self.name = name

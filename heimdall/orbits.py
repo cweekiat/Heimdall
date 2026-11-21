@@ -1,4 +1,4 @@
-"""Pure satellite pass prediction from CelesTrak OMM elements (ADR-007 s7: computation only).
+"""Pure satellite pass prediction from CelesTrak OMM elements ( s7: computation only).
 
 TEME -> ECEF uses GMST only (no polar motion / nutation): error is far below the ~1 degree
 elevation and 60 s timing that "is there a pass over this AOI" needs.

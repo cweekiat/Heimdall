@@ -1,5 +1,5 @@
-// P3 layer model (task 023b): pure functions, no deck.gl or DOM, so they run under node --test.
-// Wire shapes follow docs/tasks/023a-context-api.md. Every string here ends up in textContent.
+// P3 layer model: pure functions, no deck.gl or DOM, so they run under node --test.
+// Every string here ends up in textContent.
 import { fmtDT } from "./tz.ts";
 
 export type P3Layer = "thermal" | "imagery" | "overpass";

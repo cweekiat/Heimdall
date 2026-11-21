@@ -1,6 +1,6 @@
-"""OpenSky global aircraft states (task 024g): display-only worldwide traffic.
+"""OpenSky global aircraft states: display-only worldwide traffic.
 
-Keyed (ADR-004): needs an OpenSky API client (OAuth2 client credentials, stored in the key store as
+Keyed: needs an OpenSky API client (OAuth2 client credentials, stored in the key store as
 OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET). Without them the connector makes no request and reports
 needs_key. Credentials are sent only to the token endpoint and never logged.
 

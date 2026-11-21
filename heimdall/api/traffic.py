@@ -1,4 +1,4 @@
-"""Live traffic + notice endpoints (task 012a). GeoJSON, latest fix per entity, capped.
+"""Live traffic + notice endpoints. GeoJSON, latest fix per entity, capped.
 
 Only Store-port calls are used; free text (notice bodies) is passed through as data and flagged
 `untrusted: true`.
@@ -503,7 +503,7 @@ def traffic_router(
 
     @r.get("/api/coverage")
     def coverage(band: Band, bbox: str = "-180,-90,180,90") -> dict[str, Any]:
-        """Receivers per H3 r4 cell over the last hour for `band` (ADR-008): aircraft reporting
+        """Receivers per H3 r4 cell over the last hour for `band`: aircraft reporting
         NIC/NACp for GNSS L1 / 1090 MHz, AIS ships for marine VHF. Live index only."""
         bb, t = parse_bbox(bbox), clock()
         out: dict[str, Any] = {"band": band.value, "window_s": COVERAGE_WINDOW_S, "cells": []}

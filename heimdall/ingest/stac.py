@@ -1,4 +1,4 @@
-"""Sentinel-1/2 STAC connector: item footprints as `imagery_footprint` GeoEvents (ADR-007 s3).
+"""Sentinel-1/2 STAC connector: item footprints as `imagery_footprint` GeoEvents.
 
 METADATA ONLY. The item `assets` object is never read, and no asset/thumbnail/COG URL is ever
 requested or stored (user decision 2026-09-30). `url` holds the item's own STAC link as text.
@@ -233,7 +233,7 @@ class StacConnector:
                 None,
             )
             href = nxt.get("href") if nxt else None
-            # follow only same-host pagination (no new hosts, ADR guardrail); cap at max_items
+            # follow only same-host pagination (no new hosts, security rule); cap at max_items
             if not isinstance(href, str) or not self._same_host(href) or seen >= self.max_items:
                 break
             nb = nxt.get("body") if nxt else None

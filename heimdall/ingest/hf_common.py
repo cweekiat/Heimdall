@@ -1,4 +1,4 @@
-"""Shared helpers for HF propagation sources (WSPR, PSK Reporter), ADR-008.
+"""Shared helpers for HF propagation sources (WSPR, PSK Reporter),.
 
 HF signals reflect off the ionosphere, so a path's anomaly is mapped at the great-circle midpoint
 of transmitter and receiver (the reflection region), not at either station. Spots are aggregated

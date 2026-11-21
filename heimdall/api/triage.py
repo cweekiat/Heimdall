@@ -1,4 +1,4 @@
-"""Alert triage transition rules (ADR-003). Pure functions, no I/O."""
+"""Alert triage transition rules. Pure functions, no I/O."""
 
 from __future__ import annotations
 

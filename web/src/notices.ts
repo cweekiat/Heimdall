@@ -93,7 +93,7 @@ export class Notices {
   layers(tool: string): unknown[] {
     if (!filters.notices || this.items.length === 0) return [];
     const pick = tool === "none";
-    // official GNSS-interference notices (029d) stand out in the attention colour
+    // official GNSS-interference notices stand out in the attention colour
     const isGnss = (n: Notice): boolean => n.props.category === "gnss_interference";
     const items = filters.gnssNoticesOnly ? this.items.filter(isGnss) : this.items;
     const shapes = items.filter((n) => n.polys.length > 0);

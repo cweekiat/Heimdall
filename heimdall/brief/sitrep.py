@@ -1,9 +1,9 @@
-"""Daily SITREP (P7, task 053): one Markdown situation report for the last 24 h. Pure.
+"""Daily SITREP (P7): one Markdown situation report for the last 24 h. Pure.
 
 Built only from Heimdall's own facts: the shift fact sheet (`facts.build_facts`), the theatre
-activity index (051), the military summary (039) and natural factors (space weather). Headlines
+activity index, the military summary and natural factors (space weather). Headlines
 and other scraped text are never included. Times are UTC. A local model may narrate the same fact
-sheet separately (044); the SITREP itself is deterministic.
+sheet separately; the SITREP itself is deterministic.
 """
 
 from __future__ import annotations

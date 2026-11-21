@@ -1,10 +1,10 @@
-"""NASA SMAP L-band radiometer RFI -> `l_band_rfi` GeoEvents (ADR-008, band L 1.4 GHz).
+"""NASA SMAP L-band radiometer RFI -> `l_band_rfi` GeoEvents (, band L 1.4 GHz).
 
 SMAP listens in the protected 1400-1427 MHz band and flags footprints where its RFI detectors fire.
 Persistent flags on the ground mark L-band emitters (e.g. long-range air-surveillance radars); new
 flags mark change. Granules are found with NASA CMR (no key), downloaded from NSIDC Earthdata Cloud
-with EARTHDATA_TOKEN (keyed, ADR-004: without it the connector makes no request and reports
-needs_key), reduced to per-H3-cell counts inside `bbox`, and deleted (ADR-007 s2: rasters are
+with EARTHDATA_TOKEN (keyed: without it the connector makes no request and reports
+needs_key), reduced to per-H3-cell counts inside `bbox`, and deleted ( s2: rasters are
 reduced, never stored). The token goes only in the Authorization header; httpx drops it on the
 cross-host redirect to the signed S3 URL.
 

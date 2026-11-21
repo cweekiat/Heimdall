@@ -1,4 +1,4 @@
-"""Observability context: "can this be checked, and when?" (ADR-007 s.5).
+"""Observability context: "can this be checked, and when?".
 
 Pure function returning `Corroboration(relation="context")` notes from `imagery_footprint`
 (STAC catalog metadata) and `overpass` GeoEvents. Context kinds never count as corroborating

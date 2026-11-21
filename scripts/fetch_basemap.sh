@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetch the offline basemap (ADR-006 s2): Protomaps PMTiles extract + fonts + sprites -> data/basemap/.
+# Fetch the offline basemap: Protomaps PMTiles extract + fonts + sprites -> data/basemap/.
 # User-approved one-off download. Never run from tests or CI. Idempotent: existing outputs are kept
 # unless FORCE=1.
 #

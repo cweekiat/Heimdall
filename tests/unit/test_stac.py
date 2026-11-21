@@ -1,4 +1,4 @@
-"""Sentinel STAC footprints: metadata only, assets never read or fetched (task 020, ADR-007 s3)."""
+"""Sentinel STAC footprints: metadata only, assets never read or fetched (task 020)."""
 
 from __future__ import annotations
 

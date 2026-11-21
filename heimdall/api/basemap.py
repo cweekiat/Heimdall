@@ -1,4 +1,4 @@
-"""Offline basemap serving (ADR-006 s2): local PMTiles, fonts, sprites, with HTTP Range support."""
+"""Offline basemap serving: local PMTiles, fonts, sprites, with HTTP Range support."""
 
 from __future__ import annotations
 

@@ -10,7 +10,7 @@ Pure functions. Choices (documented in docs/detectors.md):
   weaker mirror must not downgrade it (worst-case would punish extra coverage). Unknown sources
   grade F; no sources -> F.
 * **Credibility** from the number of *independent source families* that support the alert
-  (ADR-005 section C; `fusion.source_family`: adsb, ais, notice, and ADR-007 thermal;
+  (; `fusion.source_family`: adsb, ais, notice, and thermal;
   the `context` family is never counted). Jamming and a tanker
   orbit are both `air` but one ADS-B feed, so domains would overcount; a NOTAM is an independent
   publisher. 1 = analyst-confirmed or >= 3 families; 2 = 2 families; 3 = one family, strong
@@ -56,7 +56,7 @@ PROVIDER_ALIASES = {"history": "adsb_lol_history"}
 
 _ORDER = "ABCDEF"
 
-#: family of weather / space weather / orbit / imagery-catalogue sources (ADR-007 s.5-6). It says
+#: family of weather / space weather / orbit / imagery-catalogue sources. It says
 #: "can this be explained / checked", never "an independent source saw it", so it is never counted.
 CONTEXT_FAMILY = "context"
 

@@ -1,4 +1,4 @@
-"""GNSS interference map, GPSJam method (task 031, ADR-008 s7). Pure: no I/O.
+"""GNSS interference map, GPSJam method (task 031). Pure: no I/O.
 
 Per H3 r4 cell and period (a UTC day or a rolling 24 h): aircraft with at least one NIC/NACp report
 are counted once per cell; an aircraft is *bad* in a cell when at least `dwell_frac` of its known

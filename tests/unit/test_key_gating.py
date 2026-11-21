@@ -1,4 +1,4 @@
-"""ADR-004 key gating: without the env key nothing is requested and health says needs_key."""
+"""key gating: without the env key nothing is requested and health says needs_key."""
 
 from __future__ import annotations
 

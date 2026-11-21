@@ -1,4 +1,4 @@
-"""Military air activity API (task 039). Read-only.
+"""Military air activity API. Read-only.
 
 GET /api/military -> {generated, window_min, contacts, airborne, on_ground, roles: {role: n},
     types: [{type, name, n}], countries: [{country, n}], high_interest: [aircraft], theatres:
@@ -8,7 +8,7 @@ GET /api/military -> {generated, window_min, contacts, airborne, on_ground, role
 Computed from military rows in the store over the last `window_min` (default 10), newest per
 aircraft, identity from plane-alert-db (ODbL) and the type code; cached 15 s.
 
-GET /api/military/aircraft/{hex} (task 047) -> one aircraft investigated: identity, type reference
+GET /api/military/aircraft/{hex} -> one aircraft investigated: identity, type reference
 (config/mil_types.yaml), where it took off (OurAirports + its own track), what it may be doing now
 (`milactivity`, with reasons), context (theatres, open alerts nearby) and its 72 h track.
 """
@@ -425,7 +425,7 @@ def military_router(store: Store) -> APIRouter:
     def aircraft(
         hex_id: str = Path(pattern=r"^[0-9a-fA-F]{6}$"), at: datetime | None = None
     ) -> dict[str, Any]:
-        """`at` (054): investigate as of a past moment, e.g. an alert's last-seen time."""
+        """`at`: investigate as of a past moment, e.g. an alert's last-seen time."""
         now = datetime.now(UTC)
         if at is not None:
             at = at if at.tzinfo else at.replace(tzinfo=UTC)

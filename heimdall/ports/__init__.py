@@ -1,7 +1,7 @@
 """Infrastructure ports (interfaces). Adapters in heimdall/adapters implement these.
 
 Swapping an adapter (e.g. MemoryBus -> RedisBus, DuckDBStore -> ClickHouseStore) must not
-require changes in detect/, patterns/ or fuse/. See docs/decisions/ADR-001-ports-adapters.md.
+require changes in detect/, patterns/ or fuse/.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ class Store(Protocol):
     def insert_aircraft(self, rows: Sequence[AircraftObs]) -> int: ...
     def insert_vessels(self, rows: Sequence[VesselObs]) -> int: ...
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
-        """Idempotent on GeoEvent.id, last write wins (ADR-004); the Lake keeps every revision."""
+        """Idempotent on GeoEvent.id, last write wins; the Lake keeps every revision."""
         ...
 
     def aircraft_window(
@@ -149,7 +149,7 @@ class Connector(Protocol):
     def stream(self) -> AsyncIterator[Sequence[BaseModel]]: ...
 
     def health(self) -> SourceHealth:
-        """ADR-004: current health; a keyed connector without its key reports needs_key."""
+        """Current health; a keyed connector without its key reports needs_key."""
         ...
 
     async def aclose(self) -> None: ...
@@ -157,7 +157,7 @@ class Connector(Protocol):
 
 @runtime_checkable
 class SourceControl(Protocol):
-    """Runtime on/off control and status of configured sources (task 012a)."""
+    """Runtime on/off control and status of configured sources."""
 
     def list(self) -> builtins.list[SourceState]: ...
 
@@ -173,7 +173,7 @@ class SourceControl(Protocol):
 
 @runtime_checkable
 class SecretStore(Protocol):
-    """API-key storage (ADR-006). Values are write-only from the API's point of view."""
+    """API-key storage. Values are write-only from the API's point of view."""
 
     def get(self, name: str) -> str | None: ...
 
@@ -186,7 +186,7 @@ class SecretStore(Protocol):
 
 @runtime_checkable
 class AoiStore(Protocol):
-    """Persistence for user-drawn areas of operations (task 015)."""
+    """Persistence for user-drawn areas of operations."""
 
     def load(self) -> builtins.list[UserAoi]: ...
 

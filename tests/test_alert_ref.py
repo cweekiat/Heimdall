@@ -1,4 +1,4 @@
-"""Alert refs, sources and footprint (task 014c, ADR-006). Offline."""
+"""Alert refs, sources and footprint. Offline."""
 
 from __future__ import annotations
 

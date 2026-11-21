@@ -1,4 +1,4 @@
-"""Spectrum status board API (task 033, ADR-008). Read-only; computed from stored band metrics.
+"""Spectrum status board API. Read-only; computed from stored band metrics.
 
 GET /api/spectrum/status -> {generated, bands: [{band, label, unit, direction}],
     areas: [{aoi, label, bands: {<band>: {state, value, median, z, n, n_history, explanations,

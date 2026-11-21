@@ -592,7 +592,7 @@ button[aria-pressed="true"] {
 }
 
 /* ======================================================================
-   Shell layout (012b): the map is the whole viewport; everything floats.
+   Shell layout: the map is the whole viewport; everything floats.
    ====================================================================== */
 body {
   display: block;
@@ -1178,7 +1178,7 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
 .tour-btns button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .tour-start { margin: 0 0 8px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #06121f; font-weight: 600; cursor: pointer; }
 
-/* areas of operation window (015) */
+/* areas of operation window */
 .ao-body .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 .ao-list { list-style: none; margin: 8px 0 0; padding: 0; }
 .ao-row { padding: 6px 0 6px 8px; border-top: 1px solid var(--line); border-left: 3px solid transparent; }
@@ -1211,13 +1211,13 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
   pointer-events: none;
 }
 
-/* clear-all (024) */
+/* clear-all */
 .clear-all { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .clear-all.confirm span { flex: 1 1 100%; }
 .btn-clear { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
 .btn-clear:disabled { opacity: 0.5; cursor: default; }
 .btn-clear.danger { border-color: var(--sev-high); color: var(--sev-high); font-weight: 600; }
-/* about window (024) */
+/* about window */
 .about-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
 .about-tab { padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: inherit; cursor: pointer; }
 .about-tab[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; }
@@ -1234,7 +1234,7 @@ button.link { background: none; border: 0; padding: 0; color: #58a6ff; text-deco
 .md table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
 .md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
 
-/* P3 satellite layers (023b) */
+/* P3 satellite layers */
 .p3-notice { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 4; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font-size: 12px; max-width: 80%; }
 .p3-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .p3-chip { font-size: 11px; padding: 2px 6px; }

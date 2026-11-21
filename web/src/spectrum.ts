@@ -1,4 +1,4 @@
-// Spectrum UI (task 030, ADR-008): band ladder, spectrum map layers, GNSS daily map with date picker.
+// Spectrum UI: band ladder, spectrum map layers, GNSS daily map with date picker.
 // Live layers (HF spots, SatNOGS passes) and daily-sweep layers (GNSS map, Sentinel-1 / SMAP interference) are drawn
 // with deck.gl on the shared overlay. All text goes via textContent; nothing here fetches from third-party hosts.
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
@@ -319,7 +319,7 @@ export class SpectrumLayers {
     );
   }
 
-  /** Status board result (033): the ladder marks each band with its worst state across areas. */
+  /** Status board result: the ladder marks each band with its worst state across areas. */
   setStatus(s: SpectrumStatus | null): void {
     this.status = s;
     this.drawLadder();

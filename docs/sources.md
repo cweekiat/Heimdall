@@ -1,7 +1,7 @@
 # Data sources (maintained by source-scout)
 Registry: `config/sources.yaml`. Status legend: verified · needs-key · broken · unverified.
 
-## Source set after the RF pivot (ADR-008, 2026-09-30)
+## Source set after the RF pivot
 Rule: keep a source only if it senses RF effects, explains them away (confounder), or verifies them physically.
 
 | Status | Sources |
@@ -47,7 +47,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** `tests/fixtures/adsb_lol/point_56_20.5_250_baltic.json`, `point_20.5_96.5_250_myanmar.json` (50 aircraft samples)
 
-**Gotchas:** 
+**Gotchas:**
 - `/v2/mil` endpoint consistently returns 503; use `/v2/point` with `dbFlags` filtering as workaround
 - Response format mirrors ADSBexchange v2 API
 - Max radius typically 250 nm
@@ -85,7 +85,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** `tests/fixtures/adsb_fi/point_56_20.5_250_baltic.json`, `point_20.5_96.5_250_myanmar.json` (50 aircraft samples)
 
-**Gotchas:** 
+**Gotchas:**
 - v2 endpoints deprecated; migrate to v3 for new integrations
 - Non-commercial restriction enforced
 - ADSBexchange v2 compatible format
@@ -97,7 +97,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 ## airplanes_live
 
-> **Removed in 027 (ADR-008).** Kept for history.
+> **Removed in 027.** Kept for history.
 
 **Status:** needs-key (contact approval required; no self-serve registration)
 
@@ -108,7 +108,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 - `/v2/hex/{icao_hex}` — Single aircraft
 - `/v2/closest/{lat}/{lon}` — Nearest aircraft
 
-**Authentication:** 
+**Authentication:**
 - No API key mechanism; contact approval only
 - Email contact@airplanes.live with: project description, intended use, links, organization info
 - Response: "Please contact us at contact@airplanes.live. Your email MUST include any links, a description of the project, and any information you deem appropriate."
@@ -123,7 +123,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** None (access requires approval)
 
-**Gotchas:** 
+**Gotchas:**
 - No self-serve access; mandatory contact/vetting process
 - Approval turnaround time unclear (days? weeks?)
 - Commercial use restrictions likely; clarify before committing
@@ -165,7 +165,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** None (files >50 MB; document asset naming/sizes only)
 
-**Gotchas:** 
+**Gotchas:**
 - Multi-part downloads required; must concatenate before extraction
 - Individual day files exceed 50 MB; bandwidth-heavy (~4 GB/day for prod+staging)
 - Range requests not supported; full downloads only
@@ -207,7 +207,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** N/A (keyed source; no live fixture)
 
-**Gotchas:** 
+**Gotchas:**
 - Rate limits strict; unauthenticated access highly restricted
 - Token must be refreshed periodically (check `expires_in`)
 - `/states/all` returns time-windowed snapshot (~10s latency)
@@ -249,7 +249,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** `tests/fixtures/gpsjam/2026_09_29.csv` (1 KB sample; first 50 rows)
 
-**Gotchas:** 
+**Gotchas:**
 - Files are gzip-compressed; decompress after download (Content-Encoding header set)
 - H3 resolution is fixed at level 4 (~1,770 km² per cell, edge ~22 km); no parameter for other resolutions
 - Measures aircraft interference at cruise altitude; ground-level impacts differ significantly
@@ -271,7 +271,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 - No published OpenAPI/Swagger schema for unauthenticated users
 - Requires FAA approval to access; request at notams@faa.gov
 
-**Authentication:** 
+**Authentication:**
 - OAuth 2.0 client credentials (client_id + client_secret in header)
 - Environment variable: `FAA_NMS_KEY`
 - Access must be requested from FAA; not self-serve
@@ -286,7 +286,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** N/A (keyed, restricted access)
 
-**Gotchas:** 
+**Gotchas:**
 - No self-serve registration; contact notams@faa.gov required
 - API documentation only for authorized users
 - Endpoint details not public; reverse-engineer via SDK/client if needed
@@ -331,7 +331,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** N/A (keyed WebSocket stream; no REST fixture)
 
-**Gotchas:** 
+**Gotchas:**
 - No REST API; WebSocket-only (requires persistent connection)
 - Subscription required within 3 seconds; connection closed if omitted
 - 3-connection account limit can be restrictive at scale
@@ -345,7 +345,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 ## gfw (Global Fishing Watch)
 
-> **Removed in 027 (ADR-008).** Kept for history.
+> **Removed in 027.** Kept for history.
 
 **Status:** needs-key (verified auth flow)
 
@@ -364,7 +364,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 - Environment variable: `GFW_TOKEN`
 - 401/403 errors: See official docs for troubleshooting
 
-**Rate Limit:** 
+**Rate Limit:**
 - Daily and monthly request limits (exact values not disclosed in public docs)
 - Shared across all tokens for account
 - Check response headers for usage/remaining
@@ -377,7 +377,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** N/A (keyed source; no live fixture)
 
-**Gotchas:** 
+**Gotchas:**
 - Rate limits per account (shared across tokens), not per token
 - Multiple token limit enforced (max 5)
 - Fishing data is 24hr-delayed aggregation (not real-time)
@@ -419,7 +419,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 - Latest NTM releases linked on home page
 - Consider scraping/parsing PDF NTMs as fallback
 
-**Gotchas:** 
+**Gotchas:**
 - JSON API endpoint not operational; portal under maintenance (as of Sept 2026)
 - No confirmed JSON endpoint for automated queries
 - Navigation warnings (HYDROPAC, NAVAREA XI) may be PDF-only
@@ -433,7 +433,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 ## china_msa
 
-> **Removed in 027 (ADR-008).** Kept for history.
+> **Removed in 027.** Kept for history.
 
 **Status:** blocked (access denied by firewall/geo-block)
 
@@ -470,7 +470,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 - Contact China MSA directly for data access
 - Monitor via news/satellite imagery as alternative
 
-**Gotchas:** 
+**Gotchas:**
 - Access blocked by network-level firewall (403); not account/auth issue
 - No JSON/API endpoint; HTML only (requires scraping)
 - Regional warnings scattered across multiple MSA office URLs
@@ -512,7 +512,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Rate Limit:** Not documented; assume standard REST limits (typically generous for non-commercial)
 
-**Fields of Interest:** temperature_2m, cloud_cover, precipitation, weather_code, wind_speed_10m (ADR-007: all)
+**Fields of Interest:** temperature_2m, cloud_cover, precipitation, weather_code, wind_speed_10m
 
 **Latency:** Live forecast API; historical via `past_days` parameter (~1 day archive lag)
 
@@ -542,7 +542,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Rate Limit:** Not documented; standard NASA EOSDIS
 
-**Fields of Interest:** latitude, longitude, brightness, scan, track, acq_date, acq_time, satellite, instrument, confidence, bright_ti4, bright_ti5, frp, daynight (ADR-007 attrs)
+**Fields of Interest:** latitude, longitude, brightness, scan, track, acq_date, acq_time, satellite, instrument, confidence, bright_ti4, bright_ti5, frp, daynight
 
 **Latency:** 3 hours (NRT); ~1 day (archive)
 
@@ -558,7 +558,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 ## ioda
 
-> **Removed in 027 (ADR-008).** Kept for history.
+> **Removed in 027.** Kept for history.
 
 **Status:** unverified
 
@@ -571,7 +571,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Rate Limit:** Not documented
 
-**Fields of Interest:** entity_type, entity_code, datasource, observed, baseline, level (ADR-007 attrs)
+**Fields of Interest:** entity_type, entity_code, datasource, observed, baseline, level
 
 **Latency:** 600 seconds (10 min)
 
@@ -587,7 +587,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 ## cloudflare_radar
 
-> **Removed in 027 (ADR-008).** Kept for history.
+> **Removed in 027.** Kept for history.
 
 **Status:** unverified (needs key)
 
@@ -600,7 +600,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Rate Limit:** Not documented; standard Cloudflare API
 
-**Fields of Interest:** location, asn, scope, outage_type (ADR-007 attrs)
+**Fields of Interest:** location, asn, scope, outage_type
 
 **Latency:** 900 seconds (15 min)
 
@@ -629,7 +629,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Rate Limit:** Not documented; standard HTTP
 
-**Fields of Interest:** norad_id, name, epoch, semi_major_axis, eccentricity, inclination, raan, arg_of_pericenter, mean_anomaly (ADR-007 orbit_elements)
+**Fields of Interest:** norad_id, name, epoch, semi_major_axis, eccentricity, inclination, raan, arg_of_pericenter, mean_anomaly
 
 **Latency:** 86400 seconds (daily TLE updates)
 
@@ -645,7 +645,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 ## earth_search (STAC)
 
-> **ADR-008:** only `sentinel-1-grd` is kept (RF interference annotations). `sentinel-2-l2a` is removed in 027.
+> **Note:** only `sentinel-1-grd` is kept (RF interference annotations). `sentinel-2-l2a` is not used.
 
 **Status:** unverified
 
@@ -659,7 +659,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Rate Limit:** Not documented; AWS standard
 
-**Fields of Interest:** stac_item_id, collection, platform, datetime, geometry, cloud_cover, relative_orbit, orbit_state (ADR-007)
+**Fields of Interest:** stac_item_id, collection, platform, datetime, geometry, cloud_cover, relative_orbit, orbit_state
 
 **Latency:** 86400 seconds (daily catalog updates)
 
@@ -667,7 +667,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** Not yet created
 
-**Gotchas:** Metadata only (no COG/thumbnail fetches per ADR-007); Sentinel thumbnails declined
+**Gotchas:** Metadata only (no COG/thumbnail fetches); Sentinel thumbnails declined
 
 **Source:** [Earth Search](https://www.element84.com/earth-search/), [STAC Spec](https://github.com/radiantearth/stac-api-spec)
 
@@ -675,7 +675,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 ## black_marble
 
-> **Removed in 027 (ADR-008).** Kept for history.
+> **Removed in 027.** Kept for history.
 
 **Status:** unverified (needs Earthdata access)
 
@@ -689,13 +689,13 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Rate Limit:** EOSDIS standard (~5–10 req/sec)
 
-**Fields of Interest:** h3_r4, date, product, n_valid, n_total, valid_frac, cloud_frac, median, p90, mean_radiance (ADR-007)
+**Fields of Interest:** h3_r4, date, product, n_valid, n_total, valid_frac, cloud_frac, median, p90, mean_radiance
 
 **Latency:** 86400 seconds (monthly/seasonal; lag ~1–3 months)
 
 **License:** NASA public; attribution + EOSDIS science terms
 
-**Fixture Path:** Not yet created (HDF5 listing only per ADR-007; no tile sample)
+**Fixture Path:** Not yet created (HDF5 listing only; no tile sample)
 
 **Gotchas:** HDF5 format (h5py); tiles downloaded→reduced to H3-r4→deleted (no pixel arrays stored)
 
@@ -717,7 +717,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Rate Limit:** Not documented; NOAA standard
 
-**Fields of Interest:** kp, g_scale, r_scale, s_scale, product (ADR-007 confounder only)
+**Fields of Interest:** kp, g_scale, r_scale, s_scale, product
 
 **Latency:** 900 seconds (NOAA ~4x/day updates)
 
@@ -725,7 +725,7 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 
 **Fixture Path:** Not yet created
 
-**Gotchas:** Forecast-only; used as confounder (lowers confidence, never creates Evidence per ADR-007)
+**Gotchas:** Forecast-only; used as confounder (lowers confidence, never creates Evidence)
 
 **Source:** [SWPC Products](https://www.swpc.noaa.gov/), [JSON Services](https://services.swpc.noaa.gov/products/), [Kp Info](https://www.swpc.noaa.gov/products/planetary-k-index)
 
@@ -735,9 +735,9 @@ Sections of removed sources are kept below for history and marked **Removed in 0
 | ioda | unverified | Public but response format complex; rate limits not documented |
 | cloudflare_radar | unverified | Requires CLOUDFLARE_TOKEN; multiple endpoint types |
 | celestrak | unverified | Public TLE data; JSON format via v2 API |
-| earth_search (STAC) | unverified | No token needed; metadata only per ADR-007 |
+| earth_search (STAC) | unverified | No token needed; metadata only |
 | black_marble | unverified | Requires Earthdata auth; HDF5; tiles→H3-r4 reduction→delete |
-| swpc | unverified | Public; Kp forecast for confounder use only per ADR-007 |
+| swpc | unverified | Public; Kp forecast for confounder use only |
 
 ### P3 live reachability check (lead, 2026-09-30)
 Unauthenticated GETs from this machine:
@@ -754,7 +754,7 @@ Unauthenticated GETs from this machine:
 
 ---
 
-## Spectrum sources (ADR-008), checked live 2026-10-01
+## Spectrum sources, checked live 2026-10-01
 All connectors emit GeoEvents with `domain: spectrum`. HF spots are mapped at the great-circle midpoint of each path
 (the ionospheric reflection region), aggregated per 10-min bin, amateur band and 2° cell inside the Indo-Pacific box
 `[60, -20, 160, 50]`. Tests: `tests/unit/test_spectrum_connectors.py` (fixtures recorded from these calls).
@@ -766,7 +766,7 @@ All connectors emit GeoEvents with `domain: spectrum`. HF spots are mapped at th
 | satnogs | `https://network.satnogs.org/api/observations/?start=&end=` (cursor `Link: rel=next`), `/api/stations/` daily | none | ~240 observations/h global (10 pages); 50 active stations in box; one poll (3 h) = 110 in-region passes | `sat_observation` |
 | sentinel1_rfi | Planetary Computer STAC `collections/sentinel-1-grd/items` + free SAS token `api/sas/v1/token/sentinel-1-grd`; asset `schema-product-<pol>` = `annotation/rfi/rfi-*.xml` (~12 KB) | none | 16 scenes / 3 days over the AOIs; one with RFI detected over northern Myanmar (29 Sep, 30 % noise reports flagged, burst power ratio 18.7) | `sar_rfi` |
 | smap_rfi | CMR `search/granules.json?short_name=SPL1BTB_NRT&bounding_box=` → NSIDC Earthdata Cloud `.h5` (~40 MB) | EARTHDATA_TOKEN | CMR search OK: 8 granules in 12 h, NRT ~3 h. Download **not verified**: token not set. Field names/RFI bit per L1B spec; check with `scripts/smap_inspect.py` | `l_band_rfi` |
-| cygnss | CMR `search/granules.json?short_name=CYGNSS_L1_V3.2` → OPeNDAP `opendap.earthdata.nasa.gov/collections/C2832195379-POCLOUD/granules/<title>.dap.nc4?dap4.ce=/ddm_timestamp_utc;/sp_lat;/sp_lon;/ddm_noise_floor;/quality_flags` | EARTHDATA_TOKEN | 7 satellites (no cyg06), one daily granule each, 2–3 days late; subset 7.9 MB in 2–4 s (full file 1.15 GB); 2026-09-12..29 backfilled (task 038) | `l1_noise` |
+| cygnss | CMR `search/granules.json?short_name=CYGNSS_L1_V3.2` → OPeNDAP `opendap.earthdata.nasa.gov/collections/C2832195379-POCLOUD/granules/<title>.dap.nc4?dap4.ce=/ddm_timestamp_utc;/sp_lat;/sp_lon;/ddm_noise_floor;/quality_flags` | EARTHDATA_TOKEN | 7 satellites (no cyg06), one daily granule each, 2–3 days late; subset 7.9 MB in 2–4 s (full file 1.15 GB); 2026-09-12..29 backfilled | `l1_noise` |
 | swpc (X-ray, P6) | `https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json` (same host as Kp) | none | 716 rows / 6 h (1-min, two energy bands); 0.1–0.8 nm kept, peak per 5 min (2026-10-03) | `solar_xray` |
 | smos | ESA SMOS dissemination | ESA EO account | **Blocked**: CMR collection `SMOS_Open_V7` lists no files; data only behind ESA login. Registered disabled, no connector | – |
 
@@ -778,9 +778,9 @@ Gotchas
 - Sentinel-1: only the RFI XML assets on `*.blob.core.windows.net` are fetched (no imagery; user decision 2026-09-30).
 - CYGNSS: never download the full L1 file; the OPeNDAP subset is reduced to r3 cell JSON and deleted. Granule titles
   are regex-checked before use in paths. `sp_lon` is 0–360. The rfi_detected bit is noisy over dry land.
-- SMAP: rasters are reduced to per-H3-r4 counts and deleted (ADR-007 s2); the token goes only in the Authorization header.
+- SMAP: rasters are reduced to per-H3-r4 counts and deleted; the token goes only in the Authorization header.
 
-## Military air activity (task 039), checked live 2026-10-01
+## Military air activity, checked live 2026-10-01
 | Source key | Endpoint | Auth | Live result | Output |
 |---|---|---|---|---|
 | adsb_mil | `https://api.adsb.lol/v2/mil`, fallback `https://opendata.adsb.fi/api/v2/mil` (readsb v2 JSON) | none | 164–259 military aircraft worldwide per call, ~110 KB; polled every 60 s | AircraftObs `is_global`, `mil` (live map, military tracks, theatre detectors; never the per-area GNSS detectors) |

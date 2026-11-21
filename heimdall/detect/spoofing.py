@@ -362,7 +362,7 @@ def aircraft_signals(
     adsb_d = {h: _dedupe(fs) for h, fs in adsb.items()}
     mlat_d = {h: _dedupe(fs) for h, fs in mlat.items()}
 
-    # S2 regional norm (041): geom - baro grows with altitude (temperature vs standard
+    # S2 regional norm: geom - baro grows with altitude (temperature vs standard
     # atmosphere: ~+2,000 ft at cruise in the tropics), so the norm is a per-foot rate k learned
     # from aircraft above alt_norm_min_ft in the cell; expected divergence = k * alt_baro
     per_ac_div: dict[str, list[tuple[float, float]]] = {}  # (geom - baro, baro)
@@ -402,7 +402,7 @@ def aircraft_signals(
                     and abs(o.alt_geom - o.alt_baro - k * o.alt_baro) > c["alt_divergence_ft"]
                 )
 
-            # no norm, no verdict: comparing with 0 ft flagged every cruising airliner (041)
+            # no norm, no verdict: comparing with 0 ft flagged every cruising airliner
             if has_norm and n_over >= c["alt_min_fixes"] and n_over / len(dev) >= c["alt_min_frac"]:
                 sig.fired["S2"] = True
                 sig.anomalous += [o for o in fs if off(o)]

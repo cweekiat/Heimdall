@@ -1,4 +1,4 @@
-"""Confounder assessment: weather / space weather only LOWER an alert's confidence (ADR-007 s.4).
+"""Confounder assessment: weather / space weather only LOWER an alert's confidence.
 
 Pure function; never creates Evidence or alerts, never raises severity, never touches Admiralty.
 

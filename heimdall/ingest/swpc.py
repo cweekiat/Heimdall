@@ -1,4 +1,4 @@
-"""NOAA SWPC planetary K-index + NOAA scales -> `space_weather` confounder GeoEvents (ADR-007).
+"""NOAA SWPC planetary K-index + NOAA scales -> `space_weather` confounder GeoEvents.
 
 No key, no position (lat/lon None). One event per Kp interval. NOAA scales are a current snapshot,
 so r/s/g scales from it are attached to the latest Kp interval only; earlier intervals carry a

@@ -4,12 +4,12 @@
 
 # Heimdall
 
-**RF and electronic-warfare watch on free, open data. Southeast Asia first.**
+**RF and electronic-warfare watch on free, open data, anywhere in the world.**
 
 [![ci](https://github.com/cweekiat/Heimdall/actions/workflows/ci.yml/badge.svg)](https://github.com/cweekiat/Heimdall/actions/workflows/ci.yml)
-&nbsp;[Project page](https://cweekiat.github.io/Heimdall/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [How it was built](#how-it-was-built) · [License](#license)
+&nbsp;[Project page](https://cweekiat.github.io/Heimdall/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [License](#license)
 
-By [cweekiat](https://cweekiat.github.io/)
+[More projects](https://cweekiat.github.io/)
 
 <img src="docs/media/tour.gif" width="800" alt="Tour of the Heimdall console: GPS jamming alerts on the map, the evidence behind one alert, data layers and the 3D globe.">
 
@@ -18,7 +18,7 @@ By [cweekiat](https://cweekiat.github.io/)
 Heimdall watches receivers that already listen to the spectrum, such as aircraft and ship transponders, amateur HF
 stations and satellites. It infers interference and emitters from how those receivers degrade, rules out natural
 explanations, and raises **explainable, cross-checked alerts**. It runs entirely on your own machine: there is no
-hosted service, so clone it and run it ([ADR-010](docs/decisions/ADR-010-local-only-distribution.md)).
+hosted service, so clone it and run it.
 
 ## Quick start
 
@@ -51,8 +51,8 @@ observe. Each detector states its coverage and the natural explanations it rules
 Official notices (FAA NOTAMs, NGA navigational warnings) corroborate alerts. Space weather and weather are checked as
 natural explanations. NASA FIRMS fire data verifies physical events. Emitter types are never attributed automatically.
 
-Areas of interest: Myanmar, the South China Sea, the Taiwan/Luzon Strait and the Malacca/Singapore Strait, with the
-**Baltic** as a calibration control. Analysts can also draw their own areas.
+Draw any area of interest worldwide. The demo ships with presets for several busy straits and seas, and one
+well-studied region serves as a calibration control.
 
 ## How it works
 
@@ -77,16 +77,6 @@ archives ([docs/demo-midnight-hammer.md](docs/demo-midnight-hammer.md)), then op
 
 <img src="docs/media/midnight-hammer.gif" width="800" alt="The Demo window stepping through seven indicators of Operation Midnight Hammer while the map moves to the aircraft behind each one.">
 
-## How it was built
-
-<img src="docs/media/build-timeline.svg" width="100%" alt="Phases P0 to P7 from 30 September to 4 October 2026, then the open-source release. Every task goes from architect to engineers to QA verifier to reviewer to scribe.">
-
-Heimdall was built by a team of Claude Code agents in eight phases. An architect wrote each spec and design decision,
-engineers built in parallel, then a QA verifier, a reviewer, a security analyst and a scribe checked and documented
-the work. Everything is in the repository: [task specs](docs/tasks), [design decisions](docs/decisions),
-[agents](.claude/agents), [guardrails](docs/guardrails.md) and the [changelog](docs/CHANGELOG.md). See
-[Agent engineering team](#agent-engineering-team) for how to run an agent.
-
 ---
 
 ## 1. Install
@@ -102,13 +92,13 @@ cd web && npm ci && npm run build && cd ..   # builds web/dist, served by the AP
 Offline basemap (one-off download, several GB; needs internet once):
 
 ```bash
-bash scripts/fetch_basemap.sh   # Protomaps extract (SE Asia + Middle East, z0-10), fonts, sprites -> data/basemap/
+bash scripts/fetch_basemap.sh   # Protomaps extract (regional extract, z0-10), fonts, sprites -> data/basemap/
 WORLD=1 bash scripts/fetch_basemap.sh   # also a whole-world overview (z0-6, ~45 MB) for the globe, Europe, Americas
 ```
 
 The API serves these files at `/basemap/...` (Range supported); `/api/basemap/status` reports whether they are present. `SHA256SUMS` lists both files.
 
-Optional API keys (Phase 2+). Each keyed source switches itself off and shows "needs key" in Data health until its key is set:
+Optional API keys. Each keyed source switches itself off and shows "needs key" in Data health until its key is set:
 
 ```bash
 cp env.example .env           # then fill in only the keys you have; never commit .env
@@ -122,12 +112,12 @@ Keys can also be entered in the UI (**Data sources**), which stores them locally
 | OpenSky (global aircraft) | `OPENSKY_CLIENT_ID`, `OPENSKY_CLIENT_SECRET` | opensky-network.org → Account → API client | needs key; AOI aircraft still come from adsb.lol/adsb.fi |
 | FAA NOTAMs | `FAA_NMS_KEY`, `FAA_NMS_SECRET` | FAA NMS API (approval) | needs key |
 | NASA FIRMS (fires) | `FIRMS_MAP_KEY` | firms.modaps.eosdis.nasa.gov | needs key |
-| NASA Earthdata (CYGNSS, SMAP from P5) | `EARTHDATA_TOKEN` | urs.earthdata.nasa.gov | needs key |
+| NASA Earthdata (CYGNSS, SMAP) | `EARTHDATA_TOKEN` | urs.earthdata.nasa.gov | needs key |
 | NGA MSI nav warnings | none | — | runs (portal was under maintenance at last check → shows **down**) |
 
-Global Fishing Watch, Cloudflare Radar and China MSA are being removed in task 027 (ADR-008); their keys are no longer needed.
+Global Fishing Watch, Cloudflare Radar and China MSA are not used; their keys are not needed.
 
-Phase 1 needs **no keys**: adsb.lol and adsb.fi are free and keyless. airplanes.live now grants access by approval only, so it is off (`enabled: false` in `config/sources.yaml`) until you have it.
+The core aircraft feed needs **no keys**: adsb.lol and adsb.fi are free and keyless. airplanes.live now grants access by approval only, so it is off (`enabled: false` in `config/sources.yaml`) until you have it.
 
 ## 2. Run
 
@@ -168,7 +158,7 @@ A **Demo** window steps through the public pre-strike indicators and shows, on t
 week, what was visible and which alerts Heimdall raised. How to rebuild the data: [docs/demo-midnight-hammer.md](docs/demo-midnight-hammer.md).
 
 ### Live monitoring
-One process runs ingest, detection and the API (see ADR-002; DuckDB is single-writer):
+One process runs ingest, detection and the API (DuckDB is single-writer):
 ```bash
 uv run python -m heimdall.run
 ```
@@ -200,11 +190,10 @@ threshold sweep. The archives are downloaded manually into `data/raw/`; Heimdall
 ## 3. Using the console
 
 The layout follows C4I practice: one persistent common operational picture with linked views.
-The design rationale is in [docs/ui-design.md](docs/ui-design.md).
 
 | Area | What it shows |
 |---|---|
-| **Top bar** | Left: clock (Singapore time by default; set the zone in Settings), live dot, source health, space weather. Centre: **search** (areas, alerts, flights, ships or `lat, lon`, `/`) Right: open Critical / Warning counts, **Alerts** (`q`, badge = unacknowledged), **Timeline** (`t`), **Shift report** (`h`). |
+| **Top bar** | Left: clock (set the time zone in Settings), live dot, source health, space weather. Centre: **search** (areas, alerts, flights, ships or `lat, lon`, `/`) Right: open Critical / Warning counts, **Alerts** (`q`, badge = unacknowledged), **Timeline** (`t`), **Shift report** (`h`). |
 | **Left rail** | Widens on hover: **Area of Ops** (`o`), **Data sources** (`u`), **Settings** (`,`, theme, time zone, map overlays), **Help** (`?`), **About** (`i`). |
 | **Map** (centre) | Jamming hexes (green <2 %, amber 2–10 %, red >10 %), alert markers, satellites with ground tracks, emitter ellipses, and grey outlines where coverage is thin. Bottom left: **map type** picker, **Filters** and the **Legend** chip. Bottom right: measure / range ring, recenter on South-East Asia (`0`), compass, **3D / 2D** (`g`), zoom. Zooming out past the region turns the map into an offline 3D globe; zooming in flattens it. |
 | **Inspector** (right) | **Now** (what and where), **Why** (rules fired, values against thresholds and baselines, counterfactual, Admiralty grade), **Trend** (metric against baseline), **Log** (triage journal) |
@@ -291,10 +280,7 @@ support: each keeps every confirmed alert and shows the `config/config.yaml` lin
 automatically; proposals appear after 5 false alarms and 3 confirmed alerts for a detector. Terminal version:
 `uv run python -m heimdall.tuning --days 30` (live server stopped, or `--store` a copy).
 
-**Air force watch** (rail button or `a`). Pick an air force (Singapore RSAF, Malaysia RMAF, Indonesia TNI-AU,
-Philippines PAF, Thailand RTAF, Taiwan RoCAF, Japan JASDF, South Korea ROKAF, Australia RAAF, New Zealand RNZAF;
-edit `config/air_forces.yaml` to add more) to see where its visible aircraft are: airborne, at home bases, at known overseas training detachments (for the RSAF,
-for example RAAF Pearce), elsewhere at home or abroad, with movements between countries, flights per day and notes
+**Air force watch** (rail button or `a`). Pick an air force (edit `config/air_forces.yaml` to add or change them) to see where its visible aircraft are: airborne, at home bases, at known overseas training detachments , elsewhere at home or abroad, with movements between countries, flights per day and notes
 such as "tanker abroad: possible deployment, exercise or transport mission". Click an aircraft to investigate it.
 Fighters usually do not broadcast, so this shows support, transport and training fleets.
 
@@ -322,9 +308,9 @@ servers see which map areas you view. Use `none` for a fully private blank map.
 ## 5. Privacy and safety
 
 - The API binds to **127.0.0.1**; host and origin checks reject cross-site requests. Heimdall is not meant to be
-  exposed online: everyone runs their own copy (ADR-010).
+  exposed online: everyone runs their own copy.
 - Outbound traffic is limited to **GET requests to the listed data sources** and the base-map tiles.
-- `privacy.allow_llm_egress: false`: no evidence is sent to any LLM until you switch it on (Phase 5).
+- `privacy.allow_llm_egress: false`: no evidence is sent to any LLM unless you switch it on.
 - Untrusted text such as news and warnings is treated as data and rendered as plain text.
 - A pre-commit hook scans for secrets. Install it with `ln -sf ../../scripts/pre-commit .git/hooks/pre-commit`.
 
@@ -346,42 +332,20 @@ return `Evidence`, and there is no alert without evidence. All data is keyed by 
 **Scaling:** swap adapters rather than rewriting. Use Redis or NATS for the bus, ClickHouse for the store,
 S3/Iceberg for the lake, and detector workers sharded by AOI.
 
-### Agent engineering team
-Heimdall is built by a team of Claude Code agents (`.claude/agents/`). Each task gets a spec in
-`docs/tasks/`, parallel builders work in git worktrees, then QA, then review, then the lead merges and the scribe updates the docs.
-Run one agent headlessly with hard USD and turn caps:
-```bash
-scripts/agent.sh detection-scientist docs/tasks/006-backtest-calibration.md
-```
-The guardrails are a sandbox, a network allowlist, tool budgets, loop detection and no pushing or sharing without
-your permission. See [docs/guardrails.md](docs/guardrails.md).
 
-## 7. Roadmap
-
-| Phase | Scope |
-|---|---|
-| P1–P3 (done) | ADS-B and AIS ingest, jamming/spoofing/orbit/AIS detectors, notices, fusion with Admiralty grading, FIRMS, weather, space weather, Sentinel-1 footprints and passes, global traffic, C4I console |
-| P4 (done except 029b/029c) | Spectrum core: remove non-RF sources, band on every alert, jammer localisation, AIS circle spoofing, ship-to-ship transfers, interference notices, band ladder UI, GPSJam-style daily map |
-| P5 (done) | Space RF: CYGNSS GNSS interference from orbit, SMAP, Sentinel-1 interference annotations |
-| Military (039) | Worldwide military aircraft (readsb `/v2/mil`), plane-alert-db identities, deployment / surge / high-interest / build-up indicators per theatre |
-| P6 (done) | HF: WSPR and PSK Reporter path-midpoint and receiver-cell detectors with flare/storm explain-away (KiwiSDR directory blocked) |
-| P7 (done except cited Claude briefs) | Cross-band fusion, GDELT, daily SITREP, feedback-driven tuning; briefs by a local model |
-
-Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
 
 ## Known limitations
-- ADS-B and AIS coverage over open SE Asian seas is sparse (for example, Myanmar sees about 3–10 aircraft within 250 NM). Confidence is lowered to match, and sparse-region defaults are being calibrated in task 006.
-- Thresholds are priors until the Baltic backtest (task 006) calibrates them.
+- ADS-B and AIS coverage over open seas and remote regions can be sparse (sometimes only a handful of aircraft within 250 NM). Confidence is lowered to match.
+- Detector thresholds are priors; run the backtest to calibrate them for your area.
 - Every sensor is a volunteer or satellite receiver: where there are no receivers there is no data, and that is
   never read as "no interference". The HF detectors are experimental, need 5+ days of history (backfill: `scripts/hf_backfill.py`, see below) and never names an emitter type.
-- Internet-outage, night-light, Sentinel-2 and Global Fishing Watch sources are being removed in task 027 (ADR-008).
 - Military tracking only sees aircraft that broadcast ADS-B and are flagged military; strike packages often fly
   dark and use decoys. Theatre thresholds are priors and the surge baseline needs 3 days of data.
 - Data is for situational awareness from open sources only; verify before acting.
 
 ### Drawing areas of operation
 
-The live app starts with **no areas**: open **Area of Ops** (top of the left rail) to draw circles or polygons (up to 250 nm radius; a polygon must fit in a 250 nm circle), name them and turn monitoring on or off. They persist in `data/state/aois.json`. The `aois:` list in `config/config.yaml` is kept as presets for the demo, replay, backtests and tests (`use_config_aois: false` keeps it out of the live runtime). API: `GET/POST /api/aois/user`, `PATCH/DELETE /api/aois/user/{id}` (same-origin only). Details: `docs/tasks/015-draw-ao.md`.
+The live app starts with **no areas**: open **Area of Ops** (top of the left rail) to draw circles or polygons (up to 250 nm radius; a polygon must fit in a 250 nm circle), name them and turn monitoring on or off. They persist in `data/state/aois.json`. The `aois:` list in `config/config.yaml` is kept as presets for the demo, replay, backtests and tests (`use_config_aois: false` keeps it out of the live runtime). API: `GET/POST /api/aois/user`, `PATCH/DELETE /api/aois/user/{id}` (same-origin only).
 
 ## License
 

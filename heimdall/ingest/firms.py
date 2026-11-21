@@ -1,6 +1,6 @@
-"""NASA FIRMS active fires (area CSV API) -> `thermal` GeoEvents (ADR-007 section 1).
+"""NASA FIRMS active fires (area CSV API) -> `thermal` GeoEvents ( section 1).
 
-Keyed (ADR-004): without FIRMS_MAP_KEY no request is made and health is needs_key. The key sits in
+Keyed: without FIRMS_MAP_KEY no request is made and health is needs_key. The key sits in
 the URL path, so errors are never echoed (see poll.py).
 """
 

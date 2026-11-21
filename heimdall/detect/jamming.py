@@ -110,7 +110,7 @@ class AircraftQuality:
 
 
 def chronic_aircraft(obs: Sequence[AircraftObs], cfg: dict[str, Any]) -> set[str]:
-    """Hexes degraded wherever they fly while the aircraft around them are healthy (041).
+    """Hexes degraded wherever they fly while the aircraft around them are healthy.
 
     Uses every observation passed in (the pipeline gives the full look-back, longer than the
     detection window). Interference degrades *everyone* in an area; an equipment fault follows
@@ -159,7 +159,7 @@ class CellStats:
     providers: list[str]
     agreement: float  # provider agreement on the bad aircraft (1.0 = all agree)
     bad_aircraft: list[AircraftQuality]
-    chronic: list[str] = field(default_factory=list)  # excluded equipment-fault aircraft (041)
+    chronic: list[str] = field(default_factory=list)  # excluded equipment-fault aircraft
 
 
 def _cfg(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -169,7 +169,7 @@ def _cfg(cfg: dict[str, Any]) -> dict[str, Any]:
 def degraded(o: AircraftObs, nic_below: int, nacp_below: int) -> bool | None:
     """GNSS-degraded report (NIC < nic_below or NACp < nacp_below); None if neither is known.
 
-    Shared with the GNSS interference map (heimdall/gnss_map.py, task 031)."""
+    Shared with the GNSS interference map (heimdall/gnss_map.py)."""
     if o.nic is None and o.nac_p is None:
         return None
     return (o.nic is not None and o.nic < nic_below) or (

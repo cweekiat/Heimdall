@@ -1,4 +1,4 @@
-"""Write-only API-key routes (task 014a, ADR-006). Values are never returned, echoed or logged."""
+"""Write-only API-key routes. Values are never returned, echoed or logged."""
 
 from __future__ import annotations
 

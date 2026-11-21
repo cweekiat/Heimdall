@@ -1,4 +1,4 @@
-"""PSK Reporter reception reports (REST, no key) -> `hf_spots` GeoEvents (ADR-008, band HF).
+"""PSK Reporter reception reports (REST, no key) -> `hf_spots` GeoEvents (, band HF).
 
 The query API asks for at most one request per 5 minutes, so `poll_s` defaults to 300 and each
 poll asks only for reports newer than the last sequence number (`lastseqno`). The live MQTT feed
@@ -110,7 +110,7 @@ class _Bin:
     rx: set[str] = field(default_factory=set)
     tx: set[str] = field(default_factory=set)
     modes: dict[str, int] = field(default_factory=dict)
-    receiver: bool = False  # task 060: receiver-cell bin (`hf_rx`) instead of path midpoint
+    receiver: bool = False  # receiver-cell bin (`hf_rx`) instead of path midpoint
 
 
 class Aggregator:

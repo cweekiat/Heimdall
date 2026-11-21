@@ -54,7 +54,7 @@ def test_straight_flight_clean() -> None:
 
 
 def _neighbours(lon: float = 96.0) -> list:
-    """Three healthy aircraft in the same cell: the regional per-foot norm S2 needs (041)."""
+    """Three healthy aircraft in the same cell: the regional per-foot norm S2 needs."""
     return [
         o
         for k in range(3)

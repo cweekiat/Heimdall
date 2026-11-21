@@ -1,4 +1,4 @@
-"""Active area notices (NAVWARN / NOTAM) as context Evidence (ADR-005 sections A and B).
+"""Active area notices (NAVWARN / NOTAM) as context Evidence ( sections A and B).
 
 Assumptions
 -----------

@@ -15,7 +15,7 @@ import { createWindow, EDGE_LEFT, EDGE_TOP, isOpen } from "./wm";
 export interface ListHooks {
   bbox: () => string;
   flyTo: (lon: number, lat: number) => void;
-  /** Open the aircraft investigation (047); it flies the map there itself. */
+  /** Open the aircraft investigation; it flies the map there itself. */
   pick: (hex: string) => void;
 }
 

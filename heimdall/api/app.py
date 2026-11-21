@@ -499,7 +499,7 @@ def create_app(
 
     @app.get("/api/ready")
     def ready() -> Response:
-        # Readiness probe (063): says only yes/no; used by the Docker healthcheck.
+        # Readiness probe: says only yes/no; used by the Docker healthcheck.
         try:
             st.list_alerts(limit=1)
         except Exception as e:

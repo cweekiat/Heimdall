@@ -1,16 +1,16 @@
-# Analyst UI and API (task 004)
+# Analyst UI and API
 
 Run: `uv run python -m heimdall.api.demo` (synthetic data, port 8000) and `cd web && npm run dev`
 (port 5173, proxies `/api`). Production: `npm run build`; FastAPI serves `web/dist` at `/`.
 The API binds 127.0.0.1 by default (`api.host`).
 
 ## Current layout (tasks 035–037; supersedes older notes below where they differ)
-- **Top bar**: brand, clock (display time zone, default Singapore; Settings → Time zone), live/freshness on the left;
+- **Top bar**: brand, clock (display time zone; Settings → Time zone), live/freshness on the left;
   search centred (areas, alerts, loaded flights/ships, `lat, lon`; local data only); **Alerts**, Timeline and
   **Shift report** on the right.
 - **Left rail** (widens on hover): Area of Ops `o`, Data sources `u`, Settings `,`, Help `?`, About `i`. No actions board.
 - **Bottom left**: map-type picker (Google-Maps style), **Filters** button, minimised legend chip.
-- **Bottom right**: recenter (SE Asia), compass, 3D/2D, zoom. Zooming out past ~2.7 turns the map into an offline globe
+- **Bottom right**: recenter, compass, 3D/2D, zoom. Zooming out past ~2.7 turns the map into an offline globe
   with live satellites (`GET /api/satellites`) drawn at altitude with past/next paths.
 - **Areas of Ops**: none by default; drawn circles/polygons limited to 250 nm; monitored areas outlined green.
 - **Alerts**: two categories, **Critical** (red, small pop-up card on the map from zoom 3) and **Warning**. Details are one
@@ -21,24 +21,24 @@ The API binds 127.0.0.1 by default (`api.host`).
   for the alert type, then **Confirm real**, **False alarm** with a reason, or **Shelve** 2 / 8 / 24 h) → **Confirmed**
   (real, being tracked; **Close: ended** once there is no fresh evidence for 60 min) → **Closed** (resolved, false alarm,
   expired; **Reopen**). Details open with a "Next step" box; cards show whether the activity is still ongoing.
-- **Military roles and aircraft list (task 046)**: military planes are coloured by role (tanker, transport,
+- **Military roles and aircraft list**: military planes are coloured by role (tanker, transport,
   surveillance, command post, bomber, fighter, helicopter, drone, VIP, trainer). Role chips (Filters → Quick filters,
   the Military panel's role bars, the list) are one shared filter. **Aircraft list** (rail, key `y`): All / In view /
   Selected tabs, sortable columns, text filters, select + Hide others, CSV / KML export.
-- **Aircraft investigation (task 047)**: "Investigate" on a military aircraft card, a list row or a Military panel row
+- **Aircraft investigation**: "Investigate" on a military aircraft card, a list row or a Military panel row
   opens what it is (type, operator, country, reference capabilities), where it took off (OurAirports + its own track,
   or "first seen"), what it may be doing now (likely / possible, with the measured reasons and context) and its 72 h
   track coloured by altitude. `GET /api/military/aircraft/{hex}`.
-- **Context layers and news (task 049)**: Filters → *Context (open sources)*: **Military bases** (OpenStreetMap) and
+- **Context layers and news**: Filters → *Context (open sources)*: **Military bases** (OpenStreetMap) and
   **Conflict events, 2+ sources** (GDELT machine-coded news; hover shows source count and the caveat). **News**
   (rail, key `n`): BBC World and Al Jazeera headlines, display only.
-- **Regions (task 050)**: type a region or place in the search box ("Gulf", "Taiwan", "hormuz", "Global") to jump to
+- **Regions**: type a region or place in the search box ("Gulf", "Taiwan", "hormuz", "Global") to jump to
   one of 18 preset views.
-- **Theatre activity (task 051)**: top of the Military panel. Each theatre's level (Quiet / Watch / Elevated / High) is
+- **Theatre activity**: top of the Military panel. Each theatre's level (Quiet / Watch / Elevated / High) is
   the number of components above that theatre's own normal; click a theatre to see every component with its numbers.
 - **Air force watch (task 056, rail, key `a`)**: one air force's visible fleet by status (airborne, home base,
   overseas detachment, elsewhere at home, abroad), notes, movements between countries, flights per day; click an
-  aircraft to investigate. Ten air forces (058): RSAF, RMAF, TNI-AU, PAF, RTAF, RoCAF, JASDF, ROKAF, RAAF, RNZAF
+  aircraft to investigate. Ten air forces: RSAF, RMAF, TNI-AU, PAF, RTAF, RoCAF, JASDF, ROKAF, RAAF, RNZAF
   (`config/air_forces.yaml`). `GET /api/airforces`, `GET /api/airforces/{key}?days=`; the first load reads the lake
   for all fleets at once (~10 s), later switches are instant.
 - **Detector tuning (task 061, rail, key `k`)**: per detector, alerts, reviews, share confirmed real with a 95 %
@@ -47,7 +47,7 @@ The API binds 127.0.0.1 by default (`api.host`).
 - **Demo (task 043, rail, key `p`)**: plays a precomputed demo pack (`data/replay/*/*.demo.json`) on the live server.
   The snapshot layer replaces live traffic and live alert markers until **Exit demo**; demo alerts open read-only.
   Nothing is replayed server-side, so live detection is unaffected.
-- **Shift report (`h`, task 044)**: rule-based **Trends** (this period vs the previous one, by type, area and band,
+- **Shift report (`h`)**: rule-based **Trends** (this period vs the previous one, by type, area and band,
   spectrum-board anomalies) always; **Summarise with local AI** when a local Ollama model is running (loopback only),
   with cited alert refs and any unsupported refs flagged.
 - **Filters** only show/hide data (never change ingestion): Data type (source) rows such as Aircraft (ADS-B), GNSS and
@@ -120,11 +120,11 @@ Shortcuts are ignored while typing in a field; `Esc` always closes the topmost t
 | GET | `/api/demo/packs`, `/api/demo/packs/{name}` | demo packs (steps, snapshots, alert list); `/api/alerts/{id}` falls back to packs (`demo: true`) |
 | GET | `/api/brief/status`, `/api/brief/trends?hours=` | local model availability; fact sheet + trend lines |
 | POST | `/api/brief/summary` | `{hours}`; local-model narrative with `cited` / `unsupported` refs; 503 if no local model |
-| GET | `/api/cygnss/days`, `/api/cygnss/day?date=` | CYGNSS L1 noise day map (059): cells worth a look with excess, rise vs own baseline, `flag` level/change |
+| GET | `/api/cygnss/days`, `/api/cygnss/day?date=` | CYGNSS L1 noise day map: cells worth a look with excess, rise vs own baseline, `flag` level/change |
 | GET | `/api/tuning?days=` | detector precision from verdicts and threshold proposals (061, read-only) |
 | GET | `/api/jammers` | merged jammer fits (GeoJSON), see Map layers |
 | POST | `/api/alerts/{id}/actions` | `{action_id}`; 422 unless in playbook and `applies_to` matches; status `proposed`; returns `id` |
-| POST | `/api/actions/{id}/approve`, `/reject` | id = `ActionRequest.id` (uuid4 hex, ADR-002); only for `proposed`; approve sets `approved` (recording stub, runs nothing) |
+| POST | `/api/actions/{id}/approve`, `/reject` | id = `ActionRequest.id` (uuid4 hex); only for `proposed`; approve sets `approved` (recording stub, runs nothing) |
 | GET | `/api/stream` | SSE: `snapshot` (all alerts) on connect, then `alert` per change |
 | GET | `/api/ui-config` | `{basemap: openfreemap|carto|none, overlays: [...]}` |
 
@@ -166,7 +166,7 @@ Every source sets its `attribution` so MapLibre's attribution control lists all 
 Overlay text layers are skipped on CARTO bases (different glyph fonts). Overlays draw their own
 boundary layers from an OpenFreeMap vector source, so they also work over the satellite base.
 
-## Windows, toolbar and live data (task 012)
+## Windows, toolbar and live data
 The map fills the screen. Everything else floats above it in windows you can move, resize, minimise
 and close (layout saved in `hm.wm.v1`; below 768 px they become bottom sheets). The left toolbar opens
 them: Alerts `q`, Areas `b`, Layers & filters `l`, Data sources `u`, Actions `x`, Timeline `t`,
@@ -191,7 +191,7 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
 - **Warnings and NOTAMs** (`notices.ts`): hatched areas from `/api/notices`; click for reference,
   type, valid times (Z), altitude band and the original text in an "unverified" box.
 
-## RF band ladder and spectrum layers (task 030, ADR-008)
+## RF band ladder and spectrum layers
 - **Band ladder** (left edge of the map; a dropdown under 600 px): HF · VHF marine · L 1090 · L1 GNSS · L 1.4 GHz · C SAR,
   in frequency order. Each row: open-alert count for that band (from `Alert.bands`), and a status dot from the
   sources that feed it (grey = no source yet, amber = unhealthy or needs a key, green = receiving). Click filters the
@@ -207,7 +207,7 @@ Shift report `h`, Help `?`. The alert details window opens beside the selected a
 - **HF propagation spots**: circles at path midpoints (WSPR + PSK Reporter, last hour), size by spot count.
   **Satellite passes**: SatNOGS ground stations, red when the pass was bad/failed. **C-band interference**:
   Sentinel-1 footprints, red outline when ESA's RFI annotation flags interference. **L-band interference**: SMAP
-  cells shaded by the share of flagged footprints. **GPS noise from orbit (CYGNSS, task 059)**: H3 r3 cells for one
+  cells shaded by the share of flagged footprints. **GPS noise from orbit (CYGNSS)**: H3 r3 cells for one
   UTC day (newest by default, picker for earlier days), amber by closeness to the CYGNSS detector's thresholds, red
   outline when a cell meets its alert rules (level or rise over the cell's own baseline). Quiet cells are not drawn
   (open ocean < 1 dB, land / coast < 2 dB unless risen). 38° S – 38° N only, 2–3 days delay.

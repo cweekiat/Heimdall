@@ -51,7 +51,7 @@ class MemoryStore:
         return n - len(self.aircraft) - len(self.vessels)
 
     def insert_events(self, rows: Sequence[GeoEvent]) -> int:
-        latest = {r.id: r for r in rows}  # last write wins (ADR-004)
+        latest = {r.id: r for r in rows}  # last write wins
         self.events = [e for e in self.events if e.id not in latest]
         self.events.extend(latest.values())
         return len(latest)
@@ -122,7 +122,7 @@ class MemoryStore:
         )
 
     def upsert_alert(self, alert: Alert) -> None:
-        """Pipeline upserts (status NEW) never overwrite an analyst-set status (ADR-003)."""
+        """Pipeline upserts (status NEW) never overwrite an analyst-set status."""
         cur = self.alerts.get(alert.id)
         if (
             cur is not None
@@ -133,7 +133,7 @@ class MemoryStore:
         self.alerts[alert.id] = alert.model_copy(update={"ref": self._ref_for(alert, cur)})
 
     def _ref_for(self, alert: Alert, cur: Alert | None) -> str:
-        """ADR-006: keep the stored ref; else honour a well-formed incoming one (lake rebuild,
+        """Keep the stored ref; else honour a well-formed incoming one (lake rebuild,
         bumping the day counter past it); else take the next per-UTC-day number."""
         if cur is not None and cur.ref:
             return cur.ref

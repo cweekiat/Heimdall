@@ -1,4 +1,4 @@
-"""P3 pipeline wiring (task 022a): thermal per tick, overpasses, key gating."""
+"""P3 pipeline wiring: thermal per tick, overpasses, key gating."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _tick(store: FakeStore, cfg: Settings, now: datetime):  # type: ignore[no-un
 
 def test_detectors_registered() -> None:
     assert "thermal" in set(DETECTORS)
-    assert not {"outage", "night_lights"} & set(DETECTORS)  # removed in 027 (ADR-008)
+    assert not {"outage", "night_lights"} & set(DETECTORS)  # removed in 027
     assert DETECTORS["thermal"].kind == AlertKind.THERMAL
 
 

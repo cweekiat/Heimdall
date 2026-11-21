@@ -1,4 +1,4 @@
-"""Feedback-driven tuning (P7, task 061): how often each detector is right, and threshold
+"""Feedback-driven tuning (P7): how often each detector is right, and threshold
 changes the analysts' own verdicts support. Read-only: it PROPOSES; nothing here edits config.
 
 Verdicts: an alert closed as `confirmed` or `resolved` is real; `dismissed` is a false alarm (its
@@ -315,7 +315,7 @@ def build(
 
 
 def markdown(r: Mapping[str, Any]) -> str:
-    """Plain report for the terminal or docs/reports."""
+    """Plain report for the terminal or a Markdown file."""
     lines = [
         f"# Detector tuning report ({r['generated'][:16]} UTC, last {r['days']:g} days)",
         "",

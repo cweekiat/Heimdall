@@ -1,4 +1,4 @@
-"""End-to-end: live-path store (CompositeStore over DuckDB, ADR-002) + pipeline ticks + API triage.
+"""End-to-end: live-path store (CompositeStore over DuckDB) + pipeline ticks + API triage.
 
 An analyst's triage decision must survive later pipeline updates, and no duplicate alert may appear.
 """

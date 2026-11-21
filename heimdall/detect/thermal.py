@@ -1,4 +1,4 @@
-"""Thermal anomaly detector over FIRMS `thermal` GeoEvents (ADR-007, task 021a).
+"""Thermal anomaly detector over FIRMS `thermal` GeoEvents.
 
 Assumptions
 -----------

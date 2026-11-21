@@ -1,9 +1,9 @@
-"""Military air activity and build-up indicators per theatre (task 039). Pure: no I/O.
+"""Military air activity and build-up indicators per theatre. Pure: no I/O.
 
 Inputs: `MilTracks` (decimated military tracks, 72 h, from readsb `/v2/mil` worldwide), an identity
 per hex (`milroles.MilIdent`, plane-alert-db + type code), a theatre (config preset or analyst
 area), a presence baseline and context counts. Indicators come from public reporting on the June
-2025 Midnight Hammer strike (docs/tasks/039-military.md): tanker deployment waves to staging bases,
+2025 Midnight Hammer strike: tanker deployment waves to staging bases,
 airlift surges, ISR presence, bomber / airborne command post activity, notices and GNSS jamming.
 
 * MIL_DEPLOYMENT: >= min_arrivals[role] aircraft of a strategic role seen outside the theatre

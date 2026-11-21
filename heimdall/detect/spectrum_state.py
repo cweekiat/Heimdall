@@ -1,4 +1,4 @@
-"""Spectrum status per area and band (tasks 033/034, ADR-008). Pure: no I/O.
+"""Spectrum status per area and band (tasks 033/034). Pure: no I/O.
 
 For every AOI and band one *indicator* is computed each tick from the victim receivers in that
 band, then judged against that indicator's own history (robust z = (v - median) / (1.4826 MAD +
@@ -17,7 +17,7 @@ floor)) in the direction that means trouble:
 States: no_coverage (too few receivers to judge), learning (baseline too short), normal,
 elevated (z >= 2), anomalous (z >= 3). Natural explanations are attached, never hidden: a
 geomagnetic storm (Kp) or solar radio blackout (R scale) for HF/GNSS. For sat_downlink,
-l_1400 and c_sar an anomalous state also yields SPECTRUM_ANOMALY Evidence (034), experimental:
+l_1400 and c_sar an anomalous state also yields SPECTRUM_ANOMALY Evidence, experimental:
 confidence capped, and it never names an emitter type. GNSS L1 and AIS already have dedicated
 detectors (HF since P6: `detect/hf.py`, per path-midpoint cell), and low 1090/VHF counts are
 receiver health, so those bands only feed the board.
@@ -53,7 +53,7 @@ N_METRIC = "band_receivers"
 State = Literal["no_coverage", "learning", "normal", "elevated", "anomalous"]
 
 # per band: label, unit, direction (which way is trouble), min receivers, MAD floor, reach (km)
-# All priors, not backtested (ADR-008): calibrate on the Baltic/Middle East controls and flare days.
+# All priors, not backtested: calibrate on the Baltic/Middle East controls and flare days.
 INDICATORS: dict[Band, dict[str, Any]] = {
     Band.L1_GNSS: {
         "label": "aircraft with degraded GPS (1 h)",
@@ -129,7 +129,7 @@ DEFAULTS: dict[str, Any] = {
     "min_samples_hourly": 36,  # hf: same-hour samples (3 days x 12 ticks)
     "elevated_z": 2.0,
     "anomalous_z": 3.0,
-    "confidence_cap": 0.6,  # experimental single-band evidence stays <= medium (ADR-008 s4)
+    "confidence_cap": 0.6,  # experimental single-band evidence stays <= medium
     "explained_factor": 0.5,
 }
 
@@ -322,7 +322,7 @@ def evidence(
     window: tuple[datetime, datetime],
     cfg: Mapping[str, Any] | None = None,
 ) -> Evidence | None:
-    """SPECTRUM_ANOMALY Evidence for an anomalous experimental band (034)."""
+    """SPECTRUM_ANOMALY Evidence for an anomalous experimental band."""
     c = {**DEFAULTS, **(cfg or {})}
     if s.state != "anomalous" or s.band not in EVIDENCE_BANDS or s.z is None or s.value is None:
         return None

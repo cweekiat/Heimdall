@@ -1,13 +1,11 @@
-// About window: renders two bundled markdown files as tabs. The renderer builds DOM nodes with
+// About window: renders a bundled markdown file. The renderer builds DOM nodes with
 // textContent only (no innerHTML), so the output is sanitised by construction; links are http(s) only.
 import { h } from "./dom";
 import { createWindow, EDGE_LEFT, EDGE_TOP, getBody, isOpen, openWindow } from "./wm";
 import why from "./about/why-it-matters.md?raw";
-import building from "./about/building-heimdall.md?raw";
 
 const PAGES: [string, string, string][] = [
   ["why", "Why it matters", why],
-  ["build", "Building Heimdall", building],
 ];
 
 /** Inline: **bold**, *italic*, `code`, [text](https://url). Everything else is plain text. */

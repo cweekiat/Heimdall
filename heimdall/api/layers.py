@@ -1,4 +1,4 @@
-"""P3 map layers + alert context (task 023a, ADR-007). Read-only, GET only.
+"""P3 map layers + alert context. Read-only, GET only.
 
 Only Store-port calls are used. Free text (`GeoEvent.text`) is never returned, and imagery events
 expose the STAC item link (`url`) as data only: no asset/thumbnail hrefs, ever.
@@ -22,18 +22,18 @@ LAYER_KINDS: dict[str, list[str]] = {
     "thermal": ["thermal"],
     "imagery": ["imagery_footprint"],
     "overpass": ["overpass"],
-    # task 030: spectrum layers (ADR-008). Regional (Indo-Pacific box), not per area.
+    # spectrum layers. Regional (Indo-Pacific box), not per area.
     "hf": ["hf_spots"],
     "sar_rfi": ["sar_rfi"],
     "satnogs": ["sat_observation"],
     "smap": ["l_band_rfi"],
-    "cygnss": ["l1_noise"],  # task 038: CYGNSS L1 noise floor per r3 cell-day
-    "conflict": ["conflict_event"],  # task 049: GDELT conflict events (context, machine-coded news)
+    "cygnss": ["l1_noise"],  # CYGNSS L1 noise floor per r3 cell-day
+    "conflict": ["conflict_event"],  # GDELT conflict events (context, machine-coded news)
 }
 REGIONAL = frozenset(
     {"hf", "sar_rfi", "satnogs", "smap", "cygnss", "conflict"}
 )  # aoi=all returns every feature
-# explicit per-kind attr whitelist (ADR-007 table); anything else is dropped
+# explicit per-kind attr whitelist ( table); anything else is dropped
 ATTRS: dict[str, tuple[str, ...]] = {
     "thermal": ("satellite", "instrument", "confidence", "daynight"),
     "imagery_footprint": (
@@ -156,7 +156,7 @@ def _feature(e: GeoEvent, layer: str) -> dict[str, Any] | None:
         if isinstance(v, _SCALAR):
             props[k] = v
     if layer in ("imagery", "conflict") and e.url:
-        props["url"] = e.url  # link as text only (ADR-007 §3); news pages are never fetched
+        props["url"] = e.url  # link as text only ( §3); news pages are never fetched
     geom = e.geometry
     if geom is None:
         p = _point(e)

@@ -1,8 +1,8 @@
-"""Compare Heimdall's GNSS day map with a GPSJam CSV for the same UTC day (task 031c).
+"""Compare Heimdall's GNSS day map with a GPSJam CSV for the same UTC day.
 
 Usage:
   uv run python scripts/gnss_validate.py --date 2026-09-30 --gpsjam path/to/2026-09-30-h3_4.csv \
-      [--lake data/lake] [--min-aircraft 5] [--out docs/reports/2026-09-30-gnss-map-validation.md]
+      [--lake data/lake] [--min-aircraft 5] [--out report.md]
 Our side is read from lake/gnss_daily (or computed from the lake when not written yet).
 Nothing is downloaded: fetch the GPSJam CSV yourself (gpsjam.org/data/<date>-h3_4.csv).
 """

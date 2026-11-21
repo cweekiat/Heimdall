@@ -1,4 +1,4 @@
-"""Cross-source corroboration (ADR-005 section D). Pure: no I/O, no notice text.
+"""Cross-source corroboration. Pure: no I/O, no notice text.
 
 `cross_source(gated, context, notices, cfg)` maps each gated Evidence id to the Corroborations that
 other sources give it:
@@ -11,7 +11,7 @@ other sources give it:
   sees it as *same-family* support);
 * thermal <-> jamming within `thermal_jam_km`; thermal <- covering notice (as jamming);
   needs windows overlapping within `time_slack_h`;
-* P7 cross-band (052): GNSS jamming <-> a radio band anomaly (HF, satellite downlink, L 1.4 GHz,
+* P7 cross-band: GNSS jamming <-> a radio band anomaly (HF, satellite downlink, L 1.4 GHz,
   C SAR) within `cross_band_km` and `cross_band_slack_h`: the same place disturbed on two bands;
 * `context`: other-kind Evidence in `context` in the same H3 cell that
   is not already support. Context kinds (weather, imagery, overpass) never count as families.
@@ -56,7 +56,7 @@ DEFAULT_CORROBORATION: dict[str, Any] = {
     "jam_orbit_km": 100,
     "time_slack_h": 2,
     "thermal_jam_km": 50,  # prior, not backtested
-    "jam_orbit_space_km": 300,  # task 038: ADS-B jamming <-> CYGNSS L1 noise. Prior
+    "jam_orbit_space_km": 300,  # ADS-B jamming <-> CYGNSS L1 noise. Prior
     "jam_orbit_space_slack_h": 96,  # CYGNSS days lag 2-3 days behind live ADS-B. Prior
     "cross_band_km": 300,  # P7 052: L1 jamming <-> other-band anomaly. Prior, not backtested
     "cross_band_slack_h": 6,  # band indicators use 1 h to 3 d windows. Prior
@@ -71,8 +71,8 @@ DEFAULT_SOURCE_FAMILY: dict[str, str] = {
     "aisstream": "ais",
     "nga_msi": "notice",
     "faa_nms_notam": "notice",
-    "firms": "thermal",  # ADR-007 s.6
-    "cygnss": "gnss_reflectometry",  # task 038: independent of aircraft/ship receivers
+    "firms": "thermal",  #
+    "cygnss": "gnss_reflectometry",  # independent of aircraft/ship receivers
     "open_meteo": "context",
     "swpc": "context",
     "celestrak": "context",
@@ -173,7 +173,7 @@ def _p3_supports(
     c: Mapping[str, Any],
     slack: timedelta,
 ) -> list[Corroboration]:
-    """Thermal <-> jamming (ADR-007)."""
+    """Thermal <-> jamming."""
     out: list[Corroboration] = []
 
     def add(o: Evidence, domain: Domain, note: str) -> None:
@@ -258,7 +258,7 @@ def cross_source(
                         )
                     )
         if e.kind == AlertKind.GNSS_JAMMING:
-            # task 038: the same area jammed as seen by aircraft and from orbit (CYGNSS)
+            # the same area jammed as seen by aircraft and from orbit (CYGNSS)
             km = float(c["jam_orbit_space_km"])
             lag = timedelta(hours=float(c["jam_orbit_space_slack_h"]))
             for o in jams:

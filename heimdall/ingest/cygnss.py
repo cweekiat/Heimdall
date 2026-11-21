@@ -1,19 +1,19 @@
-"""NASA CYGNSS L1 noise floor -> `l1_noise` GeoEvents (ADR-008, band L1 GNSS seen from orbit).
+"""NASA CYGNSS L1 noise floor -> `l1_noise` GeoEvents (, band L1 GNSS seen from orbit).
 
 CYGNSS (7 working microsatellites, +-38 deg latitude) listens to GPS L1 reflections. Its nadir
 antennas also hear any L1 jammer in the beam: the DDM noise floor rises and the `rfi_detected`
 quality bit (noise-floor kurtosis test) fires. This connector turns that into per-H3 cell-day
-values, independent of aircraft and ships (task 038, `docs/tasks/038-cygnss.md`).
+values, independent of aircraft and ships.
 
 Pipeline per L1 granule (one satellite-day, `cygNN.ddmi.sYYYYMMDD-...l1.power-brcs...`):
 1. NASA CMR search (no key) -> the granule's OPeNDAP URL on an allowed host.
 2. OPeNDAP DAP4 subset of five variables only (~8 MB instead of the ~1.15 GB file), keyed with
-   EARTHDATA_TOKEN in the Authorization header (ADR-004: no token -> no request, needs_key).
+   EARTHDATA_TOKEN in the Authorization header (no token -> no request, needs_key).
 3. `reduce_arrays`: drop invalid DDMs (black body, test pattern, idle channel, CRC/reconfig);
    normalise each DDM channel by its own **open-ocean median of the whole day** (removes per-
    satellite gain/temperature differences); per H3 cell inside `bbox`: n, median excess dB, open-
    ocean count, rfi_detected count. The small reduction is cached as JSON, the subset deleted
-   (ADR-007 s2: rasters are reduced, never stored).
+   ( s2: rasters are reduced, never stored).
 4. `merge_day` combines the satellites of one UTC day (n-weighted); `baseline` attaches the
    cell's own trailing median/MAD over earlier cached days. One event per cell-day, id
    `cygnss|YYYY-MM-DD|cell`; a late granule re-emits that day with the same ids (upsert).

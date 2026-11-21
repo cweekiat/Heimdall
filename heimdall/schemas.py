@@ -1,6 +1,6 @@
 """Cross-module data contracts. Every module talks through these types.
 
-Agents: read this file instead of other modules' internals. Changing a contract requires an ADR.
+Contributors: read this file instead of other modules' internals.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ class Domain(StrEnum):
     SPACE = "space"
     CYBER = "cyber"
     EVENTS = "events"
-    SPECTRUM = "spectrum"  # RF receiver networks: HF spots, satellite RF/RFI (ADR-008)
+    SPECTRUM = "spectrum"  # RF receiver networks: HF spots, satellite RF/RFI
 
 
 class SourceReliability(StrEnum):
@@ -34,7 +34,7 @@ class SourceReliability(StrEnum):
 
 
 class Band(StrEnum):
-    """RF band an alert concerns: the AFFECTED band, not the observing one (ADR-008 s.3).
+    """RF band an alert concerns: the AFFECTED band, not the observing one.
 
     HF 3-30 MHz; VHF_MARINE 156-162 MHz (AIS/marine VHF); L_1090 1090 MHz (ADS-B);
     L1_GNSS 1559-1610 MHz (GPS L1/Galileo E1/GLONASS G1/BeiDou B1); L_1400 1400-1427 MHz
@@ -66,10 +66,10 @@ class AlertKind(StrEnum):
     AIS_SPOOFING = "ais_spoofing"
     AIS_GAP = "ais_gap"
     THERMAL = "thermal"
-    OUTAGE = "outage"  # legacy (027, ADR-008): nothing produces it; kept so stored alerts load
+    OUTAGE = "outage"  # legacy: nothing produces it; kept so stored alerts load
     EVENT_SURGE = "event_surge"
     WARNING_AREA = "warning_area"
-    SPECTRUM_ANOMALY = "spectrum_anomaly"  # 034: band indicator far from its baseline (ADR-008)
+    SPECTRUM_ANOMALY = "spectrum_anomaly"  # 034: band indicator far from its baseline
     MIL_DEPLOYMENT = "mil_deployment"  # 039: strategic aircraft flowing into a theatre
     MIL_SURGE = "mil_surge"  # 039: role presence far above its own baseline
     MIL_HIGH_INTEREST = "mil_high_interest"  # 039: bombers, command posts, heads of state airborne
@@ -78,7 +78,7 @@ class AlertKind(StrEnum):
 
 
 class AlertStatus(StrEnum):
-    """Triage lifecycle (ISA-18.2-style): acknowledge is separate from resolve (ADR-003)."""
+    """Triage lifecycle (ISA-18.2-style): acknowledge is separate from resolve."""
 
     NEW = "new"
     ACKNOWLEDGED = "acknowledged"  # seen by an analyst; still active
@@ -200,7 +200,7 @@ class Coverage(BaseModel):
 
 
 class RfEffect(BaseModel):
-    """One measured effect on a victim receiver population in a band (ADR-008)."""
+    """One measured effect on a victim receiver population in a band."""
 
     band: Band
     sensor: Literal["aircraft", "ship", "hf_station", "radiometer", "gnss_r", "sar", "notice"]
@@ -246,7 +246,7 @@ class Corroboration(BaseModel):
     evidence_id: str
     relation: Literal["supports", "contradicts", "context"]
     note: str
-    # Confidence multiplier this note applies (ADR-007 s.4), in [0, 1]; None for notes that do not
+    # Confidence multiplier this note applies, in [0, 1]; None for notes that do not
     # change confidence. Machine-readable so clients never parse `note` text.
     factor: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -260,7 +260,7 @@ class Admiralty(BaseModel):
 
 
 class AlertSource(BaseModel):
-    """One connector behind an alert (ADR-006): its source family and Admiralty grade."""
+    """One connector behind an alert: its source family and Admiralty grade."""
 
     connector: str  # source key, e.g. 'adsb_lol', 'aisstream', 'nga_msi'
     family: str  # independent source family, e.g. 'adsb', 'ais', 'notice'
@@ -268,7 +268,7 @@ class AlertSource(BaseModel):
 
 
 class Footprint(BaseModel):
-    """What an alert covers: an area cell or a single track (ADR-006)."""
+    """What an alert covers: an area cell or a single track."""
 
     kind: Literal["area_cell", "single_track"]
     description: str
@@ -276,7 +276,7 @@ class Footprint(BaseModel):
 
 class Alert(BaseModel):
     id: str  # dedup key (sha1); `ref` is the human-quotable handle
-    ref: str | None = None  # HMD-YYYYMMDD-NNNN, assigned by the Store on first put (ADR-006)
+    ref: str | None = None  # HMD-YYYYMMDD-NNNN, assigned by the Store on first put
     sources: list[AlertSource] = Field(default_factory=list)
     footprint: Footprint | None = None
     kind: AlertKind
@@ -311,7 +311,7 @@ class Feedback(BaseModel):
 
 
 class AnalystNote(BaseModel):
-    """Analyst journal entry on an alert (ADR-003). Also records status changes and shelving."""
+    """Analyst journal entry on an alert. Also records status changes and shelving."""
 
     id: str  # uuid4 hex
     alert_id: str
@@ -325,7 +325,7 @@ class AnalystNote(BaseModel):
 
 
 class ActionRequest(BaseModel):
-    id: str  # uuid4 hex; primary key (ADR-002)
+    id: str  # uuid4 hex; primary key
     alert_id: str
     action_id: str  # must exist in config/playbook.yaml
     params: dict[str, Any] = Field(default_factory=dict)
@@ -344,13 +344,13 @@ class SourceHealth(BaseModel):
     records_last_hour: int = 0
     error_rate: float = 0.0
     expected_latency_s: int = 0
-    # ADR-004: "needs_key" = env key absent (no requests made); detail names env vars, never values
+    # "needs_key" = env key absent (no requests made); detail names env vars, never values
     status: Literal["ok", "degraded", "down", "needs_key", "disabled"] = "ok"
     detail: str | None = None
 
 
 class SourceState(BaseModel):
-    """Runtime view of one configured source for the Data sources window (012a)."""
+    """Runtime view of one configured source for the Data sources window."""
 
     key: str
     label: str
@@ -367,7 +367,7 @@ class SourceState(BaseModel):
     keys: list[str] = Field(default_factory=list)  # API key names this source can use
 
 
-# ADR-006: API keys the UI may set (write-only). Maps key name -> connector key in sources.yaml.
+# API keys the UI may set (write-only). Maps key name -> connector key in sources.yaml.
 KEY_CONNECTORS: dict[str, str] = dict(
     [
         ("AISSTREAM_KEY", "aisstream"),
@@ -404,7 +404,7 @@ class KeyStatus(BaseModel):
     origin: Literal["store", "env"] | None = None
 
 
-# ---------------------------------------------------------------- user-drawn areas (task 015)
+# ---------------------------------------------------------------- user-drawn areas
 AOI_NAME_PATTERN = r"^[A-Za-z0-9_-][A-Za-z0-9 _-]{0,39}$"
 MAX_USER_AOIS = 20
 MAX_POLYGON_SPAN_DEG = 10.0

@@ -43,7 +43,7 @@ def num(v: Any) -> float | None:
 
 
 class PollConnector:
-    """Subclasses set `domain` and implement `units()`; `token_name` set => keyed (ADR-004)."""
+    """Subclasses set `domain` and implement `units()`; `token_name` set => keyed."""
 
     domain: Domain
     token_name: str | None = None

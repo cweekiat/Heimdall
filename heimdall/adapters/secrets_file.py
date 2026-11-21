@@ -1,4 +1,4 @@
-"""File-backed SecretStore (ADR-006): `data/secrets/keys.json`, mode 0600, dir 0700.
+"""File-backed SecretStore: `data/secrets/keys.json`, mode 0600, dir 0700.
 
 Store wins over the environment; the environment is the fallback. `.env` is never read.
 Values are never logged. No encryption at rest (out of scope).

@@ -1,4 +1,4 @@
-"""ADR-008 spectrum connectors: WSPR, PSK Reporter, SatNOGS, Sentinel-1 RFI, SMAP (offline).
+"""spectrum connectors: WSPR, PSK Reporter, SatNOGS, Sentinel-1 RFI, SMAP (offline).
 
 Fixtures were recorded from the live APIs on 2026-10-01 and trimmed.
 """

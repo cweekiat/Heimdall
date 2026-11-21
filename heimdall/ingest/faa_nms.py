@@ -1,6 +1,6 @@
 """FAA NOTAM Management Service (NMS) -> area GeoEvents (domain air, kind notam).
 
-Keyed (ADR-004): OAuth client credentials from FAA_NMS_KEY + FAA_NMS_SECRET, read once at
+Keyed: OAuth client credentials from FAA_NMS_KEY + FAA_NMS_SECRET, read once at
 construction. Either absent -> status needs_key, no request is ever made. Endpoint paths are
 configurable (config/warnings.yaml) because FAA access is by approval and paths are unverified.
 NOTAM text is untrusted data.

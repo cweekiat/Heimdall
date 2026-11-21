@@ -1,4 +1,4 @@
-"""P6 (045): HF path-midpoint anomaly detector, X-ray flare confounder, pipeline cache."""
+"""P6: HF path-midpoint anomaly detector, X-ray flare confounder, pipeline cache."""
 
 from __future__ import annotations
 

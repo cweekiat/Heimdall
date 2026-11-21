@@ -25,7 +25,7 @@ class AOI(BaseModel):
     label: str | None = None  # display name for the UI
     # per-AOI detector overrides merged over `detectors` (e.g. a sparse-traffic jamming profile)
     detectors: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    # task 015: user-drawn areas. A polygon AOI keeps its bounding circle in lat/lon/radius_nm
+    # user-drawn areas. A polygon AOI keeps its bounding circle in lat/lon/radius_nm
     # (what connectors poll) and the exact ring here as (lat, lon) vertices for filtering.
     origin: Literal["config", "user"] = "config"
     polygon: list[tuple[float, float]] | None = None
@@ -73,7 +73,7 @@ class UiCfg(BaseModel):
 
 
 class LlmCfg(BaseModel):
-    """Local language model for shift briefs (task 044). Loopback URLs only (no egress)."""
+    """Local language model for shift briefs. Loopback URLs only (no egress)."""
 
     enabled: bool = True
     url: str = "http://127.0.0.1:11434"  # Ollama
@@ -139,7 +139,7 @@ def playbook() -> dict[str, Any]:
 
 
 def secret(name: str) -> str | None:
-    """Read a secret from the SecretStore (data/secrets), falling back to env (ADR-006)."""
+    """Read a secret from the SecretStore (data/secrets), falling back to env."""
     from heimdall.adapters.secrets_file import default_store
 
     return default_store().get(name)

@@ -538,7 +538,7 @@ def build_notice_event(
     res: int = 4,
     cap: int = 2000,
 ) -> GeoEvent:
-    """One area GeoEvent per ADR-005 section A. Text is sanitized; only `ref` etc. are trusted."""
+    """One area GeoEvent. Text is sanitized; only `ref` etc. are trusted."""
     text = sanitize(raw_text, html=html)
     if geometry is None:
         geometry, ps = parse_shape(text)

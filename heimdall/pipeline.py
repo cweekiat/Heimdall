@@ -165,10 +165,10 @@ log = get_logger("heimdall.pipeline")
 
 @dataclass
 class P3Windows:
-    """Event windows for the P3 detectors (ADR-007), shared by all AOIs of one tick."""
+    """Event windows for the P3 detectors, shared by all AOIs of one tick."""
 
     thermal: Sequence[GeoEvent] = ()  # detector window + baseline history in one list
-    context: Sequence[GeoEvent] = ()  # confounders/observability for fusion (ADR-007, task 022b)
+    context: Sequence[GeoEvent] = ()  # confounders/observability for fusion
 
 
 def events_window(
@@ -593,7 +593,7 @@ def run_aoi(
         notices=events,
         context_events=p3.context if p3 is not None else None,
         control=aoi.role == "control",
-        own=lambda k: k not in MIL_KINDS,  # task 039: theatre alerts are fused by military_step
+        own=lambda k: k not in MIL_KINDS,  # theatre alerts are fused by military_step
     )
     res.evidence, res.alerts = evs, alerts
     return res
@@ -666,7 +666,7 @@ def fuse_and_store(
         store.upsert_evidence(e)
     written: list[Alert] = []
     for a in alerts:
-        # ADR-003: re-read immediately before upsert; never overwrite analyst-owned fields
+        # re-read immediately before upsert; never overwrite analyst-owned fields
         merged = apply_evidence_update(store.get_alert(a.id), a, expire_before=now - clear_gap)
         store.upsert_alert(merged)
         written.append(merged)
