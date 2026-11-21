@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 84 1200 516" width="1200" height="516" role="img" aria-labelledby="t d" font-family="-apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="t">Heimdall architecture</title>
+  <desc id="d">Free receivers in each radio band feed connectors. Everything is written to a Parquet lake and a DuckDB hot store. Explainable detectors produce evidence, natural explanations are ruled out, cross-band fusion grades alerts, and the analyst console shows them.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#58a6ff"/></marker>
+    <style>
+      .bg{fill:#0b1016}.card{fill:#121a23;stroke:#2a3745;stroke-width:1.2}.card2{fill:#18222d;stroke:#2a3745}
+      .h{fill:#e6edf3;font-size:17px;font-weight:600}.k{fill:#9fb0c0;font-size:11px;font-weight:600;letter-spacing:.12em}
+      .b{fill:#e6edf3;font-size:13.5px}.m{fill:#9fb0c0;font-size:12.5px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;fill:#9fb0c0}
+      .flow{stroke:#58a6ff;stroke-width:2;fill:none}
+    </style>
+  </defs>
+  <rect class="bg" y="84" width="1200" height="516" rx="16"/>
+
+  <!-- 1 receivers -->
+  <rect class="card" x="40" y="104" width="250" height="456" rx="12"/>
+  <text x="58" y="132" class="k">1 · RECEIVERS BY BAND</text>
+  <g class="b">
+    <rect x="56" y="148" width="4" height="40" rx="2" fill="#f85149"/><text x="70" y="164">HF 3–30 MHz</text><text x="70" y="182" class="m">WSPR · PSK Reporter</text>
+    <rect x="56" y="200" width="4" height="40" rx="2" fill="#3fb950"/><text x="70" y="216">VHF marine 162 MHz</text><text x="70" y="234" class="m">Ship AIS</text>
+    <rect x="56" y="252" width="4" height="40" rx="2" fill="#3fb950"/><text x="70" y="268">L 1090 MHz</text><text x="70" y="286" class="m">ADS-B: adsb.lol · adsb.fi · OpenSky</text>
+    <rect x="56" y="304" width="4" height="40" rx="2" fill="#d29922"/><text x="70" y="320">GNSS L1 1575 MHz</text><text x="70" y="338" class="m">Aircraft NIC / NACp integrity</text>
+    <rect x="56" y="356" width="4" height="40" rx="2" fill="#3fb950"/><text x="70" y="372">L 1.4 GHz from orbit</text><text x="70" y="390" class="m">SMAP · CYGNSS</text>
+    <rect x="56" y="408" width="4" height="40" rx="2" fill="#f85149"/><text x="70" y="424">C-band SAR 5.4 GHz</text><text x="70" y="442" class="m">Sentinel-1 RFI annotations</text>
+  </g>
+  <line x1="56" y1="466" x2="274" y2="466" stroke="#2a3745"/>
+  <text x="56" y="488" class="k">CONTEXT</text>
+  <text x="56" y="508" class="m">NOTAMs · NGA warnings · space weather</text>
+  <text x="56" y="526" class="m">Open-Meteo · FIRMS · CelesTrak · GDELT</text>
+  <text x="56" y="544" class="m">All free and open data</text>
+
+  <!-- 2 store -->
+  <rect class="card" x="330" y="104" width="190" height="456" rx="12"/>
+  <text x="348" y="132" class="k">2 · INGEST + STORE</text>
+  <rect class="card2" x="346" y="148" width="158" height="78" rx="8"/><text x="360" y="172" class="b">Connectors</text><text x="360" y="192" class="m">poll / stream, health,</text><text x="360" y="210" class="m">key gating</text>
+  <rect class="card2" x="346" y="244" width="158" height="96" rx="8"/><text x="360" y="268" class="b">Parquet lake</text><text x="360" y="288" class="m">the source of truth,</text><text x="360" y="306" class="m">partitioned by date</text><text x="360" y="324" class="mono">data/lake/…</text>
+  <rect class="card2" x="346" y="358" width="158" height="96" rx="8"/><text x="360" y="382" class="b">DuckDB hot store</text><text x="360" y="402" class="m">rebuildable, hours</text><text x="360" y="420" class="m">of recent data</text><text x="360" y="438" class="mono">H3 r4/r6 + UTC</text>
+  <text x="346" y="500" class="m">Ports and adapters:</text><text x="346" y="518" class="m">swap DuckDB for a</text><text x="346" y="536" class="m">server store later</text>
+
+  <!-- 3 detect -->
+  <rect class="card" x="560" y="104" width="230" height="456" rx="12"/>
+  <text x="578" y="132" class="k">3 · DETECT</text>
+  <text x="578" y="160" class="b">Explainable detectors</text>
+  <text x="578" y="180" class="m">GNSS jamming + emitter fit</text>
+  <text x="578" y="198" class="m">GNSS / AIS spoofing</text>
+  <text x="578" y="216" class="m">HF path and receiver fades</text>
+  <text x="578" y="234" class="m">L-band noise from orbit</text>
+  <text x="578" y="252" class="m">Military surge and build-up</text>
+  <rect class="card2" x="576" y="272" width="198" height="132" rx="8"/>
+  <text x="590" y="296" class="b">Evidence</text>
+  <text x="590" y="316" class="m">rules that fired</text>
+  <text x="590" y="334" class="m">values vs thresholds</text>
+  <text x="590" y="352" class="m">and baselines</text>
+  <text x="590" y="370" class="m">record ids</text>
+  <text x="590" y="388" class="m">counterfactual</text>
+  <text x="578" y="432" class="k">RULED OUT FIRST</text>
+  <text x="578" y="452" class="m">geomagnetic storms, flares,</text>
+  <text x="578" y="470" class="m">ducting, propagation,</text>
+  <text x="578" y="488" class="m">feed outages, coverage gaps</text>
+  <text x="578" y="524" class="m">No alert without evidence.</text><text x="578" y="542" class="m">ML may only re-rank.</text>
+
+  <!-- 4 fuse -->
+  <rect class="card" x="830" y="104" width="150" height="456" rx="12"/>
+  <text x="848" y="132" class="k">4 · FUSE</text>
+  <text x="848" y="160" class="b">Cross-band</text><text x="848" y="180" class="b">fusion</text>
+  <text x="848" y="208" class="m">persists ≥ 2</text><text x="848" y="226" class="m">windows</text>
+  <text x="848" y="254" class="m">baseline-relative</text>
+  <text x="848" y="282" class="m">coverage-aware</text><text x="848" y="300" class="m">confidence</text>
+  <rect class="card2" x="846" y="322" width="118" height="70" rx="8"/>
+  <text x="858" y="346" class="b">Admiralty</text><text x="858" y="366" class="mono">A–F × 1–6</text><text x="858" y="384" class="m">grade</text>
+  <text x="848" y="430" class="m">Single band:</text><text x="848" y="448" class="m">medium at most.</text>
+  <text x="848" y="476" class="m">"Uncorroborated",</text><text x="848" y="494" class="m">never "false".</text>
+
+  <!-- 5 console -->
+  <rect class="card" x="1020" y="104" width="140" height="456" rx="12"/>
+  <text x="1036" y="132" class="k">5 · ANALYST</text>
+  <text x="1036" y="160" class="b">Console</text>
+  <text x="1036" y="188" class="m">live map, 2D / 3D</text>
+  <text x="1036" y="206" class="m">alert board</text>
+  <text x="1036" y="224" class="m">triage workflow</text>
+  <text x="1036" y="242" class="m">evidence view</text>
+  <text x="1036" y="270" class="m">daily SITREP</text>
+  <text x="1036" y="288" class="m">shift brief by a</text><text x="1036" y="306" class="m">local model</text>
+  <text x="1036" y="334" class="m">feedback tuning</text>
+  <rect x="1034" y="360" width="112" height="28" rx="6" fill="#f85149" opacity=".16" stroke="#f85149"/>
+  <text x="1046" y="379" style="fill:#f85149;font-size:12px;font-weight:600">▲ CRITICAL</text>
+  <text x="1036" y="430" class="m">Runs on your</text><text x="1036" y="448" class="m">machine, bound</text><text x="1036" y="466" class="m">to 127.0.0.1</text>
+
+  <path class="flow" d="M290 332H326" marker-end="url(#a)"/>
+  <path class="flow" d="M520 332H556" marker-end="url(#a)"/>
+  <path class="flow" d="M790 332H826" marker-end="url(#a)"/>
+  <path class="flow" d="M980 332H1016" marker-end="url(#a)"/>
+</svg>
