@@ -1,10 +1,41 @@
+<div align="center">
+
+<img src="docs/media/icon.svg" width="72" alt="">
+
 # Heimdall
 
-**Multi-band RF / electronic-warfare surveillance engine built on free, open data, Southeast Asia first.**
+**RF and electronic-warfare watch on free, open data. Southeast Asia first.**
+
+[![ci](https://github.com/cweekiat/Heimdall/actions/workflows/ci.yml/badge.svg)](https://github.com/cweekiat/Heimdall/actions/workflows/ci.yml)
+&nbsp;[Project page](https://cweekiat.github.io/Heimdall/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [How it was built](#how-it-was-built)
+
+<img src="docs/media/tour.gif" width="800" alt="Tour of the Heimdall console: GPS jamming alerts on the map, the evidence behind one alert, data layers and the 3D globe.">
+
+</div>
 
 Heimdall watches receivers that already listen to the spectrum, such as aircraft and ship transponders, amateur HF
-stations and satellites. It infers interference and emitters from how those receivers degrade, and raises
-**explainable, cross-checked alerts**:
+stations and satellites. It infers interference and emitters from how those receivers degrade, rules out natural
+explanations, and raises **explainable, cross-checked alerts**. It runs entirely on your own machine: there is no
+hosted service, so clone it and run it ([ADR-010](docs/decisions/ADR-010-local-only-distribution.md)).
+
+## Quick start
+
+The demo uses synthetic data and needs no API keys and no network. You need macOS or Linux, Python 3.12 with
+[uv](https://docs.astral.sh/uv/), and Node.js 20+.
+
+```bash
+git clone https://github.com/cweekiat/Heimdall.git && cd Heimdall
+uv sync
+cd web && npm ci && npm run build && cd ..
+uv run python -m heimdall.api.demo          # then open http://127.0.0.1:8000
+```
+
+Live monitoring, the offline basemap and optional API keys are covered in [Install](#1-install) and [Run](#2-run).
+
+## The band ladder
+
+No free source measures the spectrum directly, so each band is covered by receivers whose degradation Heimdall can
+observe. Each detector states its coverage and the natural explanations it rules out first.
 
 | Band | What Heimdall watches | Status |
 |---|---|---|
@@ -16,16 +47,43 @@ stations and satellites. It infers interference and emitters from how those rece
 | HF 3–30 MHz | WSPR and PSK Reporter spots at path midpoints: **HF fade** far below the usual for that time of day (flares, storms and feed drops ruled out); SatNOGS satellite passes | experimental |
 
 Official notices (FAA NOTAMs, NGA navigational warnings) corroborate alerts. Space weather and weather are checked as
-natural explanations. NASA FIRMS fire data verifies physical events.
+natural explanations. NASA FIRMS fire data verifies physical events. Emitter types are never attributed automatically.
 
-It covers these areas of interest: Myanmar, the South China Sea, the Taiwan/Luzon Strait and the
-Malacca/Singapore Strait. The **Baltic** is a calibration control. The results appear in a
-C4I-style analyst console with a live operational map, an alert board, evidence, and a triage
-workflow.
+Areas of interest: Myanmar, the South China Sea, the Taiwan/Luzon Strait and the Malacca/Singapore Strait, with the
+**Baltic** as a calibration control. Analysts can also draw their own areas.
 
-> Status: **P3 done (v0.3.0); v0.3.1 is the pre-pivot baseline. P4 (spectrum core) is next.** The pivot is recorded in
-> [ADR-008](docs/decisions/ADR-008-rf-spectrum-pivot.md), the plan in [docs/roadmap-rf.md](docs/roadmap-rf.md).
-> See [CLAUDE.md](CLAUDE.md) for the phase table and [docs/CHANGELOG.md](docs/CHANGELOG.md) for history.
+## How it works
+
+<img src="docs/media/architecture.svg" width="100%" alt="Pipeline in five steps. 1, receivers by band plus context sources. 2, connectors write to a Parquet lake, the source of truth, and a DuckDB hot store. 3, explainable detectors produce evidence after ruling out storms, flares, ducting and coverage gaps. 4, cross-band fusion with persistence, baselines and an Admiralty grade. 5, the analyst console on your machine.">
+
+Every alert opens to its evidence: the rules that fired, each value next to its threshold and its normal level, the
+records behind it and what would have to change for it not to fire. Missing evidence reads "Uncorroborated", never
+"False". Analysts acknowledge, confirm, close as a false alarm or shelve, and their verdicts feed threshold proposals.
+
+<img src="docs/media/alert-details.jpg" width="800" alt="Alert details for GPS jamming over the South China Sea: next steps, position, sources, affected aircraft, estimated emitter location, confidence lowered for a geomagnetic storm, and why it was flagged with each value next to its threshold.">
+
+| 3D globe and satellites | Layers per band |
+|---|---|
+| <img src="docs/media/globe.jpg" alt="3D globe with satellite ground tracks and alert rings."> | <img src="docs/media/layers.jpg" alt="Filters window with traffic and spectrum layers, including the GPS interference map and estimated jammer locations."> |
+
+### A real case: Operation Midnight Hammer (16–22 June 2025)
+
+Replayed from public ADS-B archives. Of seven indicators in public reporting, five were visible in open data, and
+Heimdall raised surge, deployment and build-up alerts on its own. The B-2 bombers flew without broadcasting and stay
+invisible. Indicators show preparation, never a target or a strike. To try it, build the replay once from the public
+archives ([docs/demo-midnight-hammer.md](docs/demo-midnight-hammer.md)), then open **Demo** (key `p`) in the console.
+
+<img src="docs/media/midnight-hammer.gif" width="800" alt="The Demo window stepping through seven indicators of Operation Midnight Hammer while the map moves to the aircraft behind each one.">
+
+## How it was built
+
+<img src="docs/media/build-timeline.svg" width="100%" alt="Phases P0 to P7 from 30 September to 4 October 2026, then the open-source release. Every task goes from architect to engineers to QA verifier to reviewer to scribe.">
+
+Heimdall was built by a team of Claude Code agents in eight phases. An architect wrote each spec and design decision,
+engineers built in parallel, then a QA verifier, a reviewer, a security analyst and a scribe checked and documented
+the work. Everything is in the repository: [task specs](docs/tasks), [design decisions](docs/decisions),
+[agents](.claude/agents), [guardrails](docs/guardrails.md) and the [changelog](docs/CHANGELOG.md). See
+[Agent engineering team](#agent-engineering-team) for how to run an agent.
 
 ---
 
@@ -34,7 +92,7 @@ workflow.
 **Requirements:** macOS or Linux, Python 3.12, [uv](https://docs.astral.sh/uv/), and Node.js 20+ (for the web UI). Docker is optional.
 
 ```bash
-git clone <your-local-path-or-remote> Heimdall && cd Heimdall
+git clone https://github.com/cweekiat/Heimdall.git && cd Heimdall
 uv sync                       # Python deps (creates .venv)
 cd web && npm ci && npm run build && cd ..   # builds web/dist, served by the API
 ```
@@ -275,6 +333,7 @@ uv run pytest -q                                          # tests (offline, reco
 uv run ruff check . && uv run ruff format --check .       # lint
 uv run mypy heimdall                                      # types
 cd web && npm run build                                   # UI type-check + bundle
+scripts/build_site.sh _site                               # project page (site/ + docs/media) for GitHub Pages
 ```
 
 **Architecture:** ports and adapters (Bus, Store, Lake, Connector). Detectors are pure Python and
@@ -300,7 +359,7 @@ your permission. See [docs/guardrails.md](docs/guardrails.md).
 | Phase | Scope |
 |---|---|
 | P1–P3 (done) | ADS-B and AIS ingest, jamming/spoofing/orbit/AIS detectors, notices, fusion with Admiralty grading, FIRMS, weather, space weather, Sentinel-1 footprints and passes, global traffic, C4I console |
-| P4 | Spectrum core: remove non-RF sources, band on every alert, jammer localisation, AIS circle spoofing, ship-to-ship transfers, interference notices, band ladder UI, GPSJam-style daily map |
+| P4 (done except 029b/029c) | Spectrum core: remove non-RF sources, band on every alert, jammer localisation, AIS circle spoofing, ship-to-ship transfers, interference notices, band ladder UI, GPSJam-style daily map |
 | P5 (done) | Space RF: CYGNSS GNSS interference from orbit, SMAP, Sentinel-1 interference annotations |
 | Military (039) | Worldwide military aircraft (readsb `/v2/mil`), plane-alert-db identities, deployment / surge / high-interest / build-up indicators per theatre |
 | P6 (done) | HF: WSPR and PSK Reporter path-midpoint and receiver-cell detectors with flare/storm explain-away (KiwiSDR directory blocked) |

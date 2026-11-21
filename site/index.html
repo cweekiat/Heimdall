@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Heimdall · RF and electronic-warfare watch on open data</title>
+  <meta name="description" content="Heimdall watches the receivers that already listen to the radio spectrum, such as aircraft, ships, amateur radio and satellites, and raises explainable, cross-checked alerts for GNSS jamming, spoofing and interference. Free, open data. Runs on your machine.">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0b1016" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)">
+  <meta property="og:title" content="Heimdall: RF and electronic-warfare watch on open data">
+  <meta property="og:description" content="Explainable GNSS jamming, spoofing and interference alerts from free, open receivers. Clone it and run it on your machine.">
+  <meta property="og:image" content="media/overview.jpg">
+  <link rel="icon" href="media/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="bar">
+    <nav class="wrap nav" aria-label="Main">
+      <a class="brand" href="#top" aria-label="Heimdall, top of page">HEIMDALL</a>
+      <ul class="links">
+        <li><a href="#bands">Bands</a></li>
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#case">Real case</a></li>
+        <li><a href="#build">Build</a></li>
+        <li><a href="#start">Get started</a></li>
+      </ul>
+      <a class="btn btn-quiet gh" href="https://github.com/cweekiat/Heimdall">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="kicker">RF and electronic-warfare watch · free, open data</p>
+          <h1>See interference through the receivers it disturbs.</h1>
+          <p class="lead">Heimdall reads signals that aircraft, ships, amateur radio stations and satellites already
+            broadcast. It looks for the ways those receivers degrade, rules out natural explanations, and raises alerts
+            you can check line by line. Southeast Asia first.</p>
+          <div class="actions">
+            <a class="btn btn-primary" href="#start">Get Started</a>
+            <a class="btn btn-quiet" href="https://github.com/cweekiat/Heimdall#readme">Read the Docs</a>
+          </div>
+          <p class="note">No server, no account. Clone it and run it on your own machine.</p>
+        </div>
+        <figure class="window hero-media">
+          <div class="win-title" aria-hidden="true"><span class="dot"></span>Live map · alert details · layers · 3D globe</div>
+          <video class="motion" muted loop playsinline controls preload="metadata" poster="media/overview.jpg"
+                 width="800" height="600" aria-label="Tour of the Heimdall console: GPS jamming alerts on the map, the evidence behind one alert, data layers and the 3D globe">
+            <source src="media/tour.mp4" type="video/mp4">
+          </video>
+          <figcaption>Synthetic demo data. Every alert opens to the rules, values and records behind it.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="bands" class="section" aria-labelledby="bands-h">
+      <div class="wrap">
+        <p class="kicker">The band ladder</p>
+        <h2 id="bands-h">One watch, from HF to C-band.</h2>
+        <p class="sub">No free source measures the spectrum directly. Each band is covered by receivers whose
+          degradation can be observed. Every detector states its coverage and what it rules out first.</p>
+        <ol class="ladder">
+          <li style="--c: var(--bad)"><span class="freq">3–30 MHz</span><span class="band">HF</span><span class="what">WSPR and PSK Reporter spots: path fades far below the usual for that hour</span><span class="tag exp">Experimental</span></li>
+          <li style="--c: var(--ok)"><span class="freq">156–162 MHz</span><span class="band">VHF marine</span><span class="what">Ship AIS: spoofed positions, impossible speeds, dark gaps</span><span class="tag">Live</span></li>
+          <li style="--c: var(--ok)"><span class="freq">1090 MHz</span><span class="band">L 1090</span><span class="what">Aircraft ADS-B from adsb.lol, adsb.fi and OpenSky</span><span class="tag">Live</span></li>
+          <li style="--c: var(--warn)"><span class="freq">1559–1610 MHz</span><span class="band">GNSS L1</span><span class="what">Aircraft position integrity: jamming cells with an emitter estimate, spoofing, a daily interference map</span><span class="tag">Live</span></li>
+          <li style="--c: var(--ok)"><span class="freq">1400–1427 MHz</span><span class="band">L 1.4 GHz</span><span class="what">SMAP interference flags and the CYGNSS noise floor, seen from orbit</span><span class="tag">Live</span></li>
+          <li style="--c: var(--bad)"><span class="freq">~5.4 GHz</span><span class="band">C-band SAR</span><span class="what">Sentinel-1 radar interference annotations</span><span class="tag exp">Connector live</span></li>
+        </ol>
+        <p class="fine">Context, never alerts on its own: FAA NOTAMs, NGA navigational warnings, space weather, weather,
+          NASA FIRMS fires, CelesTrak orbits and GDELT. Emitter types are never attributed automatically.</p>
+      </div>
+    </section>
+
+    <section id="how" class="section alt" aria-labelledby="how-h">
+      <div class="wrap">
+        <p class="kicker">How it works</p>
+        <h2 id="how-h">Watch the receivers. Explain every alert.</h2>
+        <figure class="diagram">
+          <img src="media/architecture.svg" width="1200" height="516" loading="lazy"
+               alt="Pipeline in five steps. 1, receivers by band: HF, VHF marine, L 1090, GNSS L1, L 1.4 GHz from orbit and C-band SAR, plus context sources. 2, connectors write to a Parquet lake, the source of truth, and a DuckDB hot store. 3, explainable detectors produce evidence after ruling out storms, flares, ducting and coverage gaps. 4, cross-band fusion with persistence, baselines and an Admiralty grade. 5, the analyst console on your machine.">
+        </figure>
+        <div class="split">
+          <figure class="window">
+            <img src="media/alert-details.jpg" width="800" height="600" loading="lazy"
+                 alt="Alert details for GPS jamming over the South China Sea: next steps to check, position, sources, affected aircraft, the estimated emitter location, confidence lowered for a geomagnetic storm, and why it was flagged with each value next to its threshold.">
+          </figure>
+          <div class="points">
+            <h3>Every alert carries its evidence</h3>
+            <dl>
+              <dt>Rules that fired</dt><dd>Each value next to its threshold and its normal level, such as 58 % of aircraft degraded against an alert level of 10 %.</dd>
+              <dt>Natural explanations</dt><dd>Geomagnetic storms, solar flares, ducting and feed outages are checked first and lower confidence when present.</dd>
+              <dt>Cross-checks</dt><dd>Persistence over at least two windows, independent bands and an Admiralty grade. Missing evidence reads "Uncorroborated", never "False".</dd>
+              <dt>Analyst in control</dt><dd>Acknowledge, confirm, close as a false alarm or shelve. Verdicts feed threshold proposals; nothing changes on its own.</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="case" class="section" aria-labelledby="case-h">
+      <div class="wrap split rev">
+        <div class="points">
+          <p class="kicker">Real case, real data</p>
+          <h2 id="case-h">Operation Midnight Hammer, 16–22 June 2025.</h2>
+          <p class="sub">Replayed from public ADS-B archives. Of seven indicators in public reporting, five were
+            visible in open data, and Heimdall raised surge, deployment and build-up alerts on its own.</p>
+          <ul class="checks">
+            <li><span class="dotk ok" aria-hidden="true"></span>Airlift wave across the Atlantic: seen</li>
+            <li><span class="dotk ok" aria-hidden="true"></span>Tanker deployment to Europe: seen</li>
+            <li><span class="dotk ok" aria-hidden="true"></span>Airborne command posts at strike time: seen</li>
+            <li><span class="dotk na" aria-hidden="true"></span>B-2 bombers: not visible, flew without broadcasting</li>
+          </ul>
+          <p class="fine">Indicators show preparation, never a target or a strike.</p>
+        </div>
+        <figure class="window">
+          <div class="win-title" aria-hidden="true"><span class="dot"></span>Demo · step through the case</div>
+          <video class="motion" muted loop playsinline controls preload="metadata" poster="media/midnight-hammer.jpg"
+                 width="800" height="600" aria-label="The Demo window stepping through seven indicators of Operation Midnight Hammer while the map moves to the aircraft behind each one">
+            <source src="media/midnight-hammer.mp4" type="video/mp4">
+          </video>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section alt" aria-labelledby="views-h">
+      <div class="wrap">
+        <p class="kicker">The console</p>
+        <h2 id="views-h">Built for a long shift.</h2>
+        <div class="pair">
+          <figure class="window">
+            <img src="media/globe.jpg" width="800" height="600" loading="lazy"
+                 alt="3D globe with satellite ground tracks, alert rings over Europe and the Middle East, and the RF band panel.">
+            <figcaption>2D map or 3D globe, offline basemap, satellites at altitude.</figcaption>
+          </figure>
+          <figure class="window">
+            <img src="media/layers.jpg" width="800" height="600" loading="lazy"
+                 alt="Filters window listing traffic layers for aircraft, vessels and satellites, and spectrum layers such as the GPS interference map and estimated jammer locations.">
+            <figcaption>Layers per band, a daily GPS interference map and jammer estimates.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="build" class="section" aria-labelledby="build-h">
+      <div class="wrap">
+        <p class="kicker">How it was built</p>
+        <h2 id="build-h">Specified, tested and reviewed, task by task.</h2>
+        <p class="sub">Heimdall was built by an AI agent team in eight phases. An architect wrote each spec,
+          engineers built it in parallel, then a QA verifier, a reviewer, a security analyst and a scribe checked and
+          documented it. Every decision is recorded.</p>
+        <figure class="diagram">
+          <img src="media/build-timeline.svg" width="1200" height="424" loading="lazy"
+               alt="Timeline of phases P0 to P7 from 30 September to 4 October 2026, then the open-source release in November. Every task goes from architect to engineers to QA verifier to reviewer to scribe. 70 task specs, over 290 commits, over 730 offline tests, 10 design decisions.">
+        </figure>
+        <ul class="docs">
+          <li><a href="https://github.com/cweekiat/Heimdall/tree/main/docs/tasks">Task specs</a></li>
+          <li><a href="https://github.com/cweekiat/Heimdall/tree/main/docs/decisions">Design decisions</a></li>
+          <li><a href="https://github.com/cweekiat/Heimdall/tree/main/.claude/agents">Agent team</a></li>
+          <li><a href="https://github.com/cweekiat/Heimdall/blob/main/docs/CHANGELOG.md">Changelog</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="start" class="section alt" aria-labelledby="start-h">
+      <div class="wrap start">
+        <div>
+          <p class="kicker">Get started</p>
+          <h2 id="start-h">Run it on your machine.</h2>
+          <p class="sub">You need macOS or Linux, Python 3.12 with <a href="https://docs.astral.sh/uv/">uv</a>, and
+            Node.js 20 or later. The demo needs no keys and no network.</p>
+          <ol class="steps">
+            <li>Clone the repository and install.</li>
+            <li>Start the demo with synthetic data.</li>
+            <li>Open <span class="mono">http://127.0.0.1:8000</span>.</li>
+          </ol>
+          <p class="fine">For live monitoring, the offline basemap and optional API keys, follow the
+            <a href="https://github.com/cweekiat/Heimdall#1-install">README</a>.</p>
+        </div>
+        <div class="code" role="group" aria-labelledby="code-label">
+          <div class="code-bar"><span id="code-label">Terminal</span><button class="btn btn-small" type="button" data-copy="cmds" aria-describedby="copied">Copy</button></div>
+          <pre id="cmds"><code>git clone https://github.com/cweekiat/Heimdall.git
+cd Heimdall
+uv sync
+cd web &amp;&amp; npm ci &amp;&amp; npm run build &amp;&amp; cd ..
+uv run python -m heimdall.api.demo</code></pre>
+          <p id="copied" class="copied" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="use-h">
+      <div class="wrap"><div class="use">
+        <h2 id="use-h">Use it responsibly</h2>
+        <p>Heimdall is for research and situational awareness on public data. Several sources, such as adsb.fi and some
+          AIS feeds, allow personal, non-commercial use only; check each source's terms before you use its data. Alerts
+          are leads to verify, not conclusions, and the tool never names a culprit or predicts a target.</p>
+      </div></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-grid">
+      <span class="brand small">HEIMDALL</span>
+      <span>Open data, explainable alerts, runs on your machine.</span>
+      <a href="https://github.com/cweekiat/Heimdall">Source on GitHub</a>
+    </div>
+  </footer>
+  <script src="main.js" defer></script>
+</body>
+</html>

@@ -16,3 +16,4 @@ web/dist/
 .claude/settings.local.json
 .claude/state/
 data/secrets/
+_site/
