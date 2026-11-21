@@ -1,7 +1,5 @@
-# CI/CD (task 064, ADR-009).
-#   pull request  -> checks: python, web, security, image build + scan
-#   push to main  -> checks, then publish sha-<commit> images to GHCR, deploy to the dev VM, verify dev
-# Production is deployed only from a version tag (release.yml), which the user pushes.
+# CI (tasks 064, 067): every pull request and push to main runs tests, security scans and a
+# Docker build + scan. Nothing is published or deployed: Heimdall runs on each user's own machine.
 name: ci
 on:
   pull_request:
@@ -98,16 +96,6 @@ jobs:
           tags: heimdall:ci
           cache-from: type=gha,scope=prod
           cache-to: type=gha,scope=prod,mode=max
-      - name: Build edge image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile
-          target: edge
-          load: true
-          tags: heimdall-edge:ci
-          cache-from: type=gha,scope=edge
-          cache-to: type=gha,scope=edge,mode=max
       - name: Build dev image (tests run inside it)
         uses: docker/build-push-action@v6
         with:
@@ -121,7 +109,7 @@ jobs:
       - name: Container smoke test (prod image starts, runs as non-root, read-only)
         run: |
           docker run -d --name hm --read-only --tmpfs /tmp --cap-drop ALL \
-            --security-opt no-new-privileges -e HEIMDALL_AUTH=none heimdall:ci \
+            --security-opt no-new-privileges heimdall:ci \
             python -c "import uvicorn; from heimdall.api.app import create_app; from heimdall.adapters.memory_store import MemoryStore; uvicorn.run(create_app(MemoryStore()), host='127.0.0.1', port=8000)"
           for i in $(seq 1 30); do
             docker exec hm python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/ready', timeout=2)" && break
@@ -132,96 +120,7 @@ jobs:
           docker rm -f hm
       - name: Scan images (fail on fixable HIGH/CRITICAL)
         run: |
-          for img in heimdall:ci heimdall-edge:ci; do
+          for img in heimdall:ci heimdall-dev:ci; do
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.66.0 \
               image --quiet --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 "$img"
           done
-
-  publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [python, web, security, image]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions: {contents: read, packages: write}
-    outputs:
-      tag: ${{ steps.meta.outputs.tag }}
-      repo: ${{ steps.meta.outputs.repo }}
-    steps:
-      - uses: actions/checkout@v4
-        with: {persist-credentials: false}
-      - id: meta
-        run: |
-          echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
-          echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
-      - name: Push prod image (arm64 for the Oracle A1 VMs, amd64 for local use)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile
-          target: prod
-          platforms: linux/arm64,linux/amd64
-          push: true
-          provenance: true
-          sbom: true
-          tags: ${{ steps.meta.outputs.repo }}/heimdall:${{ steps.meta.outputs.tag }}
-          cache-from: type=gha,scope=prod-multi
-          cache-to: type=gha,scope=prod-multi,mode=max
-      - name: Push edge image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile
-          target: edge
-          platforms: linux/arm64,linux/amd64
-          push: true
-          provenance: true
-          sbom: true
-          tags: ${{ steps.meta.outputs.repo }}/heimdall-edge:${{ steps.meta.outputs.tag }}
-          cache-from: type=gha,scope=edge-multi
-          cache-to: type=gha,scope=edge-multi,mode=max
-
-  deploy-dev:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: publish
-    # Self-hosted runner on the dev VM (outbound only; no inbound SSH). Label set in docs/deploy-oracle.md.
-    runs-on: [self-hosted, linux, arm64, heimdall-dev]
-    timeout-minutes: 20
-    permissions: {contents: read, packages: read}
-    concurrency: {group: deploy-dev, cancel-in-progress: false}
-    steps:
-      - uses: actions/checkout@v4
-        with: {persist-credentials: false}
-      - uses: docker/login-action@v3
-        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
-      - run: deploy/scripts/deploy.sh "$TAG"
-        env:
-          TAG: ${{ needs.publish.outputs.tag }}
-          IMAGE_REPO: ${{ needs.publish.outputs.repo }}
-
-  verify-dev:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: deploy-dev
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with: {persist-credentials: false}
-      - uses: astral-sh/setup-uv@v6
-        with: {version: "${{ env.UV_VERSION }}"}
-      - name: Smoke test (sign-in gate, headers, readiness)
-        run: deploy/scripts/smoke.sh "${{ vars.DEV_URL }}"
-      - name: Performance budget (p95 per endpoint)
-        env:
-          HEIMDALL_BENCH_CODE: ${{ secrets.BENCH_CODE }}
-        run: uv run --frozen python scripts/perf_budget.py --base "${{ vars.DEV_URL }}"
-      - name: OWASP ZAP baseline (passive scan)
-        uses: zaproxy/action-baseline@v0.14.0
-        with:
-          target: ${{ vars.DEV_URL }}/login.html
-          rules_file_name: .zap/rules.tsv
-          allow_issue_writing: false
-          fail_action: true

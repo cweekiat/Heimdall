@@ -12,7 +12,6 @@ Install: https://ollama.com, then e.g. `ollama pull qwen2.5:7b-instruct`; config
 from __future__ import annotations
 
 import json
-import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -22,10 +21,6 @@ from urllib.parse import urlsplit
 import httpx
 
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
-# Hosted (ADR-009): Ollama runs as the `ollama` service on the same VM's internal compose network
-# (no published port). A single-label name only resolves inside that network; allowed only in a
-# container deployment (HEIMDALL_ENV set).
-COMPOSE_LLM_HOST = "ollama"
 REF_RE = re.compile(r"HMD-\d{8}-\d{4}")
 
 SYSTEM = (
@@ -54,8 +49,7 @@ class LocalLLM:
         self.model = str(cfg.get("model", "qwen2.5:7b-instruct"))
         self.timeout_s = float(cfg.get("timeout_s", 120))
         host = urlsplit(self.url).hostname or ""
-        same_vm = host == COMPOSE_LLM_HOST and bool(os.environ.get("HEIMDALL_ENV"))
-        if host not in LOOPBACK and not same_vm:
+        if host not in LOOPBACK:
             # local only: never send facts to another machine, whatever the config says
             self.enabled = False
             self.reason = f"refused: {host or 'no host'} is not this machine (local model only)"

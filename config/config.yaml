@@ -28,15 +28,9 @@ brief:
     timeout_s: 120
 
 api:
-  host: 127.0.0.1      # localhost only unless auth is access_code
+  host: 127.0.0.1      # localhost only until auth is enabled
   port: 8000
-  # none = localhost tool. access_code = hosted mode (task 062, ADR-009): every page and API call
-  # needs a session from an access code (scripts/access_codes.py). Env: HEIMDALL_AUTH.
-  auth: none
-  allowed_hosts: []    # public hostnames in hosted mode. Env: HEIMDALL_ALLOWED_HOSTS (comma list)
-  session_days: 7
-  cookie_secure: true  # false only to test hosted mode over plain http on this machine
-  trusted_proxies: ["127.0.0.1", "::1"]  # peers whose CF-Connecting-IP / X-Forwarded-For is believed
+  auth: none           # none | oidc (hosted)
   layers: {max_features: 5000, max_hours: 720}   # UI budget, not a threshold
 
 ui:

@@ -27,7 +27,7 @@ def aois_router(svc: AoiService) -> APIRouter:
 
     @r.post("/api/aois/user")
     async def create(request: Request) -> JSONResponse:
-        if (denied := _guard(request, admin=False)) is not None:
+        if (denied := _guard(request)) is not None:
             return denied
         try:
             body = UserAoiIn.model_validate(await request.json())
@@ -44,7 +44,7 @@ def aois_router(svc: AoiService) -> APIRouter:
 
     @r.patch("/api/aois/user/{uid}")
     async def patch(uid: str, request: Request) -> JSONResponse:
-        if (denied := _guard(request, admin=False)) is not None:
+        if (denied := _guard(request)) is not None:
             return denied
         try:
             body = UserAoiPatch.model_validate(await request.json())
@@ -57,7 +57,7 @@ def aois_router(svc: AoiService) -> APIRouter:
 
     @r.delete("/api/aois/user/{uid}")
     async def delete(uid: str, request: Request) -> JSONResponse:
-        if (denied := _guard(request, admin=False)) is not None:
+        if (denied := _guard(request)) is not None:
             return denied
         if not await svc.delete(uid):
             return _bad(404, "unknown area")

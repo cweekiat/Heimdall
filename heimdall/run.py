@@ -342,7 +342,6 @@ def start_api(
 ) -> Any:
     """Build the in-process API server (ADR-002) if heimdall.api.app is available."""
     try:
-        from heimdall.api.access import gate_from_settings
         from heimdall.api.app import create_app
     except ImportError:
         log.info("api_unavailable", note="heimdall.api.app not importable; running headless")
@@ -362,12 +361,6 @@ def start_api(
             store,
             sources=sources,
             secrets=default_store(),
-            access=gate_from_settings(cfg),
-            allowed_hosts=(
-                [*cfg.api.allowed_hosts, "127.0.0.1", "localhost"]
-                if cfg.api.allowed_hosts
-                else None
-            ),
             aoi_service=aoi_service,
             live=live,
             gnss=gnss,
