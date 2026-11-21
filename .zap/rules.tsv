@@ -1,0 +1,3 @@
+# ZAP baseline rule overrides (task 064): rule-id<TAB>IGNORE|WARN|FAIL<TAB>reason
+10049	IGNORE	Non-storable content: intended (no-cache on the login page)
+10027	WARN	Information disclosure in comments: minified bundles

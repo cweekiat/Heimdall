@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Heimdall · Sign in</title>
+    <link rel="stylesheet" href="/login.css" />
+  </head>
+  <body>
+    <main class="card">
+      <h1>HEIMDALL</h1>
+      <p class="sub">RF and electronic-warfare watch. Invited users only.</p>
+      <form id="f" autocomplete="off" novalidate>
+        <label for="code">Access code</label>
+        <input id="code" name="code" type="password" inputmode="text" autocapitalize="characters"
+               spellcheck="false" maxlength="200" required autofocus />
+        <button type="submit" id="go">Sign in</button>
+        <p id="msg" role="alert" aria-live="assertive"></p>
+      </form>
+      <p class="hint">No code? Ask the person who invited you.</p>
+    </main>
+    <script src="/login.js"></script>
+  </body>
+</html>

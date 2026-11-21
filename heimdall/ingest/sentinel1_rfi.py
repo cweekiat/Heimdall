@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 
 from heimdall.config import AOI, Settings
 from heimdall.geo import bbox_for_radius
+from heimdall.ingest import xmlsafe
 from heimdall.ingest.poll import PollConnector, Unit, parse_dt
 from heimdall.ingest.stac import _centroid
 from heimdall.ports import Connector
@@ -46,10 +47,7 @@ def _f(v: str | None) -> float | None:
 
 def parse_rfi(body: bytes | str, *, max_bytes: int = MAX_BYTES) -> dict[str, Any]:
     """RFI annotation XML -> summary numbers. Raises ValueError if unsafe or not an RFI file."""
-    raw = body.encode() if isinstance(body, str) else body
-    if len(raw) > max_bytes or b"<!DOCTYPE" in raw[:4096].upper() or b"<!ENTITY" in raw:
-        raise ValueError("unsafe or oversized XML")
-    root = ET.fromstring(raw)
+    root = xmlsafe.parse(body, max_bytes)
     if root.tag != "rfi":
         raise ValueError("not an RFI annotation")
     pol = (root.findtext("adsHeader/polarisation") or "").strip().upper()[:2]

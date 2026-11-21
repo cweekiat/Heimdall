@@ -1,13 +1,227 @@
+# CI/CD (task 064, ADR-009).
+#   pull request  -> checks: python, web, security, image build + scan
+#   push to main  -> checks, then publish sha-<commit> images to GHCR, deploy to the dev VM, verify dev
+# Production is deployed only from a version tag (release.yml), which the user pushes.
 name: ci
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_VERSION: "0.12.12"
+
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-      - run: uv sync
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@v6
+        with: {version: "${{ env.UV_VERSION }}", enable-cache: true}
+      - run: uv sync --frozen --python 3.12
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy heimdall
       - run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults: {run: {working-directory: web}}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22", cache: npm, cache-dependency-path: web/package-lock.json}
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: astral-sh/setup-uv@v6
+        with: {version: "${{ env.UV_VERSION }}"}
+      - name: Python dependency audit (known vulnerabilities)
+        run: |
+          uv export --frozen --no-dev --no-emit-project -o "$RUNNER_TEMP/req.txt"
+          uvx pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/req.txt"
+      - name: Web dependency audit (runtime deps, high and above)
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=high
+      - name: Python static analysis (bandit, medium and above; reviewed exceptions carry nosec, 066)
+        run: uvx bandit -q -r heimdall -ll
+      - name: Semgrep (Python, JS, Docker, secrets rules; PRs fail on NEW findings only)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          args=(--metrics=off --config p/python --config p/javascript --config p/dockerfile
+                --config p/secrets --exclude web/dist --exclude tests)
+          if [ -n "$BASE_SHA" ]; then
+            uvx semgrep scan --error --baseline-commit "$BASE_SHA" "${args[@]}"
+          else
+            uvx semgrep scan "${args[@]}"   # main: full report in the log, not blocking
+          fi
+      - name: Secret scan (full history)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 \
+            git /repo --redact --no-banner
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [python, web]
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: docker/setup-buildx-action@v3
+      - name: Build prod image (amd64, for scanning)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: prod
+          load: true
+          tags: heimdall:ci
+          cache-from: type=gha,scope=prod
+          cache-to: type=gha,scope=prod,mode=max
+      - name: Build edge image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: edge
+          load: true
+          tags: heimdall-edge:ci
+          cache-from: type=gha,scope=edge
+          cache-to: type=gha,scope=edge,mode=max
+      - name: Build dev image (tests run inside it)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: dev
+          load: true
+          tags: heimdall-dev:ci
+          cache-from: type=gha,scope=dev
+          cache-to: type=gha,scope=dev,mode=max
+      - name: Container smoke test (prod image starts, runs as non-root, read-only)
+        run: |
+          docker run -d --name hm --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges -e HEIMDALL_AUTH=none heimdall:ci \
+            python -c "import uvicorn; from heimdall.api.app import create_app; from heimdall.adapters.memory_store import MemoryStore; uvicorn.run(create_app(MemoryStore()), host='127.0.0.1', port=8000)"
+          for i in $(seq 1 30); do
+            docker exec hm python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/ready', timeout=2)" && break
+            sleep 2
+          done
+          test "$(docker exec hm id -u)" = "10001"
+          docker exec hm python -c "import urllib.request as u; assert u.urlopen('http://127.0.0.1:8000/api/ready').status == 200"
+          docker rm -f hm
+      - name: Scan images (fail on fixable HIGH/CRITICAL)
+        run: |
+          for img in heimdall:ci heimdall-edge:ci; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.66.0 \
+              image --quiet --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 "$img"
+          done
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [python, web, security, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions: {contents: read, packages: write}
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      repo: ${{ steps.meta.outputs.repo }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: meta
+        run: |
+          echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: Push prod image (arm64 for the Oracle A1 VMs, amd64 for local use)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: prod
+          platforms: linux/arm64,linux/amd64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.repo }}/heimdall:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=prod-multi
+          cache-to: type=gha,scope=prod-multi,mode=max
+      - name: Push edge image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: edge
+          platforms: linux/arm64,linux/amd64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.repo }}/heimdall-edge:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=edge-multi
+          cache-to: type=gha,scope=edge-multi,mode=max
+
+  deploy-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish
+    # Self-hosted runner on the dev VM (outbound only; no inbound SSH). Label set in docs/deploy-oracle.md.
+    runs-on: [self-hosted, linux, arm64, heimdall-dev]
+    timeout-minutes: 20
+    permissions: {contents: read, packages: read}
+    concurrency: {group: deploy-dev, cancel-in-progress: false}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - run: deploy/scripts/deploy.sh "$TAG"
+        env:
+          TAG: ${{ needs.publish.outputs.tag }}
+          IMAGE_REPO: ${{ needs.publish.outputs.repo }}
+
+  verify-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@v6
+        with: {version: "${{ env.UV_VERSION }}"}
+      - name: Smoke test (sign-in gate, headers, readiness)
+        run: deploy/scripts/smoke.sh "${{ vars.DEV_URL }}"
+      - name: Performance budget (p95 per endpoint)
+        env:
+          HEIMDALL_BENCH_CODE: ${{ secrets.BENCH_CODE }}
+        run: uv run --frozen python scripts/perf_budget.py --base "${{ vars.DEV_URL }}"
+      - name: OWASP ZAP baseline (passive scan)
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: ${{ vars.DEV_URL }}/login.html
+          rules_file_name: .zap/rules.tsv
+          allow_issue_writing: false
+          fail_action: true

@@ -93,6 +93,9 @@ _ARROW = {
 }
 
 
+# SQL built with f-strings here (bandit B608, reviewed 066) interpolates only identifiers that are
+# module constants (table/column names from the _Table schemas, fixed filter columns) and lists of
+# "?" placeholders. Every value, including anything that came from a request or a feed, is bound.
 class _Table:
     """Column layout derived from a pydantic model, so schema and insert never drift."""
 
@@ -120,7 +123,7 @@ class _Table:
 
     def insert_sql(self) -> str:
         ph = ", ".join("?" for _ in self.cols)
-        return f"INSERT INTO {self.name} ({', '.join(self.cols)}) VALUES ({ph})"
+        return f"INSERT INTO {self.name} ({', '.join(self.cols)}) VALUES ({ph})"  # nosec B608
 
     def to_row(self, m: BaseModel) -> list[Any]:
         out: list[Any] = []
@@ -311,7 +314,7 @@ class DuckDBStore:
             self._con.register(name, tbl)
             try:
                 cols = ", ".join(t.cols)
-                self._con.execute(f"INSERT INTO {t.name} ({cols}) SELECT {cols} FROM {name}")
+                self._con.execute(f"INSERT INTO {t.name} ({cols}) SELECT {cols} FROM {name}")  # nosec B608
             finally:
                 self._con.unregister(name)
 
@@ -324,7 +327,7 @@ class DuckDBStore:
         extra_params: Sequence[Any] = (),
     ) -> list[Any]:
         sql = (
-            f"SELECT {', '.join(t.cols)} FROM {t.name} WHERE ts >= ? AND ts < ? {extra} ORDER BY ts"
+            f"SELECT {', '.join(t.cols)} FROM {t.name} WHERE ts >= ? AND ts < ? {extra} ORDER BY ts"  # nosec B608
         )
         return self._read_models(t, sql, [_to_db(start), _to_db(end), *extra_params])
 
@@ -394,7 +397,8 @@ class DuckDBStore:
             for t in ("aircraft", "vessels"):
                 # count only: `RETURNING 1` materialised millions of rows in Python
                 r = self._con.execute(
-                    f"DELETE FROM {t} WHERE is_global AND ts < ?", [_to_db(before)]
+                    f"DELETE FROM {t} WHERE is_global AND ts < ?",  # nosec B608
+                    [_to_db(before)],
                 ).fetchall()
                 n += self._count(r)
         return n
@@ -411,7 +415,7 @@ class DuckDBStore:
             ):
                 if cut is None:
                     continue
-                r = self._con.execute(f"DELETE FROM {t} WHERE ts < ?", [_to_db(cut)]).fetchall()
+                r = self._con.execute(f"DELETE FROM {t} WHERE ts < ?", [_to_db(cut)]).fetchall()  # nosec B608
                 n += self._count(r)
         return n
 
@@ -429,7 +433,7 @@ class DuckDBStore:
                 # one set-based delete instead of one statement per id
                 self._con.execute("DELETE FROM events WHERE id IN (SELECT id FROM _batch_events)")
                 cols = ", ".join(_EVT.cols)
-                self._con.execute(f"INSERT INTO events ({cols}) SELECT {cols} FROM _batch_events")
+                self._con.execute(f"INSERT INTO events ({cols}) SELECT {cols} FROM _batch_events")  # nosec B608
                 self._con.unregister("_batch_events")
                 self._con.execute("COMMIT")
             except duckdb.FatalException:
@@ -512,7 +516,8 @@ class DuckDBStore:
         if not ids:
             return []
         rows = self._exec(
-            f"SELECT doc FROM evidence WHERE id IN ({', '.join('?' for _ in ids)})", list(ids)
+            f"SELECT doc FROM evidence WHERE id IN ({', '.join('?' for _ in ids)})",  # nosec B608
+            list(ids),
         )
         found = {e.id: e for e in (Evidence.model_validate_json(r[0]) for r in rows)}
         return [found[i] for i in ids if i in found]
@@ -595,7 +600,8 @@ class DuckDBStore:
             params.append(aoi)
         clause = f"WHERE {' AND '.join(where)}" if where else ""
         rows = self._read(  # API/SSE poll: private cursor, never queued behind the writer
-            f"SELECT doc FROM alerts {clause} ORDER BY last_seen DESC LIMIT ?", [*params, limit]
+            f"SELECT doc FROM alerts {clause} ORDER BY last_seen DESC LIMIT ?",  # nosec B608
+            [*params, limit],
         )
         return [Alert.model_validate_json(r[0]) for r in rows]
 
@@ -678,13 +684,16 @@ class DuckDBStore:
 
     def actions_for(self, alert_id: str) -> list[ActionRequest]:
         rows = self._exec(
-            f"SELECT {self._ACTION_COLS} FROM actions WHERE alert_id = ? ORDER BY ts, id",
+            f"SELECT {self._ACTION_COLS} FROM actions WHERE alert_id = ? ORDER BY ts, id",  # nosec B608
             [alert_id],
         )
         return [self._action(r) for r in rows]
 
     def get_action(self, action_id: str) -> ActionRequest | None:
-        rows = self._exec(f"SELECT {self._ACTION_COLS} FROM actions WHERE id = ?", [action_id])
+        rows = self._exec(
+            f"SELECT {self._ACTION_COLS} FROM actions WHERE id = ?",  # nosec B608
+            [action_id],
+        )
         return self._action(rows[0]) if rows else None
 
     # ------------------------------------------------------------------ baselines

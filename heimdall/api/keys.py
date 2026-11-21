@@ -27,10 +27,16 @@ def _bad(status: int, msg: str) -> JSONResponse:
     return JSONResponse({"detail": msg}, status_code=status)
 
 
-def _guard(request: Request) -> JSONResponse | None:
-    client = request.client.host if request.client else None
-    if client not in LOCAL_CLIENTS:
-        return _bad(403, "local client required")
+def _guard(request: Request, admin: bool = True) -> JSONResponse | None:
+    """Write guard. Hosted mode (062): a signed-in session (admin for keys) replaces the
+    loopback check, which a same-host reverse proxy would satisfy for every visitor."""
+    if getattr(request.state, "auth_enabled", False):
+        if admin and not getattr(request.state, "admin", False):
+            return _bad(403, "admin access code required")
+    else:
+        client = request.client.host if request.client else None
+        if client not in LOCAL_CLIENTS:
+            return _bad(403, "local client required")
     origin = request.headers.get("origin")
     if origin is None or urlsplit(origin).netloc != request.headers.get("host"):
         return _bad(403, "matching origin required")

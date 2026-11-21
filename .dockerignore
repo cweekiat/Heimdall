@@ -1,0 +1,20 @@
+# Never send data, secrets or local tooling to the Docker daemon (task 063).
+.git
+.github
+.claude
+.venv
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+data
+reports
+docs
+web/node_modules
+web/dist
+deploy/*.env
+*.duckdb
+*.duckdb.wal

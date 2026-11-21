@@ -1,0 +1,12 @@
+# Run the production images on this machine, as hosted (access codes) but over plain http:
+#   docker compose -f deploy/compose.yml -f deploy/compose.local.yml up --build
+#   docker compose -f deploy/compose.yml -f deploy/compose.local.yml exec heimdall \
+#     python scripts/access_codes.py add yourname --admin
+# Then open http://127.0.0.1:8080. Bound to loopback only.
+services:
+  heimdall:
+    environment:
+      HEIMDALL_COOKIE_SECURE: "false"
+      HEIMDALL_ALLOWED_HOSTS: "127.0.0.1,localhost"
+  edge:
+    ports: ["127.0.0.1:8080:8080"]

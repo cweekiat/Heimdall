@@ -1,0 +1,47 @@
+# Heimdall base stack (task 063, ADR-009): app + edge, hardened, NO published ports.
+# Combine with one of:
+#   compose.hosted.yml  - dev and prod VMs (Cloudflare Tunnel, optional Ollama)
+#   compose.local.yml   - run the production images on this machine (http://127.0.0.1:8080)
+#   compose.dev.yml     - development build with tests and source maps (http://127.0.0.1:8000)
+# Data (lake, DuckDB, basemap, secrets) lives in the host directory HEIMDALL_DATA (default ../data).
+name: heimdall
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: "20m", max-file: "5"}
+
+services:
+  heimdall:
+    <<: *hardening
+    image: ${HEIMDALL_IMAGE:-heimdall:local}
+    build: {context: .., dockerfile: deploy/Dockerfile, target: prod}
+    user: "10001:10001"
+    environment:
+      HEIMDALL_ENV: ${HEIMDALL_ENV:-prod}
+      HEIMDALL_ALLOWED_HOSTS: ${HEIMDALL_ALLOWED_HOSTS:-}
+    volumes:
+      - ${HEIMDALL_DATA:-../data}:/app/data
+    tmpfs: ["/tmp:size=512m,mode=1777"]
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request as u; sys.exit(0 if u.urlopen('http://127.0.0.1:8000/api/ready', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+
+  edge:
+    <<: *hardening
+    image: ${HEIMDALL_EDGE_IMAGE:-heimdall-edge:local}
+    build: {context: .., dockerfile: deploy/Dockerfile, target: edge}
+    user: "65534:65534"
+    volumes:
+      - ${HEIMDALL_DATA:-../data}/basemap:/srv/basemap:ro
+    tmpfs: ["/data:mode=1777", "/config:mode=1777"]
+    depends_on:
+      heimdall: {condition: service_healthy}

@@ -26,7 +26,7 @@ def evidence_id(
 ) -> str:
     """Deterministic id: sha1(kind|aoi|cell|entity|window_start ISO)."""
     raw = f"{kind}|{aoi or ''}|{cell}|{entity}|{window_start.isoformat()}"
-    return hashlib.sha1(raw.encode()).hexdigest()
+    return hashlib.sha1(raw.encode(), usedforsecurity=False).hexdigest()
 
 
 def align_window(now: datetime, window_min: float, step_min: float) -> tuple[datetime, datetime]:

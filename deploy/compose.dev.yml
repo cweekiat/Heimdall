@@ -1,0 +1,12 @@
+# Development build (dev deps, tests, UI source maps), localhost tool mode (no access codes):
+#   docker compose -f deploy/compose.yml -f deploy/compose.dev.yml up --build heimdall
+#   docker compose -f deploy/compose.yml -f deploy/compose.dev.yml run --rm heimdall pytest -q
+# Open http://127.0.0.1:8000. For hot reload of the UI use `cd web && npm run dev` instead.
+services:
+  heimdall:
+    image: heimdall-dev:local
+    build: {target: dev}
+    environment:
+      HEIMDALL_ENV: dev
+      HEIMDALL_AUTH: none
+    ports: ["127.0.0.1:8000:8000"]
