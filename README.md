@@ -7,7 +7,9 @@
 **RF and electronic-warfare watch on free, open data. Southeast Asia first.**
 
 [![ci](https://github.com/cweekiat/Heimdall/actions/workflows/ci.yml/badge.svg)](https://github.com/cweekiat/Heimdall/actions/workflows/ci.yml)
-&nbsp;[Project page](https://cweekiat.github.io/Heimdall/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [How it was built](#how-it-was-built)
+&nbsp;[Project page](https://cweekiat.github.io/Heimdall/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [How it was built](#how-it-was-built) · [License](#license)
+
+By [cweekiat](https://cweekiat.github.io/)
 
 <img src="docs/media/tour.gif" width="800" alt="Tour of the Heimdall console: GPS jamming alerts on the map, the evidence behind one alert, data layers and the 3D globe.">
 
@@ -380,3 +382,9 @@ Details: [docs/roadmap-rf.md](docs/roadmap-rf.md).
 ### Drawing areas of operation
 
 The live app starts with **no areas**: open **Area of Ops** (top of the left rail) to draw circles or polygons (up to 250 nm radius; a polygon must fit in a 250 nm circle), name them and turn monitoring on or off. They persist in `data/state/aois.json`. The `aois:` list in `config/config.yaml` is kept as presets for the demo, replay, backtests and tests (`use_config_aois: false` keeps it out of the live runtime). API: `GET/POST /api/aois/user`, `PATCH/DELETE /api/aois/user/{id}` (same-origin only). Details: `docs/tasks/015-draw-ao.md`.
+
+## License
+
+[Heimdall Responsible Use License (Non-Commercial)](LICENSE). Free for study, research, teaching, journalism and
+public-interest work. No commercial use without permission, and never for jamming, spoofing, targeting people or
+attacks. Data sources keep their own terms (several are non-commercial only).
