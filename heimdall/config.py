@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -64,12 +63,7 @@ class ApiCfg(BaseModel):
     layers: LayersCfg = Field(default_factory=LayersCfg)
     host: str = "127.0.0.1"
     port: int = 8000
-    # none = localhost tool; access_code = hosted mode (062, ADR-009): every path needs a session.
-    auth: Literal["none", "access_code"] = "none"
-    allowed_hosts: list[str] = Field(default_factory=list)  # public hostnames (hosted mode)
-    session_days: float = 7
-    cookie_secure: bool = True  # false only for local http testing of hosted mode
-    trusted_proxies: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
+    auth: str = "none"
 
 
 class UiCfg(BaseModel):
@@ -128,42 +122,11 @@ def _load_yaml(name: str) -> dict[str, Any]:
     return data
 
 
-def _deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
-    out = dict(base)
-    for k, v in over.items():
-        out[k] = (
-            _deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
-        )
-    return out
-
-
-def env_name() -> str | None:
-    """HEIMDALL_ENV (dev | prod, 063): selects config/env/<name>.yaml merged over config.yaml.
-    Overlays hold runtime/infrastructure values only; thresholds stay in config.yaml."""
-    name = os.environ.get("HEIMDALL_ENV", "").strip()
-    if not name:
-        return None
-    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,19}", name):
-        raise ValueError(f"HEIMDALL_ENV: invalid name {name!r}")
-    if not (CONFIG_DIR / "env" / f"{name}.yaml").is_file():
-        raise FileNotFoundError(f"HEIMDALL_ENV={name}: config/env/{name}.yaml not found")
-    return name
-
-
 @lru_cache(maxsize=1)
 def settings() -> Settings:
-    raw = _load_yaml("config.yaml")
-    if env := env_name():
-        raw = _deep_merge(raw, _load_yaml(f"env/{env}.yaml"))
-    s = Settings.model_validate(raw)
+    s = Settings.model_validate(_load_yaml("config.yaml"))
     if host := os.environ.get("HEIMDALL_API_HOST"):
         s.api.host = host  # e.g. 0.0.0.0 inside a container; publish on 127.0.0.1 only
-    if auth := os.environ.get("HEIMDALL_AUTH"):
-        s.api = ApiCfg.model_validate({**s.api.model_dump(), "auth": auth})
-    if (secure := os.environ.get("HEIMDALL_COOKIE_SECURE")) is not None:
-        s.api.cookie_secure = secure.strip().lower() not in ("0", "false", "no")
-    if hosts := os.environ.get("HEIMDALL_ALLOWED_HOSTS"):
-        s.api.allowed_hosts = [h.strip() for h in hosts.split(",") if h.strip()]
     return s
 
 

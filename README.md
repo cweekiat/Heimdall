@@ -124,24 +124,11 @@ cd web && npm run dev                    # http://localhost:5173, proxies /api t
 ```
 
 ### Docker
-Images come from one `deploy/Dockerfile`. The `prod` target is the production build and the `dev` target is the development build with tests and source maps. Compose files are explained in `docs/tasks/063-containers-envs.md`.
+`deploy/Dockerfile` has a `prod` target (production build) and a `dev` target (tests and source maps). Both bind to 127.0.0.1 only.
 ```bash
-docker compose -f deploy/compose.yml -f deploy/compose.dev.yml up --build heimdall    # dev build, 127.0.0.1:8000
-docker compose -f deploy/compose.yml -f deploy/compose.local.yml up --build           # prod images + access codes, 127.0.0.1:8080
+docker compose -f deploy/compose.yml up --build                                # production build, http://127.0.0.1:8000
+docker compose -f deploy/compose.yml -f deploy/compose.dev.yml up --build       # development build
 ```
-Hosting on the free Oracle VMs behind Cloudflare is covered in `docs/deploy-oracle.md`.
-
-### Hosted mode (invited users, access codes)
-Hosting plan and trust boundaries: `docs/decisions/ADR-009-hosted-deployment.md`. Set `api.auth: access_code`
-(or `HEIMDALL_AUTH=access_code`) and the public hostname in `api.allowed_hosts`. Then issue a code per person:
-```bash
-uv run python scripts/access_codes.py add yourname --admin      # prints a code once
-uv run python scripts/access_codes.py add alice                 # analyst; --custom to choose a code
-uv run python scripts/access_codes.py list
-uv run python scripts/access_codes.py revoke alice              # signs alice out
-```
-Every page then needs a sign-in. Admin codes may change API keys and data sources. Analysts triage, and their notes
-and verdicts carry their name.
 
 ### Backtest and calibration
 ```bash
@@ -274,8 +261,8 @@ servers see which map areas you view. Use `none` for a fully private blank map.
 
 ## 5. Privacy and safety
 
-- The API binds to **127.0.0.1**; host and origin checks reject cross-site requests. Hosted mode (ADR-009) puts
-  every page behind access codes (hashed, revocable, rate-limited) and keeps key and source changes for admins.
+- The API binds to **127.0.0.1**; host and origin checks reject cross-site requests. Heimdall is not meant to be
+  exposed online: everyone runs their own copy (ADR-010).
 - Outbound traffic is limited to **GET requests to the listed data sources** and the base-map tiles.
 - `privacy.allow_llm_egress: false`: no evidence is sent to any LLM until you switch it on (Phase 5).
 - Untrusted text such as news and warnings is treated as data and rendered as plain text.

@@ -1,16 +1,12 @@
 # syntax=docker/dockerfile:1.7
-# Heimdall images (task 063, ADR-009). One file, three targets:
+# Heimdall images for running on your own machine (tasks 063, 067). Two targets:
 #   prod - production build: no dev deps, minified UI without source maps, non-root, read-only ready.
-#          Deployed to BOTH the dev VM (HEIMDALL_ENV=dev) and prod (HEIMDALL_ENV=prod): the image tested
-#          on dev is promoted to prod unchanged, never rebuilt.
 #   dev  - development build: dev deps, tests, UI with source maps (local work, CI test runs).
-#   edge - Caddy with the built UI: static files and basemap behind forward_auth, proxy for /api.
 # Base images are pinned by version; Dependabot bumps them.
 
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 ARG NODE_IMAGE=node:22-bookworm-slim
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.12
-ARG CADDY_IMAGE=caddy:2.10-alpine
 
 # ---------------------------------------------------------------- web UI
 FROM ${NODE_IMAGE} AS web-base
@@ -55,7 +51,7 @@ COPY scripts/access_codes.py ./scripts/access_codes.py
 COPY --from=web-prod /web/dist ./web/dist
 RUN mkdir -p /app/data && chown heimdall:heimdall /app/data
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app HEIMDALL_ENV=prod
+    PYTHONPATH=/app HEIMDALL_API_HOST=0.0.0.0
 USER 10001:10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
@@ -72,12 +68,7 @@ COPY tests ./tests
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 COPY --from=web-dev /web/dist ./web/dist
 RUN mkdir -p /app/data && chown -R heimdall:heimdall /app/data
-ENV PATH=/app/.venv/bin:$PATH HEIMDALL_ENV=dev
+ENV PATH=/app/.venv/bin:$PATH HEIMDALL_API_HOST=0.0.0.0
 USER 10001:10001
 EXPOSE 8000
 CMD ["python", "-m", "heimdall.run"]
-
-# ---------------------------------------------------------------- edge
-FROM ${CADDY_IMAGE} AS edge
-COPY deploy/Caddyfile /etc/caddy/Caddyfile
-COPY --from=web-prod /web/dist /srv/web
